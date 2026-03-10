@@ -32,10 +32,11 @@ jobs:
           NODE_ENV: production
           NEXT_PUBLIC_APP_URL: ${{ secrets.APP_URL }}
 
-      # 5. public/ klasörünü standalone'a kopyala (statik dosyalar)
-      - name: Copy public assets to standalone
+      # 5. Statik dosyaları standalone'a kopyala
+      - name: Copy static assets to standalone
         run: |
           cp -r public .next/standalone/public
+          cp -r .next/static .next/standalone/.next/static
 
       # 6. data/ klasörünü yarat (veritabanı placeholder — cPanel'de varsa üzerine yazılmaz)
       - name: Prepare data directory placeholder
