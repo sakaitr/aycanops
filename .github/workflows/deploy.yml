@@ -55,6 +55,8 @@ jobs:
       - name: Restart cPanel Node.js App
         run: |
           curl -sk -u "${{ secrets.CPANEL_USER }}:${{ secrets.CPANEL_PASSWORD }}" \
-            "https://${{ secrets.CPANEL_HOST }}:2083/execute/NodeJSApp/restart_app?app_name=ops.agno.com.tr" \
-            -o /tmp/restart.json
-          cat /tmp/restart.json
+            "https://${{ secrets.CPANEL_HOST }}:2083/execute/NodeJSApp/restart_app?app_name=${{ secrets.CPANEL_APP_NAME }}" \
+            -o /tmp/restart.json || true
+          cat /tmp/restart.json || true
+          echo "Restart attempted."
+        continue-on-error: true
