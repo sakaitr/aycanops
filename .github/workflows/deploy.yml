@@ -40,9 +40,11 @@ jobs:
           docker run --rm \
             -v $(pwd):/workspace \
             almalinux:8 \
-            bash -euo pipefail -c '
+            bash -eo pipefail -c '
+              set -e
               dnf install -y -q curl make gcc-toolset-10-gcc-c++ python3
-              source /opt/rh/gcc-toolset-10/enable
+              export MANPATH=""
+              source /opt/rh/gcc-toolset-10/enable || true
               g++ --version
               curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
               dnf install -y -q nodejs
