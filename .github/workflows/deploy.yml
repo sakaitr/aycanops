@@ -32,14 +32,28 @@ jobs:
         run: |
           cp -r public .next/standalone/public
           cp -r .next/static .next/standalone/.next/static
+          cp -r migrations .next/standalone/migrations
 
-      # better-sqlite3'ü prebuilt binary ile değiştir (glibc uyumluluğu için)
-      - name: Replace better-sqlite3 with prebuilt binary (Node 20 ABI 115)
+      # better-sqlite3'ü eski glibc (AlmaLinux8 = glibc 2.28) üzerinde derle
+      - name: Build better-sqlite3 for old GLIBC (AlmaLinux8 / glibc 2.28)
         run: |
-          curl -L -o bsq.tar.gz "https://github.com/WiseLibs/better-sqlite3/releases/download/v11.10.0/better-sqlite3-v11.10.0-node-v115-linux-x64.tar.gz"
-          tar -xzf bsq.tar.gz
-          cp build/Release/better_sqlite3.node .next/standalone/node_modules/better-sqlite3/build/Release/better_sqlite3.node
-          echo "Binary replaced: $(file build/Release/better_sqlite3.node)"
+          docker run --rm \
+            -v $(pwd):/workspace \
+            almalinux:8 \
+            bash -euo pipefail -c '
+              dnf install -y -q curl make gcc-c++ python3
+              curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
+              dnf install -y -q nodejs
+              node --version
+              cd /workspace/.next/standalone/node_modules/better-sqlite3
+              npm rebuild --build-from-source 2>&1
+              cp build/Release/better_sqlite3.node /workspace/bsq_compiled.node
+              echo "Binary built: $(file /workspace/bsq_compiled.node)"
+            '
+          # Replace ALL copies (node_modules/ AND .next/node_modules/ bundled copy)
+          find .next/standalone -name "better_sqlite3.node" -exec cp bsq_compiled.node {} \;
+          echo "Replaced binaries:"
+          find .next/standalone -name "better_sqlite3.node"
 
       - name: Prepare data directory placeholder
         run: mkdir -p .next/standalone/data
@@ -60,11 +74,14 @@ jobs:
             data/*.sqlite-shm
             data/*.sqlite-wal
 
-      - name: Restart cPanel Node.js App
+      - name: Restart cPanel Node.js App via Fileman restart.txt
         run: |
+          # Create/update tmp/restart.txt to trigger Passenger-style restart
           curl -sk -u "${{ secrets.CPANEL_USER }}:${{ secrets.CPANEL_PASSWORD }}" \
-            "https://${{ secrets.CPANEL_HOST }}:2083/execute/NodeJSApp/restart_app?app_name=${{ secrets.CPANEL_APP_NAME }}" \
-            -o /tmp/restart.json || true
-          cat /tmp/restart.json || true
-          echo "Restart attempted."
+            "https://${{ secrets.CPANEL_HOST }}:2083/execute/Fileman/save_file_content" \
+            --data-urlencode "dir=/home/agnocom/ops.agno.com.tr/home/agnocom/ops.agno.com.tr/tmp" \
+            --data-urlencode "file=restart.txt" \
+            --data-urlencode "content=$(date -u)" \
+            | tee /tmp/restart.json
+          echo "Restart triggered."
         continue-on-error: true
