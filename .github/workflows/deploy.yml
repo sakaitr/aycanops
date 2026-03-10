@@ -14,11 +14,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Node.js 22 kur (better-sqlite3 için doğru ABI)
+      # 2. Node.js 20 kur (cPanel Node 20.x ile uyumlu ABI 115)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
           cache: 'npm'
 
       # 3. Bağımlılıkları yükle (better-sqlite3 otomatik Linux için derlenir)
