@@ -41,11 +41,13 @@ jobs:
             -v $(pwd):/workspace \
             almalinux:8 \
             bash -euo pipefail -c '
-              dnf install -y -q curl make gcc-c++ python3
+              dnf install -y -q curl make gcc-toolset-10-gcc-c++ python3
+              source /opt/rh/gcc-toolset-10/enable
+              g++ --version
               curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
               dnf install -y -q nodejs
               node --version
-              # Build from the full source in the original node_modules (has binding.gyp)
+              # Build from the full source (has binding.gyp)
               cd /workspace/node_modules/better-sqlite3
               npm rebuild --build-from-source 2>&1
               cp build/Release/better_sqlite3.node /workspace/bsq_compiled.node
