@@ -34,26 +34,25 @@ jobs:
           cp -r .next/static .next/standalone/.next/static
           cp -r migrations .next/standalone/migrations
 
-      - name: Deploy via rsync over SSH
-        uses: burnett01/rsync-deployments@7.0.1
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          switches: -avzr --delete --exclude='.env' --exclude='tmp/' --exclude='node_modules/.cache/'
-          path: .next/standalone/
-          remote_path: ${{ secrets.DEPLOY_PATH }}
-          remote_host: ${{ secrets.SSH_HOST }}
-          remote_port: ${{ secrets.SSH_PORT }}
-          remote_user: ${{ secrets.SSH_USER }}
-          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          server: ftp.agno.digital
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          local-dir: .next/standalone/
+          server-dir: /aycanops.agno.digital/
+          exclude: |
+            **/.env
+            **/tmp/**
+            **/.git/**
 
-      - name: Restart application (Passenger)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            mkdir -p ${{ secrets.DEPLOY_PATH }}/tmp
-            touch ${{ secrets.DEPLOY_PATH }}/tmp/restart.txt
-            echo "Passenger restart triggered at $(date -u)"
+      - name: Restart app via cPanel API
+        run: |
+          curl -s -u "${{ secrets.CPANEL_USER }}:${{ secrets.CPANEL_PASS }}" \
+            "https://cpanel.agno.digital:2083/execute/Fileman/save_file_content" \
+            --data-urlencode "dir=/home/agnowzbg/aycanops.agno.digital/tmp" \
+            --data-urlencode "file=restart.txt" \
+            --data-urlencode "content=$(date -u)" \
+            -o /dev/null -w "cPanel restart: %{http_code}\n"
 
