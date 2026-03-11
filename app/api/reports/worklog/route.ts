@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { isAtLeast } from "@/lib/permissions";
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 
     sql += " GROUP BY users.id, users.full_name ORDER BY users.full_name ASC";
 
-    const userStats = db.prepare(sql).all(...params);
+    const userStats = await db.prepare(sql).all(...params);
 
     let categorySql = `
       SELECT 
@@ -89,9 +89,9 @@ export async function GET(request: NextRequest) {
     categorySql +=
       " GROUP BY config_categories.name ORDER BY item_count DESC";
 
-    const categoryStats = db.prepare(categorySql).all(...categoryParams);
+    const categoryStats = await db.prepare(categorySql).all(...categoryParams);
 
-    const pendingApprovals = db
+    const pendingApprovals = await db
       .prepare(
         `SELECT worklogs.*, users.full_name as user_name
          FROM worklogs

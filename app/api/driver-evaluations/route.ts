@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
+import { driverEvaluationCreateSchema } from "@/lib/schemas";
 
 export async function GET(req: NextRequest) {
   try {
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
     }
     query += " ORDER BY de.evaluation_date DESC, de.created_at DESC";
 
-    const data = db.prepare(query).all(...params);
+    const data = await db.prepare(query).all(...params);
     return NextResponse.json({ ok: true, data });
   } catch {
     return NextResponse.json({ ok: false, error: "Sunucu hatası" }, { status: 500 });
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
     const now = nowIso();
     const id = uuidv4();
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO driver_evaluations (
         id, evaluation_date, driver_name, plate, vehicle_info, route_text, company_id,
         score_punctuality, score_driving, score_communication,

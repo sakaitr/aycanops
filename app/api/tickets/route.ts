@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -6,6 +6,7 @@ import { canViewTicket, isAtLeast } from "@/lib/permissions";
 import { nowIso, addMinutes } from "@/lib/time";
 import { nextTicketNo } from "@/lib/ticketNo";
 import { logAudit } from "@/lib/audit";
+import { ticketCreateSchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
   try {
@@ -55,10 +56,16 @@ export async function GET(request: NextRequest) {
       params.push(nowIso());
     }
 
-    sql += " ORDER BY tickets.created_at DESC";
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "100")));
+    const offset = (page - 1) * limit;
 
-    const rows = db.prepare(sql).all(...params);
-    return NextResponse.json({ ok: true, data: rows });
+    const countRow = await db.prepare(`SELECT COUNT(*) as total FROM (${sql}) _t`).get(...params) as { total: number };
+    const total = countRow.total;
+
+    sql += " ORDER BY tickets.created_at DESC LIMIT ? OFFSET ?";
+    const rows = await db.prepare(sql).all(...params, limit, offset);
+    return NextResponse.json({ ok: true, data: rows, meta: { total, page, limit, pages: Math.ceil(total / limit) } });
   } catch (error) {
     console.error("Tickets list error:", error);
     return NextResponse.json(
@@ -96,6 +103,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    const parsed = ticketCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    }
     const {
       title,
       description,
@@ -104,22 +115,15 @@ export async function POST(request: NextRequest) {
       tag_ids,
       assigned_to,
       department_id,
-    } = body;
+    } = parsed.data;
 
-    if (!title) {
-      return NextResponse.json(
-        { ok: false, error: "Başlık gerekli" },
-        { status: 400 }
-      );
-    }
-
-    const ticketNo = nextTicketNo(db);
+    const ticketNo = await nextTicketNo();
     const id = uuidv4();
     const now = nowIso();
 
     let slaDueAt: string | null = null;
     if (priority_code) {
-      const slaRule = db
+      const slaRule = await db
         .prepare(
           "SELECT due_minutes FROM config_sla_rules WHERE priority_code = ? AND is_active = 1"
         )
@@ -131,7 +135,7 @@ export async function POST(request: NextRequest) {
 
     const tagIdsStr = Array.isArray(tag_ids) ? tag_ids.join(",") : tag_ids;
 
-    db.prepare(
+    await db.prepare(
       `INSERT INTO tickets (id, ticket_no, title, description, category_id, priority_code, status_code, tag_ids, sla_due_at, created_by, assigned_to, department_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`
     ).run(
@@ -150,7 +154,7 @@ export async function POST(request: NextRequest) {
       now
     );
 
-    logAudit(db, {
+    await logAudit({
       actorUserId: user.id,
       action: "ticket_create",
       entityType: "ticket",
@@ -158,7 +162,7 @@ export async function POST(request: NextRequest) {
       details: { ticket_no: ticketNo },
     });
 
-    const created = db.prepare("SELECT * FROM tickets WHERE id = ?").get(id);
+    const created = await db.prepare("SELECT * FROM tickets WHERE id = ?").get(id);
     return NextResponse.json({ ok: true, data: created }, { status: 201 });
   } catch (error) {
     console.error("Ticket create error:", error);

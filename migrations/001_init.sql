@@ -1,226 +1,202 @@
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE IF NOT EXISTS departments (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE,
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL UNIQUE,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
-  username TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  full_name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('personel','yetkili','yonetici','admin')),
-  department_id TEXT NOT NULL,
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (department_id) REFERENCES departments(id)
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  full_name VARCHAR(255) NOT NULL,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('personel','yetkili','yonetici','admin')),
+  department_id CHAR(36) NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id)
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  user_id CHAR(36) NOT NULL,
+  expires_at VARCHAR(30) NOT NULL,
+  created_at VARCHAR(30) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS config_categories (
-  id TEXT PRIMARY KEY,
-  type TEXT NOT NULL CHECK (type IN ('worklog','ticket')),
-  name TEXT NOT NULL,
-  color TEXT,
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  type VARCHAR(20) NOT NULL CHECK (type IN ('worklog','ticket')),
+  name VARCHAR(255) NOT NULL,
+  color VARCHAR(50),
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL,
   UNIQUE(type, name)
 );
 
 CREATE TABLE IF NOT EXISTS config_tags (
-  id TEXT PRIMARY KEY,
-  type TEXT NOT NULL CHECK (type IN ('worklog','ticket','todo')),
-  name TEXT NOT NULL,
-  color TEXT,
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  type VARCHAR(20) NOT NULL CHECK (type IN ('worklog','ticket','todo')),
+  name VARCHAR(255) NOT NULL,
+  color VARCHAR(50),
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL,
   UNIQUE(type, name)
 );
 
 CREATE TABLE IF NOT EXISTS config_priorities (
-  id TEXT PRIMARY KEY,
-  type TEXT NOT NULL CHECK (type IN ('ticket','todo')),
-  code TEXT NOT NULL,
-  label TEXT NOT NULL,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  type VARCHAR(20) NOT NULL CHECK (type IN ('ticket','todo')),
+  code VARCHAR(50) NOT NULL,
+  label VARCHAR(255) NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL,
   UNIQUE(type, code)
 );
 
 CREATE TABLE IF NOT EXISTS config_ticket_statuses (
-  code TEXT PRIMARY KEY,
-  label TEXT NOT NULL,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  is_terminal INTEGER NOT NULL DEFAULT 0,
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  code VARCHAR(50) NOT NULL PRIMARY KEY,
+  label VARCHAR(255) NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_terminal TINYINT(1) NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS config_worklog_statuses (
-  code TEXT PRIMARY KEY,
-  label TEXT NOT NULL,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  is_terminal INTEGER NOT NULL DEFAULT 0,
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  code VARCHAR(50) NOT NULL PRIMARY KEY,
+  label VARCHAR(255) NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_terminal TINYINT(1) NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS config_sla_rules (
-  id TEXT PRIMARY KEY,
-  priority_code TEXT NOT NULL,
-  due_minutes INTEGER NOT NULL,
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  priority_code VARCHAR(50) NOT NULL,
+  due_minutes INT NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL,
   UNIQUE(priority_code)
 );
 
 CREATE TABLE IF NOT EXISTS todo_templates (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
   description TEXT,
-  role_target TEXT CHECK (role_target IN ('personel','yetkili','yonetici','admin')),
-  department_id TEXT,
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_by TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (department_id) REFERENCES departments(id),
-  FOREIGN KEY (created_by) REFERENCES users(id)
+  role_target VARCHAR(20) CHECK (role_target IN ('personel','yetkili','yonetici','admin')),
+  department_id CHAR(36),
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_by CHAR(36) NOT NULL,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS worklogs (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  work_date TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  user_id CHAR(36) NOT NULL,
+  work_date VARCHAR(10) NOT NULL,
   summary TEXT NOT NULL,
-  status_code TEXT NOT NULL CHECK (status_code IN ('draft','submitted','returned','approved')),
-  submitted_at TEXT,
-  returned_at TEXT,
-  approved_at TEXT,
+  status_code VARCHAR(20) NOT NULL CHECK (status_code IN ('draft','submitted','returned','approved')),
+  submitted_at VARCHAR(30),
+  returned_at VARCHAR(30),
+  approved_at VARCHAR(30),
   manager_note TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id),
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL,
   UNIQUE(user_id, work_date)
 );
 
 CREATE TABLE IF NOT EXISTS worklog_items (
-  id TEXT PRIMARY KEY,
-  worklog_id TEXT NOT NULL,
-  title TEXT NOT NULL,
-  category_id TEXT,
-  duration_minutes INTEGER,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  worklog_id CHAR(36) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  category_id CHAR(36),
+  duration_minutes INT,
   tag_ids TEXT,
-  linked_todo_id TEXT,
-  linked_ticket_id TEXT,
+  linked_todo_id CHAR(36),
+  linked_ticket_id CHAR(36),
   note TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (worklog_id) REFERENCES worklogs(id),
-  FOREIGN KEY (category_id) REFERENCES config_categories(id),
-  FOREIGN KEY (linked_todo_id) REFERENCES todos(id),
-  FOREIGN KEY (linked_ticket_id) REFERENCES tickets(id)
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS todos (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
   description TEXT,
-  status_code TEXT NOT NULL CHECK (status_code IN ('todo','doing','blocked','done')),
-  priority_code TEXT,
-  assigned_to TEXT,
-  created_by TEXT NOT NULL,
-  department_id TEXT,
-  due_date TEXT,
-  completed_at TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (assigned_to) REFERENCES users(id),
-  FOREIGN KEY (created_by) REFERENCES users(id),
-  FOREIGN KEY (department_id) REFERENCES departments(id)
+  status_code VARCHAR(20) NOT NULL CHECK (status_code IN ('todo','doing','blocked','done')),
+  priority_code VARCHAR(50),
+  assigned_to CHAR(36),
+  created_by CHAR(36) NOT NULL,
+  department_id CHAR(36),
+  due_date VARCHAR(10),
+  completed_at VARCHAR(30),
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS todo_comments (
-  id TEXT PRIMARY KEY,
-  todo_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  todo_id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
   comment TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (todo_id) REFERENCES todos(id),
-  FOREIGN KEY (user_id) REFERENCES users(id)
+  created_at VARCHAR(30) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS tickets (
-  id TEXT PRIMARY KEY,
-  ticket_no TEXT NOT NULL UNIQUE,
-  title TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  ticket_no VARCHAR(20) NOT NULL UNIQUE,
+  title VARCHAR(255) NOT NULL,
   description TEXT,
-  category_id TEXT,
-  priority_code TEXT,
-  status_code TEXT NOT NULL CHECK (status_code IN ('open','in_progress','waiting','solved','closed')),
+  category_id CHAR(36),
+  priority_code VARCHAR(50),
+  status_code VARCHAR(20) NOT NULL CHECK (status_code IN ('open','in_progress','waiting','solved','closed')),
   tag_ids TEXT,
-  sla_due_at TEXT,
-  created_by TEXT NOT NULL,
-  assigned_to TEXT,
-  department_id TEXT,
-  solved_at TEXT,
-  closed_at TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (category_id) REFERENCES config_categories(id),
-  FOREIGN KEY (created_by) REFERENCES users(id),
-  FOREIGN KEY (assigned_to) REFERENCES users(id),
-  FOREIGN KEY (department_id) REFERENCES departments(id)
+  sla_due_at VARCHAR(30),
+  created_by CHAR(36) NOT NULL,
+  assigned_to CHAR(36),
+  department_id CHAR(36),
+  solved_at VARCHAR(30),
+  closed_at VARCHAR(30),
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS ticket_comments (
-  id TEXT PRIMARY KEY,
-  ticket_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  ticket_id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
   comment TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (ticket_id) REFERENCES tickets(id),
-  FOREIGN KEY (user_id) REFERENCES users(id)
+  created_at VARCHAR(30) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS ticket_actions (
-  id TEXT PRIMARY KEY,
-  ticket_id TEXT NOT NULL,
-  title TEXT NOT NULL,
-  is_done INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  completed_at TEXT,
-  FOREIGN KEY (ticket_id) REFERENCES tickets(id)
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  ticket_id CHAR(36) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  is_done TINYINT(1) NOT NULL DEFAULT 0,
+  created_at VARCHAR(30) NOT NULL,
+  completed_at VARCHAR(30)
 );
 
 CREATE TABLE IF NOT EXISTS audit_log (
-  id TEXT PRIMARY KEY,
-  actor_user_id TEXT NOT NULL,
-  action TEXT NOT NULL,
-  entity_type TEXT NOT NULL,
-  entity_id TEXT,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  actor_user_id CHAR(36) NOT NULL,
+  action VARCHAR(100) NOT NULL,
+  entity_type VARCHAR(100) NOT NULL,
+  entity_id CHAR(36),
   details_json TEXT,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (actor_user_id) REFERENCES users(id)
+  created_at VARCHAR(30) NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);

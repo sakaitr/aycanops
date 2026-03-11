@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -26,7 +26,7 @@ export async function POST(
     }
     const db = getDb();
 
-    const ticketRaw = db
+    const ticketRaw = await db
       .prepare("SELECT * FROM tickets WHERE ticket_no = ?")
       .get(ticketNo);
 
@@ -49,7 +49,7 @@ export async function POST(
     const targetUserId = ticket.assigned_to;
     const today = new Date().toISOString().split("T")[0];
 
-    let worklog = db
+    let worklog = await db
       .prepare("SELECT * FROM worklogs WHERE user_id = ? AND work_date = ?")
       .get(targetUserId, today) as
       | { id: string; status_code: string }
@@ -58,7 +58,7 @@ export async function POST(
     if (!worklog) {
       const worklogId = uuidv4();
       const now = nowIso();
-      db.prepare(
+      await db.prepare(
         `INSERT INTO worklogs (id, user_id, work_date, summary, status_code, created_at, updated_at)
          VALUES (?, ?, ?, ?, 'draft', ?, ?)`
       ).run(
@@ -84,12 +84,12 @@ export async function POST(
 
     const itemId = uuidv4();
     const now = nowIso();
-    db.prepare(
+    await db.prepare(
       `INSERT INTO worklog_items (id, worklog_id, title, linked_ticket_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?)`
     ).run(itemId, worklog.id, ticket.title, ticket.id, now, now);
 
-    const created = db
+    const created = await db
       .prepare("SELECT * FROM worklog_items WHERE id = ?")
       .get(itemId);
 

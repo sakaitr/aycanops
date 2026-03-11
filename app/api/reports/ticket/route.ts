@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { isAtLeast } from "@/lib/permissions";
@@ -58,15 +58,15 @@ export async function GET(request: NextRequest) {
 
     countsSql += " GROUP BY status_code";
 
-    const statusCounts = db.prepare(countsSql).all(...countsParams);
+    const statusCounts = await db.prepare(countsSql).all(...countsParams);
 
     let resolutionSql = `
       SELECT 
-        AVG(JULIANDAY(closed_at) - JULIANDAY(created_at)) as avg_days,
+        AVG(DATEDIFF(closed_at, created_at)) as avg_days,
         CASE 
-          WHEN (JULIANDAY(closed_at) - JULIANDAY(created_at)) < 1 THEN '0-1'
-          WHEN (JULIANDAY(closed_at) - JULIANDAY(created_at)) < 7 THEN '1-7'
-          WHEN (JULIANDAY(closed_at) - JULIANDAY(created_at)) < 30 THEN '7-30'
+          WHEN DATEDIFF(closed_at, created_at) < 1 THEN '0-1'
+          WHEN DATEDIFF(closed_at, created_at) < 7 THEN '1-7'
+          WHEN DATEDIFF(closed_at, created_at) < 30 THEN '7-30'
           ELSE '30+'
         END as aging_bucket,
         COUNT(*) as count
@@ -87,13 +87,13 @@ export async function GET(request: NextRequest) {
 
     resolutionSql += " GROUP BY aging_bucket";
 
-    const resolutionStats = db.prepare(resolutionSql).all(...resolutionParams);
+    const resolutionStats = await db.prepare(resolutionSql).all(...resolutionParams);
 
-    const avgResolution = db
+    const avgResolution = await db
       .prepare(
         `SELECT 
-           AVG(JULIANDAY(closed_at) - JULIANDAY(created_at)) as avg_days,
-           MEDIAN(JULIANDAY(closed_at) - JULIANDAY(created_at)) as median_days
+           AVG(DATEDIFF(closed_at, created_at)) as avg_days,
+           AVG(DATEDIFF(closed_at, created_at)) as median_days
          FROM tickets
          WHERE closed_at IS NOT NULL`
       )
@@ -106,13 +106,13 @@ export async function GET(request: NextRequest) {
       FROM tickets
       LEFT JOIN users ON users.id = tickets.assigned_to
       WHERE tickets.sla_due_at IS NOT NULL 
-        AND tickets.sla_due_at < datetime('now')
+        AND tickets.sla_due_at < NOW()
         AND tickets.status_code NOT IN ('solved', 'closed')
       ORDER BY tickets.sla_due_at ASC
       LIMIT 100
     `;
 
-    const slaBreaches = db.prepare(slaBreachSql).all();
+    const slaBreaches = await db.prepare(slaBreachSql).all();
 
     return NextResponse.json({
       ok: true,

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     const db = getDb();
 
     // Vehicle info + company
-    const vehicle = db.prepare(`
+    const vehicle = await db.prepare(`
       SELECT cv.id, cv.plate, cv.driver_name, cv.notes, cv.is_active,
              c.id AS company_id, c.name AS company_name
       FROM company_vehicles cv
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Arrival history
-    const arrivals = db.prepare(`
+    const arrivals = await db.prepare(`
       SELECT va.id, va.arrival_date, va.arrived_at,
              ROUND(COALESCE(va.latitude, 0), 6) AS latitude,
              ROUND(COALESCE(va.longitude, 0), 6) AS longitude,
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     `).all(vehicle_id, limit) as any[];
 
     // Last inspection
-    const lastInspection = db.prepare(`
+    const lastInspection = await db.prepare(`
       SELECT i.inspection_date, i.type, i.result, u.full_name AS inspector_name
       FROM inspections i
       LEFT JOIN users u ON u.id = i.inspector_id
@@ -62,10 +62,10 @@ export async function GET(req: NextRequest) {
     `).get(vehicle_id) as any;
 
     // Stats
-    const stats = db.prepare(`
+    const stats = await db.prepare(`
       SELECT
         COUNT(*) AS total_arrivals,
-        COUNT(CASE WHEN va.arrival_date >= date('now', '-30 days') THEN 1 END) AS last_30_days,
+        COUNT(CASE WHEN va.arrival_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN 1 END) AS last_30_days,
         MIN(va.arrival_date) AS first_arrival,
         MAX(va.arrival_date) AS last_arrival
       FROM vehicle_arrivals va

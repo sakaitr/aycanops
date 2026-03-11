@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
-import type Database from "better-sqlite3";
 import { addHours, nowIso } from "./time";
 import { getDb } from "./db";
 
@@ -46,24 +45,24 @@ export function hashPassword(password: string) {
   return bcrypt.hashSync(password, 10);
 }
 
-export function createSession(db: Database.Database, userId: string) {
+export async function createSession(userId: string) {
+  const db = getDb();
   const sessionId = uuidv4();
   const expiresAt = addHours(new Date(), getSessionTtlHours()).toISOString();
-  db.prepare(
+  await db.prepare(
     "INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)"
   ).run(sessionId, userId, expiresAt, nowIso());
   return { sessionId, expiresAt };
 }
 
-export function deleteSession(db: Database.Database, sessionId: string) {
-  db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+export async function deleteSession(sessionId: string) {
+  const db = getDb();
+  await db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
 }
 
-export function getUserBySession(
-  db: Database.Database,
-  sessionId: string
-): SafeUser | null {
-  const row = db
+export async function getUserBySession(sessionId: string): Promise<SafeUser | null> {
+  const db = getDb();
+  const row = await db
     .prepare(
       `SELECT users.id, users.username, users.full_name, users.role, users.department_id, users.is_active,
               users.allowed_pages, users.allowed_companies, sessions.expires_at
@@ -71,20 +70,19 @@ export function getUserBySession(
        JOIN users ON users.id = sessions.user_id
        WHERE sessions.id = ?`
     )
-    .get(sessionId) as
-    | (SafeUser & { expires_at: string })
-    | undefined;
+    .get<SafeUser & { expires_at: string }>(sessionId);
 
   if (!row) {
     return null;
   }
 
   if (new Date(row.expires_at).getTime() <= Date.now()) {
-    deleteSession(db, sessionId);
+    await deleteSession(sessionId);
     return null;
   }
 
   const { expires_at, ...user } = row;
+  void expires_at; // acknowledged
   return user;
 }
 
@@ -139,10 +137,9 @@ export async function clearRoleCookie() {
 }
 
 export async function requireUser() {
-  const db = getDb();
   const sessionId = await getSessionFromCookies();
   if (!sessionId) {
     return null;
   }
-  return getUserBySession(db, sessionId);
+  return getUserBySession(sessionId);
 }

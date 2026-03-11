@@ -1,88 +1,88 @@
 -- Araçlar (Vehicles)
 CREATE TABLE IF NOT EXISTS vehicles (
-  id TEXT PRIMARY KEY,
-  plate TEXT NOT NULL UNIQUE,
-  type TEXT NOT NULL DEFAULT 'minibus', -- minibus, midibus, otobus, sedan
-  capacity INTEGER NOT NULL DEFAULT 14,
-  brand TEXT,
-  model TEXT,
-  year INTEGER,
-  driver_name TEXT,
-  driver_phone TEXT,
-  status_code TEXT NOT NULL DEFAULT 'active', -- active, maintenance, inactive
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  plate VARCHAR(20) NOT NULL UNIQUE,
+  type VARCHAR(50) NOT NULL DEFAULT 'minibus',
+  capacity INT NOT NULL DEFAULT 14,
+  brand VARCHAR(100),
+  model VARCHAR(100),
+  year SMALLINT,
+  driver_name VARCHAR(255),
+  driver_phone VARCHAR(50),
+  status_code VARCHAR(50) NOT NULL DEFAULT 'active',
   notes TEXT,
-  created_by TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  created_by CHAR(36) NOT NULL,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 -- Güzergahlar (Routes)
 CREATE TABLE IF NOT EXISTS routes (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  code TEXT,
-  direction TEXT NOT NULL DEFAULT 'both', -- morning, evening, both
-  morning_departure TEXT, -- HH:MM
-  morning_arrival TEXT,   -- HH:MM
-  evening_departure TEXT,
-  evening_arrival TEXT,
-  stops_json TEXT,        -- JSON array [{name, address, order}]
-  vehicle_id TEXT REFERENCES vehicles(id),
-  is_active INTEGER NOT NULL DEFAULT 1,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  code VARCHAR(50),
+  direction VARCHAR(20) NOT NULL DEFAULT 'both',
+  morning_departure VARCHAR(5),
+  morning_arrival VARCHAR(5),
+  evening_departure VARCHAR(5),
+  evening_arrival VARCHAR(5),
+  stops_json TEXT,
+  vehicle_id CHAR(36),
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
   notes TEXT,
-  created_by TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  created_by CHAR(36) NOT NULL,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 -- Seferler (Trips - daily run records)
 CREATE TABLE IF NOT EXISTS trips (
-  id TEXT PRIMARY KEY,
-  trip_date TEXT NOT NULL,
-  route_id TEXT NOT NULL REFERENCES routes(id),
-  vehicle_id TEXT REFERENCES vehicles(id),
-  direction TEXT NOT NULL DEFAULT 'morning', -- morning, evening
-  planned_departure TEXT,  -- HH:MM
-  actual_departure TEXT,
-  planned_arrival TEXT,
-  actual_arrival TEXT,
-  passenger_count INTEGER DEFAULT 0,
-  status_code TEXT NOT NULL DEFAULT 'planned', -- planned, departed, arrived, cancelled, delayed
-  delay_minutes INTEGER DEFAULT 0,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  trip_date VARCHAR(10) NOT NULL,
+  route_id CHAR(36) NOT NULL,
+  vehicle_id CHAR(36),
+  direction VARCHAR(20) NOT NULL DEFAULT 'morning',
+  planned_departure VARCHAR(5),
+  actual_departure VARCHAR(5),
+  planned_arrival VARCHAR(5),
+  actual_arrival VARCHAR(5),
+  passenger_count INT DEFAULT 0,
+  status_code VARCHAR(50) NOT NULL DEFAULT 'planned',
+  delay_minutes INT DEFAULT 0,
   notes TEXT,
-  created_by TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  created_by CHAR(36) NOT NULL,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 -- Giriş Kontrolleri (Morning entry time checks)
 CREATE TABLE IF NOT EXISTS entry_controls (
-  id TEXT PRIMARY KEY,
-  control_date TEXT NOT NULL,
-  route_id TEXT NOT NULL REFERENCES routes(id),
-  trip_id TEXT REFERENCES trips(id),
-  planned_time TEXT NOT NULL, -- HH:MM
-  actual_time TEXT,           -- HH:MM
-  delay_minutes INTEGER DEFAULT 0,
-  passenger_expected INTEGER DEFAULT 0,
-  passenger_actual INTEGER DEFAULT 0,
-  status_code TEXT NOT NULL DEFAULT 'pending', -- pending, on_time, delayed, cancelled
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  control_date VARCHAR(10) NOT NULL,
+  route_id CHAR(36) NOT NULL,
+  trip_id CHAR(36),
+  planned_time VARCHAR(5) NOT NULL,
+  actual_time VARCHAR(5),
+  delay_minutes INT DEFAULT 0,
+  passenger_expected INT DEFAULT 0,
+  passenger_actual INT DEFAULT 0,
+  status_code VARCHAR(50) NOT NULL DEFAULT 'pending',
   notes TEXT,
-  created_by TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  created_by CHAR(36) NOT NULL,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 -- Araç Denetimleri (Vehicle inspections)
 CREATE TABLE IF NOT EXISTS inspections (
-  id TEXT PRIMARY KEY,
-  vehicle_id TEXT NOT NULL REFERENCES vehicles(id),
-  inspection_date TEXT NOT NULL,
-  inspector_id TEXT NOT NULL REFERENCES users(id),
-  type TEXT NOT NULL DEFAULT 'routine', -- routine, pre_trip, complaint, periodic
-  result TEXT NOT NULL DEFAULT 'pending', -- pending, pass, fail, conditional
-  checklist_json TEXT, -- JSON: [{label, ok, note}]
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  vehicle_id CHAR(36) NOT NULL,
+  inspection_date VARCHAR(10) NOT NULL,
+  inspector_id CHAR(36) NOT NULL,
+  type VARCHAR(50) NOT NULL DEFAULT 'routine',
+  result VARCHAR(50) NOT NULL DEFAULT 'pending',
+  checklist_json TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );

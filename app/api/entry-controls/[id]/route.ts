@@ -1,14 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { nowIso } from "@/lib/time";
+import { entryControlUpdateSchema } from "@/lib/schemas";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
     const { id } = await params;
-    const body = await req.json();
+    const raw = await req.json();
+    const parsed = entryControlUpdateSchema.safeParse(raw);
+    if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    const body = parsed.data;
     const db = getDb();
     const now = nowIso();
 
@@ -28,14 +32,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
 
-    const fields = ["actual_time", "passenger_expected", "passenger_actual", "status_code", "notes"];
+    const fields = ["actual_time", "passenger_expected", "passenger_actual", "status_code", "notes"] as const;
     const sets = fields.filter(f => body[f] !== undefined).map(f => `${f} = ?`);
     const vals = fields.filter(f => body[f] !== undefined).map(f => body[f]);
 
     const allSets = [...sets, ...extra];
     const allVals = [...vals, ...extraVals];
     if (allSets.length === 0) return NextResponse.json({ ok: false, error: "Güncellenecek alan yok" }, { status: 400 });
-    db.prepare(`UPDATE entry_controls SET ${allSets.join(", ")}, updated_at = ? WHERE id = ?`).run(...allVals, now, id);
+    await db.prepare(`UPDATE entry_controls SET ${allSets.join(", ")}, updated_at = ? WHERE id = ?`).run(...allVals, now, id);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ ok: false, error: "Sunucu hatası" }, { status: 500 });

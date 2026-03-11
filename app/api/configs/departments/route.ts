@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canManageConfigs } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { departmentSchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
     sql += " ORDER BY name ASC";
 
-    const rows = db.prepare(sql).all();
+    const rows = await db.prepare(sql).all();
     return NextResponse.json({ ok: true, data: rows });
   } catch (error) {
     console.error("Departments list error:", error);
@@ -64,24 +65,21 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const { name } = body;
-
-    if (!name) {
-      return NextResponse.json(
-        { ok: false, error: "Departman adı gerekli" },
-        { status: 400 }
-      );
+    const parsed = departmentSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { name } = parsed.data;
 
     const db = getDb();
     const id = uuidv4();
     const now = nowIso();
 
-    db.prepare(
+    await db.prepare(
       "INSERT INTO departments (id, name, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)"
     ).run(id, name, now, now);
 
-    logAudit(db, {
+    await logAudit({
       actorUserId: user.id,
       action: "department_create",
       entityType: "department",
@@ -89,7 +87,7 @@ export async function POST(request: NextRequest) {
       details: { name },
     });
 
-    const created = db.prepare("SELECT * FROM departments WHERE id = ?").get(id);
+    const created = await db.prepare("SELECT * FROM departments WHERE id = ?").get(id);
     return NextResponse.json({ ok: true, data: created }, { status: 201 });
   } catch (error) {
     console.error("Department create error:", error);
@@ -155,9 +153,9 @@ export async function PUT(request: NextRequest) {
     sql += " WHERE id = ?";
     params.push(id);
 
-    db.prepare(sql).run(...params);
+    await db.prepare(sql).run(...params);
 
-    logAudit(db, {
+    await logAudit({
       actorUserId: user.id,
       action: "department_update",
       entityType: "department",
@@ -165,7 +163,7 @@ export async function PUT(request: NextRequest) {
       details: { name, is_active },
     });
 
-    const updated = db.prepare("SELECT * FROM departments WHERE id = ?").get(id);
+    const updated = await db.prepare("SELECT * FROM departments WHERE id = ?").get(id);
     return NextResponse.json({ ok: true, data: updated });
   } catch (error) {
     console.error("Department update error:", error);

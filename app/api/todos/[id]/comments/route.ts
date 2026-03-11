@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { nowIso } from "@/lib/time";
+import { commentSchema } from "@/lib/schemas";
 
 export async function POST(
   request: NextRequest,
@@ -34,24 +35,21 @@ export async function POST(
         { status: 400 }
       );
     }
-    const { comment } = body;
-
-    if (!comment) {
-      return NextResponse.json(
-        { ok: false, error: "Yorum gerekli" },
-        { status: 400 }
-      );
+    const parsed = commentSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { comment } = parsed.data;
 
     const db = getDb();
     const commentId = uuidv4();
     const now = nowIso();
 
-    db.prepare(
+    await db.prepare(
       "INSERT INTO todo_comments (id, todo_id, user_id, comment, created_at) VALUES (?, ?, ?, ?, ?)"
     ).run(commentId, id, user.id, comment, now);
 
-    const created = db
+    const created = await db
       .prepare(
         `SELECT todo_comments.*, users.full_name as user_name
          FROM todo_comments

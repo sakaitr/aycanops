@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canViewTodo, isAtLeast } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { todoCreateSchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,10 +43,16 @@ export async function GET(request: NextRequest) {
       params.push(status);
     }
 
-    sql += " ORDER BY todos.created_at DESC";
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "100")));
+    const offset = (page - 1) * limit;
 
-    const rows = db.prepare(sql).all(...params);
-    return NextResponse.json({ ok: true, data: rows });
+    const countRow = await db.prepare(`SELECT COUNT(*) as total FROM (${sql}) _t`).get(...params) as { total: number };
+    const total = countRow.total;
+
+    sql += " ORDER BY todos.created_at DESC LIMIT ? OFFSET ?";
+    const rows = await db.prepare(sql).all(...params, limit, offset);
+    return NextResponse.json({ ok: true, data: rows, meta: { total, page, limit, pages: Math.ceil(total / limit) } });
   } catch (error) {
     console.error("Todos list error:", error);
     return NextResponse.json(
@@ -76,6 +83,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    const parsed = todoCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    }
     const {
       title,
       description,
@@ -84,38 +95,24 @@ export async function POST(request: NextRequest) {
       department_id,
       due_date,
       bulk_targets,
-    } = body;
-
-    if (!title) {
-      return NextResponse.json(
-        { ok: false, error: "Başlık gerekli" },
-        { status: 400 }
-      );
-    }
+    } = parsed.data;
 
     const now = nowIso();
 
     if (bulk_targets) {
       const { target_type, target_value } = bulk_targets;
-      
-      if (!target_type || !target_value) {
-        return NextResponse.json(
-          { ok: false, error: "target_type ve target_value gerekli" },
-          { status: 400 }
-        );
-      }
 
       let targetUsers: string[] = [];
 
       if (target_type === "department") {
-        const users = db
+        const users = await db
           .prepare(
             "SELECT id FROM users WHERE department_id = ? AND is_active = 1"
           )
           .all(target_value) as { id: string }[];
         targetUsers = users.map((u) => u.id);
       } else if (target_type === "role") {
-        const users = db
+        const users = await db
           .prepare("SELECT id FROM users WHERE role = ? AND is_active = 1")
           .all(target_value) as { id: string }[];
         targetUsers = users.map((u) => u.id);
@@ -137,37 +134,32 @@ export async function POST(request: NextRequest) {
 
       const ids: string[] = [];
 
-      // Tüm işlemi transaction'da yap - hata olursa rollback
-      const bulkTx = db.transaction(() => {
-        for (const userId of targetUsers) {
-          const id = uuidv4();
-          db.prepare(
-            `INSERT INTO todos (id, title, description, status_code, priority_code, assigned_to, created_by, department_id, due_date, created_at, updated_at)
-             VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?)`
-          ).run(
-            id,
-            title,
-            description || null,
-            priority_code || null,
-            userId,
-            user.id,
-            department_id || null,
-            due_date || null,
-            now,
-            now
-          );
-          ids.push(id);
-          logAudit(db, {
-            actorUserId: user.id,
-            action: "todo_create_bulk",
-            entityType: "todo",
-            entityId: id,
-            details: { assigned_to: userId },
-          });
-        }
-      });
-
-      bulkTx();
+      for (const userId of targetUsers) {
+        const id = uuidv4();
+        await db.prepare(
+          `INSERT INTO todos (id, title, description, status_code, priority_code, assigned_to, created_by, department_id, due_date, created_at, updated_at)
+           VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          id,
+          title,
+          description || null,
+          priority_code || null,
+          userId,
+          user.id,
+          department_id || null,
+          due_date || null,
+          now,
+          now
+        );
+        ids.push(id);
+        await logAudit({
+          actorUserId: user.id,
+          action: "todo_create_bulk",
+          entityType: "todo",
+          entityId: id,
+          details: { assigned_to: userId },
+        });
+      }
 
       return NextResponse.json(
         { ok: true, data: { created_count: ids.length, ids } },
@@ -176,7 +168,7 @@ export async function POST(request: NextRequest) {
     }
 
     const id = uuidv4();
-    db.prepare(
+    await db.prepare(
       `INSERT INTO todos (id, title, description, status_code, priority_code, assigned_to, created_by, department_id, due_date, created_at, updated_at)
        VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?)`
     ).run(
@@ -192,14 +184,14 @@ export async function POST(request: NextRequest) {
       now
     );
 
-    logAudit(db, {
+    await logAudit({
       actorUserId: user.id,
       action: "todo_create",
       entityType: "todo",
       entityId: id,
     });
 
-    const created = db.prepare("SELECT * FROM todos WHERE id = ?").get(id);
+    const created = await db.prepare("SELECT * FROM todos WHERE id = ?").get(id);
     return NextResponse.json({ ok: true, data: created }, { status: 201 });
   } catch (error) {
     console.error("Todo create error:", error);

@@ -2,7 +2,7 @@
 -- Before this migration, bulk-uploaded vehicles only existed in company_vehicles.
 -- This backfill ensures all plates are visible on the /araclar page.
 
-INSERT OR IGNORE INTO vehicles (
+INSERT IGNORE INTO vehicles (
   id,
   plate,
   type,
@@ -14,12 +14,7 @@ INSERT OR IGNORE INTO vehicles (
   updated_at
 )
 SELECT
-  lower(hex(randomblob(4))) || '-' ||
-  lower(hex(randomblob(2))) || '-4' ||
-  substr(lower(hex(randomblob(2))), 2) || '-' ||
-  substr('89ab', (abs(random()) % 4) + 1, 1) ||
-  substr(lower(hex(randomblob(2))), 2) || '-' ||
-  lower(hex(randomblob(6)))          AS id,
+  UUID()                             AS id,
   cv.plate,
   'minibus'                          AS type,
   14                                 AS capacity,

@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { isAtLeast } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
+import { driverRecordCreateSchema } from "@/lib/schemas";
 
 // Puan hesaplama: temel 100, her kayıt ciddiyetine göre düşer
 const SEVERITY_POINTS: Record<number, number> = { 1: 5, 2: 15, 3: 25, 4: 40 };
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
 
     if (summary === "1") {
       // Return per-driver aggregated stats
-      const rows = db.prepare(
+      const rows = await db.prepare(
         `SELECT driver_name,
                 COUNT(*) as total_incidents,
                 SUM(CASE WHEN severity = 1 THEN 1 ELSE 0 END) as s1,
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
     if (category) { sql += " AND dr.category = ?"; args.push(category); }
     sql += " ORDER BY dr.incident_date DESC, dr.created_at DESC";
 
-    const data = db.prepare(sql).all(...args);
+    const data = await db.prepare(sql).all(...args);
     return NextResponse.json({ ok: true, data });
   } catch (e) {
     console.error(e);
@@ -68,21 +69,16 @@ export async function POST(req: NextRequest) {
     if (!isAtLeast(user.role, "yetkili"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
-    const body = await req.json();
-    const { driver_name, vehicle_id, vehicle_plate, incident_date, category, severity, description, action_taken } = body;
-
-    if (!driver_name?.trim())
-      return NextResponse.json({ ok: false, error: "Sürücü adı zorunlu" }, { status: 400 });
-    if (!incident_date)
-      return NextResponse.json({ ok: false, error: "Tarih zorunlu" }, { status: 400 });
-    if (!description?.trim())
-      return NextResponse.json({ ok: false, error: "Açıklama zorunlu" }, { status: 400 });
+    const raw = await req.json();
+    const parsed = driverRecordCreateSchema.safeParse(raw);
+    if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    const { driver_name, vehicle_id, vehicle_plate, incident_date, category, severity, description, action_taken } = parsed.data;
 
     const db = getDb();
     const now = nowIso();
     const id = uuidv4();
 
-    db.prepare(
+    await db.prepare(
       `INSERT INTO driver_records (id, driver_name, vehicle_id, vehicle_plate, incident_date, category, severity, description, action_taken, reported_by, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(

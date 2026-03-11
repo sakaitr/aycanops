@@ -1,36 +1,36 @@
 -- Firmalar (Companies)
 CREATE TABLE IF NOT EXISTS companies (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL UNIQUE,
   notes TEXT,
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_by TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_by CHAR(36) NOT NULL,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL
 );
 
 -- Firma Araçları (Company Vehicles)
 CREATE TABLE IF NOT EXISTS company_vehicles (
-  id TEXT PRIMARY KEY,
-  company_id TEXT NOT NULL REFERENCES companies(id),
-  plate TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  company_id CHAR(36) NOT NULL,
+  plate VARCHAR(20) NOT NULL,
   notes TEXT,
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL,
   UNIQUE(company_id, plate)
 );
 
 -- Araç Gelişleri (Vehicle Arrivals)
 CREATE TABLE IF NOT EXISTS vehicle_arrivals (
-  id TEXT PRIMARY KEY,
-  company_id TEXT NOT NULL REFERENCES companies(id),
-  vehicle_id TEXT NOT NULL REFERENCES company_vehicles(id),
-  arrival_date TEXT NOT NULL,
-  arrived_at TEXT NOT NULL,
-  recorded_by TEXT NOT NULL REFERENCES users(id),
-  latitude REAL,
-  longitude REAL,
-  created_at TEXT NOT NULL,
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  company_id CHAR(36) NOT NULL,
+  vehicle_id CHAR(36) NOT NULL,
+  arrival_date VARCHAR(10) NOT NULL,
+  arrived_at VARCHAR(30) NOT NULL,
+  recorded_by CHAR(36) NOT NULL,
+  latitude DOUBLE,
+  longitude DOUBLE,
+  created_at VARCHAR(30) NOT NULL,
   UNIQUE(vehicle_id, arrival_date)
 );

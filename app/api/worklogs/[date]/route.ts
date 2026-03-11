@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canViewWorklog, canReviewWorklog, isAtLeast } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { worklogUpdateSchema } from "@/lib/schemas";
 
 export async function GET(
   request: NextRequest,
@@ -24,7 +25,7 @@ export async function GET(
     const requestedUserId = searchParams.get("userId");
     const userId = (requestedUserId && isAtLeast(user.role, "yonetici")) ? requestedUserId : user.id;
 
-    const worklog = db
+    const worklog = await db
       .prepare(`SELECT w.*, u.full_name AS user_name
                 FROM worklogs w JOIN users u ON u.id = w.user_id
                 WHERE w.user_id = ? AND w.work_date = ?`)
@@ -44,7 +45,7 @@ export async function GET(
       );
     }
 
-    const items = db
+    const items = await db
       .prepare("SELECT * FROM worklog_items WHERE worklog_id = ?")
       .all(worklog.id);
 
@@ -88,14 +89,19 @@ export async function PUT(
         { status: 400 }
       );
     }
-    const { summary, status_code, manager_note } = body;
+    const wParsed = worklogUpdateSchema.safeParse(body);
+    if (!wParsed.success) {
+      return NextResponse.json({ ok: false, error: wParsed.error.flatten().fieldErrors }, { status: 400 });
+    }
+    const { summary, status_code } = wParsed.data;
+    const manager_note = (body as any).manager_note;
     const db = getDb();
 
     const { searchParams: putSearchParams } = new URL(request.url);
     const targetUserId = putSearchParams.get("userId");
     const lookupUserId = (targetUserId && isAtLeast(user.role, "yonetici")) ? targetUserId : user.id;
 
-    const worklogRaw = db
+    const worklogRaw = await db
       .prepare("SELECT * FROM worklogs WHERE user_id = ? AND work_date = ?")
       .get(lookupUserId, date);
 
@@ -140,7 +146,7 @@ export async function PUT(
     if (status_code === "submitted") {
       updateSql += ", status_code = 'submitted', submitted_at = ?";
       updateParams.push(now);
-      logAudit(db, {
+      await logAudit({
         actorUserId: user.id,
         action: "worklog_submit",
         entityType: "worklog",
@@ -149,7 +155,7 @@ export async function PUT(
     } else if (status_code === "approved" && canReviewWorklog(user.role)) {
       updateSql += ", status_code = 'approved', approved_at = ?";
       updateParams.push(now);
-      logAudit(db, {
+      await logAudit({
         actorUserId: user.id,
         action: "worklog_approve",
         entityType: "worklog",
@@ -165,7 +171,7 @@ export async function PUT(
       updateSql +=
         ", status_code = 'returned', returned_at = ?, manager_note = ?";
       updateParams.push(now, manager_note);
-      logAudit(db, {
+      await logAudit({
         actorUserId: user.id,
         action: "worklog_return",
         entityType: "worklog",
@@ -177,9 +183,9 @@ export async function PUT(
     updateSql += " WHERE id = ?";
     updateParams.push(worklog.id);
 
-    db.prepare(updateSql).run(...updateParams);
+    await db.prepare(updateSql).run(...updateParams);
 
-    const updated = db
+    const updated = await db
       .prepare("SELECT * FROM worklogs WHERE id = ?")
       .get(worklog.id);
     return NextResponse.json({ ok: true, data: updated });
@@ -211,7 +217,7 @@ export async function DELETE(
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const db = getDb();
-    const worklog = db
+    const worklog = await db
       .prepare("SELECT * FROM worklogs WHERE user_id = ? AND work_date = ?")
       .get(lookupUserId, date) as { id: string; status_code: string; user_id: string } | undefined;
 
@@ -222,10 +228,10 @@ export async function DELETE(
     if (!isAtLeast(user.role, "yonetici") && worklog.status_code !== "draft")
       return NextResponse.json({ ok: false, error: "Yalnızca taslak günlükler silinebilir" }, { status: 400 });
 
-    db.prepare("DELETE FROM worklog_items WHERE worklog_id = ?").run(worklog.id);
-    db.prepare("DELETE FROM worklogs WHERE id = ?").run(worklog.id);
+    await db.prepare("DELETE FROM worklog_items WHERE worklog_id = ?").run(worklog.id);
+    await db.prepare("DELETE FROM worklogs WHERE id = ?").run(worklog.id);
 
-    logAudit(db, {
+    await logAudit({
       actorUserId: user.id,
       action: "worklog_delete",
       entityType: "worklog",

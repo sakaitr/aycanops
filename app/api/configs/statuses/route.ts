@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canManageConfigs } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { statusUpdateSchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,14 +21,14 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get("type");
 
     if (type === "ticket") {
-      const rows = db
+      const rows = await db
         .prepare(
           "SELECT * FROM config_ticket_statuses ORDER BY sort_order ASC"
         )
         .all();
       return NextResponse.json({ ok: true, data: rows });
     } else if (type === "worklog") {
-      const rows = db
+      const rows = await db
         .prepare(
           "SELECT * FROM config_worklog_statuses ORDER BY sort_order ASC"
         )
@@ -66,14 +67,11 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { type, code, label, sort_order, is_active, is_terminal } = body;
-
-    if (!type || !code) {
-      return NextResponse.json(
-        { ok: false, error: "Tip ve kod gerekli" },
-        { status: 400 }
-      );
+    const parsed = statusUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { type, code, label, sort_order, is_active, is_terminal } = parsed.data;
 
     const db = getDb();
     const now = nowIso();
@@ -106,9 +104,9 @@ export async function PUT(request: NextRequest) {
     sql += " WHERE code = ?";
     params.push(code);
 
-    db.prepare(sql).run(...params);
+    await db.prepare(sql).run(...params);
 
-    logAudit(db, {
+    await logAudit({
       actorUserId: user.id,
       action: "status_update",
       entityType: type === "ticket" ? "config_ticket_status" : "config_worklog_status",
@@ -116,7 +114,7 @@ export async function PUT(request: NextRequest) {
       details: { label, is_active },
     });
 
-    const updated = db
+    const updated = await db
       .prepare(`SELECT * FROM ${table} WHERE code = ?`)
       .get(code);
     return NextResponse.json({ ok: true, data: updated });

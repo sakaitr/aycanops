@@ -1,7 +1,20 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import path from "path";
-import fs from "fs";
+import { getDb } from "@/lib/db";
+
+// Tables to export (in dependency order so import is safe)
+const TABLES = [
+  "departments", "users", "sessions",
+  "worklog_statuses", "ticket_statuses", "priorities", "sla_rules",
+  "categories", "tags",
+  "worklogs", "worklog_items",
+  "tickets", "ticket_comments", "ticket_actions",
+  "todos", "todo_templates",
+  "companies", "vehicles", "company_vehicles",
+  "routes", "trips", "entry_controls",
+  "vehicle_arrivals", "driver_records", "driver_evaluations",
+  "inspections", "audit_logs", "rate_limits",
+];
 
 export async function GET() {
   try {
@@ -10,23 +23,47 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 403 });
     }
 
-    const dbPath = path.resolve(process.cwd(), "data", "opsdesk.sqlite");
+    const db = getDb();
+    const lines: string[] = [
+      "-- OpsDesk MySQL Backup",
+      `-- Generated: ${new Date().toISOString()}`,
+      "",
+      "SET FOREIGN_KEY_CHECKS=0;",
+      "",
+    ];
 
-    if (!fs.existsSync(dbPath)) {
-      return NextResponse.json({ ok: false, error: "Veritabanı dosyası bulunamadı" }, { status: 404 });
+    for (const table of TABLES) {
+      try {
+        const rows = await db.prepare(`SELECT * FROM \`${table}\``).all<Record<string, unknown>>();
+        if (rows.length === 0) continue;
+
+        lines.push(`-- Table: ${table}`);
+        for (const row of rows) {
+          const cols = Object.keys(row).map(c => `\`${c}\``).join(", ");
+          const vals = Object.values(row).map(v => {
+            if (v === null || v === undefined) return "NULL";
+            if (typeof v === "number" || typeof v === "boolean") return String(v);
+            return `'${String(v).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+          }).join(", ");
+          lines.push(`INSERT IGNORE INTO \`${table}\` (${cols}) VALUES (${vals});`);
+        }
+        lines.push("");
+      } catch {
+        // Table might not exist in this schema version
+      }
     }
 
-    const fileBuffer = fs.readFileSync(dbPath);
-    const now = new Date();
-    const dateStr = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const filename = `opsdesk_backup_${dateStr}.sqlite`;
+    lines.push("SET FOREIGN_KEY_CHECKS=1;");
 
-    return new NextResponse(fileBuffer, {
+    const sql = lines.join("\n");
+    const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const filename = `opsdesk_backup_${dateStr}.sql`;
+
+    return new NextResponse(sql, {
       status: 200,
       headers: {
-        "Content-Type": "application/octet-stream",
+        "Content-Type": "application/sql",
         "Content-Disposition": `attachment; filename="${filename}"`,
-        "Content-Length": String(fileBuffer.length),
       },
     });
   } catch (err) {

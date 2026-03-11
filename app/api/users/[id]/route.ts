@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { hashPassword } from "@/lib/auth";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { userUpdateSchema } from "@/lib/schemas";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
     const db = getDb();
-    const data = db.prepare(`
+    const data = await db.prepare(`
       SELECT u.id, u.username, u.full_name, u.role, u.is_active,
              u.department_id, d.name as department_name,
              u.allowed_pages, u.allowed_companies,
@@ -36,15 +37,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (user.role !== "admin") return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { id } = await params;
-    const body = await req.json();
+    const raw = await req.json();
+    const parsed = userUpdateSchema.safeParse(raw);
+    if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    const body = parsed.data;
     const { full_name, role, department_id, is_active, password } = body;
-
-    const db = getDb();
-    const existing = db.prepare("SELECT id FROM users WHERE id = ?").get(id);
-    if (!existing) return NextResponse.json({ ok: false, error: "Kullanıcı bulunamadı" }, { status: 404 });
-
-    if (role && !["personel", "yetkili", "yonetici", "admin"].includes(role))
-      return NextResponse.json({ ok: false, error: "Geçersiz rol" }, { status: 400 });
 
     const now = nowIso();
 
@@ -71,17 +68,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     values.push(id);
-    db.prepare(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    const db = getDb();
+    await db.prepare(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`).run(...values);
 
     // Audit log
     if (password) {
-      logAudit(db, { actorUserId: user.id, action: "password_change", entityType: "user", entityId: id });
+      await logAudit({ actorUserId: user.id, action: "password_change", entityType: "user", entityId: id });
     }
     if (role) {
-      logAudit(db, { actorUserId: user.id, action: "role_change", entityType: "user", entityId: id, details: { role } });
+      await logAudit({ actorUserId: user.id, action: "role_change", entityType: "user", entityId: id, details: { role } });
     }
     if (is_active !== undefined) {
-      logAudit(db, { actorUserId: user.id, action: is_active ? "user_activate" : "user_deactivate", entityType: "user", entityId: id });
+      await logAudit({ actorUserId: user.id, action: is_active ? "user_activate" : "user_deactivate", entityType: "user", entityId: id });
     }
 
     return NextResponse.json({ ok: true });
@@ -100,13 +98,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (id === user.id) return NextResponse.json({ ok: false, error: "Kendi hesabınızı silemezsiniz" }, { status: 400 });
 
     const db = getDb();
-    const existing = db.prepare("SELECT id FROM users WHERE id = ?").get(id);
+    const existing = await db.prepare("SELECT id FROM users WHERE id = ?").get(id);
     if (!existing) return NextResponse.json({ ok: false, error: "Kullanıcı bulunamadı" }, { status: 404 });
 
     // Soft delete
-    db.prepare("UPDATE users SET is_active = 0, updated_at = ? WHERE id = ?").run(nowIso(), id);
+    await db.prepare("UPDATE users SET is_active = 0, updated_at = ? WHERE id = ?").run(nowIso(), id);
     // Invalidate sessions
-    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
+    await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
 
     return NextResponse.json({ ok: true });
   } catch {

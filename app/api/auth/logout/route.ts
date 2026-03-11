@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import {
   getSessionFromCookies,
@@ -20,9 +20,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = getUserBySession(db, sessionId);
+    const user = await getUserBySession(sessionId);
     if (user) {
-      logAudit(db, {
+      await logAudit({
         actorUserId: user.id,
         action: "logout",
         entityType: "session",
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    deleteSession(db, sessionId);
+    await deleteSession(sessionId);
     await clearSessionCookie();
     await clearRoleCookie();
 

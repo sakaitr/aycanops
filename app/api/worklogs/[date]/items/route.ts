@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { nowIso } from "@/lib/time";
+import { worklogItemCreateSchema } from "@/lib/schemas";
 
 export async function POST(
   request: NextRequest,
@@ -34,6 +35,10 @@ export async function POST(
         { status: 400 }
       );
     }
+    const parsed = worklogItemCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    }
     const {
       title,
       category_id,
@@ -42,17 +47,10 @@ export async function POST(
       linked_todo_id,
       linked_ticket_id,
       note,
-    } = body;
-
-    if (!title) {
-      return NextResponse.json(
-        { ok: false, error: "Başlık gerekli" },
-        { status: 400 }
-      );
-    }
+    } = parsed.data;
 
     const db = getDb();
-    const worklogRaw = db
+    const worklogRaw = await db
       .prepare("SELECT * FROM worklogs WHERE user_id = ? AND work_date = ?")
       .get(user.id, date);
 
@@ -79,7 +77,7 @@ export async function POST(
     const now = nowIso();
     const tagIdsStr = Array.isArray(tag_ids) ? tag_ids.join(",") : tag_ids;
 
-    db.prepare(
+    await db.prepare(
       `INSERT INTO worklog_items (id, worklog_id, title, category_id, duration_minutes, tag_ids, linked_todo_id, linked_ticket_id, note, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
@@ -96,7 +94,7 @@ export async function POST(
       now
     );
 
-    const created = db
+    const created = await db
       .prepare("SELECT * FROM worklog_items WHERE id = ?")
       .get(id);
     return NextResponse.json({ ok: true, data: created }, { status: 201 });

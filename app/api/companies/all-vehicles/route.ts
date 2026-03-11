@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 
@@ -32,7 +32,7 @@ export async function GET() {
     }
 
     sql += " ORDER BY c.name ASC, cv.plate ASC";
-    const data = db.prepare(sql).all(...params);
+    const data = await db.prepare(sql).all(...params);
     return NextResponse.json({ ok: true, data });
   } catch (e) {
     console.error(e);

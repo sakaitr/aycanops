@@ -1,12 +1,12 @@
 # OpsDesk - Operasyon Yönetim Sistemi
 
-Production-ready Next.js operasyon yönetim uygulaması. Türkçe arayüz, SQLite veritabanı, rol tabanlı yetkilendirme, worklog/todo/ticket modülleri ve raporlama özellikleri.
+Production-ready Next.js operasyon yönetim uygulaması. Türkçe arayüz, MySQL veritabanı, rol tabanlı yetkilendirme, worklog/todo/ticket modülleri ve raporlama özellikleri.
 
 ## Teknolojiler
 
 - **Frontend**: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS
 - **Backend**: Next.js Route Handlers (API Routes)
-- **Veritabanı**: SQLite (better-sqlite3)
+- **Veritabanı**: MySQL (mysql2)
 - **Validasyon**: Zod
 - **Kimlik Doğrulama**: Oturum tabanlı (bcryptjs, httpOnly cookie)
 - **Diğer**: uuid, date-fns, clsx
@@ -21,23 +21,26 @@ npm install
 
 ### 2. Ortam Değişkenlerini Ayarla
 
-`.env.local` dosyası oluştur:
+`.env.local` dosyası oluştur (bkz. `.env.example`):
 
 ```env
-DATABASE_PATH=./data/opsdesk.sqlite
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=opsdesk
+DB_PASS=guclu-bir-sifre
+DB_NAME=opsdesk
 SESSION_TTL_HOURS=168
 COOKIE_NAME=opsdesk_session
-COOKIE_SECURE=false
+COOKIE_SECURE=true
 SEED_TOKEN=change-me-super-secret
-APP_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=https://ops.aycanturizm.com.tr
 ```
 
-- `DATABASE_PATH`: SQLite veritabanı yolu (varsayılan `./data/opsdesk.sqlite`)
+- `DB_HOST/PORT/USER/PASS/NAME`: MySQL bağlantı bilgileri
 - `SESSION_TTL_HOURS`: Oturum süresi (saat cinsinden, varsayılan 168=7 gün)
-- `COOKIE_NAME`: Oturum çerezi adı
-- `COOKIE_SECURE`: HTTPS kullanılıyorsa `true`, yoksa `false`
+- `COOKIE_SECURE`: HTTPS kullanılıyorsa `true`, localhost için `false`
 - `SEED_TOKEN`: Seed endpoint için güvenlik tokeni (prodda değiştir!)
-- `APP_URL`: Uygulama URL'i
+- `NEXT_PUBLIC_APP_URL`: Uygulama URL'i
 
 ### 3. Veritabanını Seed Et
 

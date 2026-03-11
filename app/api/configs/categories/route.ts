@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canManageConfigs } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { categorySchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     sql += " ORDER BY name ASC";
 
-    const rows = db.prepare(sql).all(...params);
+    const rows = await db.prepare(sql).all(...params);
     return NextResponse.json({ ok: true, data: rows });
   } catch (error) {
     console.error("Categories list error:", error);
@@ -73,24 +74,21 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const { type, name, color } = body;
-
-    if (!type || !name) {
-      return NextResponse.json(
-        { ok: false, error: "Tip ve isim gerekli" },
-        { status: 400 }
-      );
+    const parsed = categorySchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { type, name, color } = parsed.data;
 
     const db = getDb();
     const id = uuidv4();
     const now = nowIso();
 
-    db.prepare(
+    await db.prepare(
       "INSERT INTO config_categories (id, type, name, color, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)"
     ).run(id, type, name, color || null, now, now);
 
-    logAudit(db, {
+    await logAudit({
       actorUserId: user.id,
       action: "category_create",
       entityType: "config_category",
@@ -98,7 +96,7 @@ export async function POST(request: NextRequest) {
       details: { type, name },
     });
 
-    const created = db
+    const created = await db
       .prepare("SELECT * FROM config_categories WHERE id = ?")
       .get(id);
     return NextResponse.json({ ok: true, data: created }, { status: 201 });
@@ -171,16 +169,16 @@ export async function PUT(request: NextRequest) {
     sql += " WHERE id = ?";
     params.push(id);
 
-    db.prepare(sql).run(...params);
+    await db.prepare(sql).run(...params);
 
-    logAudit(db, {
+    await logAudit({
       actorUserId: user.id,
       action: "category_update",
       entityType: "config_category",
       entityId: id,
     });
 
-    const updated = db
+    const updated = await db
       .prepare("SELECT * FROM config_categories WHERE id = ?")
       .get(id);
     return NextResponse.json({ ok: true, data: updated });

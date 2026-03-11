@@ -1,17 +1,18 @@
-import type Database from "better-sqlite3";
+import { getDb } from "./db";
+import type { PoolConnection } from "mysql2/promise";
 
-export function nextTicketNo(db: Database.Database) {
-  const tx = db.transaction(() => {
-    const row = db
-      .prepare("SELECT value FROM counters WHERE name = 'ticket_no'")
-      .get() as { value: number } | undefined;
-    const current = row?.value ?? 0;
+export async function nextTicketNo(): Promise<string> {
+  const db = getDb();
+  return db.transaction(async (conn: PoolConnection) => {
+    const [rows] = await conn.execute<import("mysql2/promise").RowDataPacket[]>(
+      "SELECT value FROM counters WHERE name = 'ticket_no' FOR UPDATE"
+    );
+    const current: number = rows[0]?.value ?? 0;
     const next = current + 1;
-    db.prepare("UPDATE counters SET value = ? WHERE name = 'ticket_no'").run(
-      next
+    await conn.execute(
+      "UPDATE counters SET value = ? WHERE name = 'ticket_no'",
+      [next]
     );
     return `OPS-${String(next).padStart(6, "0")}`;
   });
-
-  return tx();
 }

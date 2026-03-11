@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canViewWorklog } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
+import { worklogCreateSchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
   try {
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     sql += " ORDER BY worklogs.work_date DESC, worklogs.created_at DESC";
 
-    const rows = db.prepare(sql).all(...params);
+    const rows = await db.prepare(sql).all(...params);
     return NextResponse.json({ ok: true, data: rows });
   } catch (error) {
     console.error("Worklogs list error:", error);
@@ -87,16 +88,13 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const { work_date, summary } = body;
-
-    if (!work_date) {
-      return NextResponse.json(
-        { ok: false, error: "Tarih gerekli" },
-        { status: 400 }
-      );
+    const parsed = worklogCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { work_date, summary } = parsed.data;
 
-    const existing = db
+    const existing = await db
       .prepare(
         "SELECT id FROM worklogs WHERE user_id = ? AND work_date = ?"
       )
@@ -111,12 +109,12 @@ export async function POST(request: NextRequest) {
 
     const id = uuidv4();
     const now = nowIso();
-    db.prepare(
+    await db.prepare(
       `INSERT INTO worklogs (id, user_id, work_date, summary, status_code, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'draft', ?, ?)`
     ).run(id, user.id, work_date, summary || "", now, now);
 
-    const created = db.prepare("SELECT * FROM worklogs WHERE id = ?").get(id);
+    const created = await db.prepare("SELECT * FROM worklogs WHERE id = ?").get(id);
     return NextResponse.json({ ok: true, data: created }, { status: 201 });
   } catch (error) {
     console.error("Worklog create error:", error);

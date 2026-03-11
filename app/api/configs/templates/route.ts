@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canManageConfigs, isAtLeast } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { templateCreateSchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
     sql += " ORDER BY created_at DESC";
 
-    const rows = db.prepare(sql).all();
+    const rows = await db.prepare(sql).all();
     return NextResponse.json({ ok: true, data: rows });
   } catch (error) {
     console.error("Templates list error:", error);
@@ -64,20 +65,17 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const { title, description, role_target, department_id, apply_now } = body;
-
-    if (!title) {
-      return NextResponse.json(
-        { ok: false, error: "Başlık gerekli" },
-        { status: 400 }
-      );
+    const parsed = templateCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { title, description, role_target, department_id, apply_now } = parsed.data;
 
     const db = getDb();
     const id = uuidv4();
     const now = nowIso();
 
-    db.prepare(
+    await db.prepare(
       `INSERT INTO todo_templates (id, title, description, role_target, department_id, is_active, created_by, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`
     ).run(
@@ -91,7 +89,7 @@ export async function POST(request: NextRequest) {
       now
     );
 
-    logAudit(db, {
+    await logAudit({
       actorUserId: user.id,
       action: "template_create",
       entityType: "todo_template",
@@ -102,14 +100,14 @@ export async function POST(request: NextRequest) {
     if (apply_now) {
       let targetUsers: string[] = [];
       if (department_id) {
-        const users = db
+        const users = await db
           .prepare(
             "SELECT id FROM users WHERE department_id = ? AND is_active = 1"
           )
           .all(department_id) as { id: string }[];
         targetUsers = users.map((u) => u.id);
       } else if (role_target) {
-        const users = db
+        const users = await db
           .prepare("SELECT id FROM users WHERE role = ? AND is_active = 1")
           .all(role_target) as { id: string }[];
         targetUsers = users.map((u) => u.id);
@@ -117,7 +115,7 @@ export async function POST(request: NextRequest) {
 
       for (const userId of targetUsers) {
         const todoId = uuidv4();
-        db.prepare(
+        await db.prepare(
           `INSERT INTO todos (id, title, description, status_code, assigned_to, created_by, department_id, created_at, updated_at)
            VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?)`
         ).run(
@@ -132,7 +130,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      logAudit(db, {
+      await logAudit({
         actorUserId: user.id,
         action: "template_apply",
         entityType: "todo_template",
@@ -141,7 +139,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const created = db
+    const created = await db
       .prepare("SELECT * FROM todo_templates WHERE id = ?")
       .get(id);
     return NextResponse.json({ ok: true, data: created }, { status: 201 });
@@ -224,16 +222,16 @@ export async function PUT(request: NextRequest) {
     sql += " WHERE id = ?";
     params.push(id);
 
-    db.prepare(sql).run(...params);
+    await db.prepare(sql).run(...params);
 
-    logAudit(db, {
+    await logAudit({
       actorUserId: user.id,
       action: "template_update",
       entityType: "todo_template",
       entityId: id,
     });
 
-    const updated = db
+    const updated = await db
       .prepare("SELECT * FROM todo_templates WHERE id = ?")
       .get(id);
     return NextResponse.json({ ok: true, data: updated });

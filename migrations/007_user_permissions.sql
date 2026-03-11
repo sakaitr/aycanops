@@ -4,3 +4,4 @@
 
 ALTER TABLE users ADD COLUMN allowed_pages TEXT DEFAULT NULL;
 ALTER TABLE users ADD COLUMN allowed_companies TEXT DEFAULT NULL;
+

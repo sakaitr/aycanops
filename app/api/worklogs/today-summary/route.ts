@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { isAtLeast } from "@/lib/permissions";
@@ -14,14 +14,14 @@ export async function GET(_request: NextRequest) {
     const today = new Date().toISOString().split("T")[0];
 
     // All active non-admin users
-    const allUsers = db.prepare(`
+    const allUsers = await db.prepare(`
       SELECT id, full_name, role FROM users
       WHERE is_active = 1 AND role != 'admin'
       ORDER BY full_name ASC
     `).all() as { id: string; full_name: string; role: string }[];
 
     // Today's worklogs
-    const todayWorklogs = db.prepare(`
+    const todayWorklogs = await db.prepare(`
       SELECT w.*, u.full_name AS user_name
       FROM worklogs w
       JOIN users u ON u.id = w.user_id

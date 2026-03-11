@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canViewTicket, isAtLeast } from "@/lib/permissions";
 import { nowIso, addMinutes } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { ticketUpdateSchema } from "@/lib/schemas";
 
 export async function GET(
   request: NextRequest,
@@ -26,7 +27,7 @@ export async function GET(
       );
     }
     const db = getDb();
-    const ticketRaw = db
+    const ticketRaw = await db
       .prepare(
         `SELECT t.*, u.full_name as creator_name, a.full_name as assigned_name
          FROM tickets t
@@ -52,7 +53,7 @@ export async function GET(
       );
     }
 
-    const comments = db
+    const comments = await db
       .prepare(
         `SELECT ticket_comments.*, users.full_name as user_name
          FROM ticket_comments
@@ -62,7 +63,7 @@ export async function GET(
       )
       .all(ticket.id);
 
-    const actions = db
+    const actions = await db
       .prepare("SELECT * FROM ticket_actions WHERE ticket_id = ? ORDER BY created_at ASC")
       .all(ticket.id);
 
@@ -103,10 +104,14 @@ export async function PUT(
         { status: 400 }
       );
     }
-    const { status_code, priority_code, category_id, assigned_to, tag_ids } = body;
+    const parsed = ticketUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    }
+    const { status_code, priority_code, category_id, assigned_to, tag_ids } = parsed.data;
     const db = getDb();
 
-    const ticketRaw = db
+    const ticketRaw = await db
       .prepare("SELECT * FROM tickets WHERE ticket_no = ?")
       .get(ticketNo);
 
@@ -158,7 +163,7 @@ export async function PUT(
         updateParams.push(now);
       }
 
-      logAudit(db, {
+      await logAudit({
         actorUserId: user.id,
         action: "ticket_status_change",
         entityType: "ticket",
@@ -172,7 +177,7 @@ export async function PUT(
       updateParams.push(priority_code || null);
 
       if (priority_code) {
-        const slaRule = db
+        const slaRule = await db
           .prepare(
             "SELECT due_minutes FROM config_sla_rules WHERE priority_code = ? AND is_active = 1"
           )
@@ -184,7 +189,7 @@ export async function PUT(
         }
       }
 
-      logAudit(db, {
+      await logAudit({
         actorUserId: user.id,
         action: "ticket_priority_change",
         entityType: "ticket",
@@ -199,7 +204,7 @@ export async function PUT(
     if (category_id !== undefined) {
       updateSql += ", category_id = ?";
       updateParams.push(category_id || null);
-      logAudit(db, {
+      await logAudit({
         actorUserId: user.id,
         action: "ticket_category_change",
         entityType: "ticket",
@@ -217,7 +222,7 @@ export async function PUT(
       }
       updateSql += ", assigned_to = ?";
       updateParams.push(assigned_to || null);
-      logAudit(db, {
+      await logAudit({
         actorUserId: user.id,
         action: "ticket_assign",
         entityType: "ticket",
@@ -235,9 +240,9 @@ export async function PUT(
     updateSql += " WHERE id = ?";
     updateParams.push(ticket.id);
 
-    db.prepare(updateSql).run(...updateParams);
+    await db.prepare(updateSql).run(...updateParams);
 
-    const updated = db
+    const updated = await db
       .prepare("SELECT * FROM tickets WHERE id = ?")
       .get(ticket.id);
     return NextResponse.json({ ok: true, data: updated });
@@ -264,14 +269,14 @@ export async function DELETE(
     }
     const { ticketNo } = await params;
     const db = getDb();
-    const ticketRaw = db.prepare("SELECT * FROM tickets WHERE ticket_no = ?").get(ticketNo) as { id: string } | undefined;
+    const ticketRaw = await db.prepare("SELECT * FROM tickets WHERE ticket_no = ?").get(ticketNo) as { id: string } | undefined;
     if (!ticketRaw) {
       return NextResponse.json({ ok: false, error: "Sorun bulunamadı" }, { status: 404 });
     }
-    db.prepare("DELETE FROM ticket_comments WHERE ticket_id = ?").run(ticketRaw.id);
-    db.prepare("DELETE FROM ticket_actions WHERE ticket_id = ?").run(ticketRaw.id);
-    db.prepare("DELETE FROM tickets WHERE id = ?").run(ticketRaw.id);
-    logAudit(db, {
+    await db.prepare("DELETE FROM ticket_comments WHERE ticket_id = ?").run(ticketRaw.id);
+    await db.prepare("DELETE FROM ticket_actions WHERE ticket_id = ?").run(ticketRaw.id);
+    await db.prepare("DELETE FROM tickets WHERE id = ?").run(ticketRaw.id);
+    await logAudit({
       actorUserId: user.id,
       action: "ticket_delete",
       entityType: "ticket",

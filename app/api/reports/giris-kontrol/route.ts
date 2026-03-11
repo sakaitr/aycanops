@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { isAtLeast } from "@/lib/permissions";
@@ -24,13 +24,13 @@ export async function GET(request: NextRequest) {
     if (date_to)    { where += " AND va.arrival_date <= ?"; params.push(date_to); }
 
     const db = getDb();
-    const rows = db.prepare(`
+    const rows = await db.prepare(`
       SELECT
         c.name                              AS firma,
         cv.plate                            AS plaka,
         COALESCE(cv.notes, '')              AS notlar,
         va.arrival_date                     AS tarih,
-        strftime('%H:%M', va.arrived_at)    AS giris_saati,
+        DATE_FORMAT(va.arrived_at, '%H:%i')    AS giris_saati,
         u.full_name                         AS kaydeden,
         ROUND(COALESCE(va.latitude,  0), 6) AS enlem,
         ROUND(COALESCE(va.longitude, 0), 6) AS boylam

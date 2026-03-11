@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canViewTodo, isAtLeast } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { todoUpdateSchema } from "@/lib/schemas";
 
 export async function GET(
   request: NextRequest,
@@ -21,7 +22,7 @@ export async function GET(
 
     const { id } = await params;
     const db = getDb();
-    const todo = db.prepare("SELECT * FROM todos WHERE id = ?").get(id) as
+    const todo = await db.prepare("SELECT * FROM todos WHERE id = ?").get(id) as
       | { assigned_to: string | null; created_by: string }
       | undefined;
 
@@ -39,7 +40,7 @@ export async function GET(
       );
     }
 
-    const comments = db
+    const comments = await db
       .prepare(
         `SELECT todo_comments.*, users.full_name as user_name
          FROM todo_comments
@@ -89,10 +90,14 @@ export async function PUT(
         { status: 400 }
       );
     }
-    const { status_code, assigned_to, priority_code, due_date, description } = body;
+    const parsed = todoUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    }
+    const { status_code, assigned_to, priority_code, due_date, description } = parsed.data;
     const db = getDb();
 
-    const todoRaw = db.prepare("SELECT * FROM todos WHERE id = ?").get(id);
+    const todoRaw = await db.prepare("SELECT * FROM todos WHERE id = ?").get(id);
 
     if (!todoRaw) {
       return NextResponse.json(
@@ -121,7 +126,7 @@ export async function PUT(
         updateSql += ", completed_at = ?";
         updateParams.push(now);
       }
-      logAudit(db, {
+      await logAudit({
         actorUserId: user.id,
         action: "todo_status_change",
         entityType: "todo",
@@ -133,7 +138,7 @@ export async function PUT(
     if (assigned_to !== undefined) {
       updateSql += ", assigned_to = ?";
       updateParams.push(assigned_to || null);
-      logAudit(db, {
+      await logAudit({
         actorUserId: user.id,
         action: "todo_assign",
         entityType: "todo",
@@ -160,9 +165,9 @@ export async function PUT(
     updateSql += " WHERE id = ?";
     updateParams.push(id);
 
-    db.prepare(updateSql).run(...updateParams);
+    await db.prepare(updateSql).run(...updateParams);
 
-    const updated = db.prepare("SELECT * FROM todos WHERE id = ?").get(id);
+    const updated = await db.prepare("SELECT * FROM todos WHERE id = ?").get(id);
     return NextResponse.json({ ok: true, data: updated });
   } catch (error) {
     console.error("Todo update error:", error);
@@ -187,13 +192,13 @@ export async function DELETE(
     }
     const { id } = await params;
     const db = getDb();
-    const todo = db.prepare("SELECT * FROM todos WHERE id = ?").get(id);
+    const todo = await db.prepare("SELECT * FROM todos WHERE id = ?").get(id);
     if (!todo) {
       return NextResponse.json({ ok: false, error: "Görev bulunamadı" }, { status: 404 });
     }
-    db.prepare("DELETE FROM todo_comments WHERE todo_id = ?").run(id);
-    db.prepare("DELETE FROM todos WHERE id = ?").run(id);
-    logAudit(db, {
+    await db.prepare("DELETE FROM todo_comments WHERE todo_id = ?").run(id);
+    await db.prepare("DELETE FROM todos WHERE id = ?").run(id);
+    await logAudit({
       actorUserId: user.id,
       action: "todo_delete",
       entityType: "todo",

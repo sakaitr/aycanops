@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
+import { entryControlCreateSchema } from "@/lib/schemas";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date") || new Date().toISOString().split("T")[0];
     const db = getDb();
-    const data = db.prepare(
+    const data = await db.prepare(
       `SELECT ec.*, r.name as route_name, r.code as route_code,
               u.full_name as creator_name
        FROM entry_controls ec
@@ -31,9 +32,9 @@ export async function POST(req: NextRequest) {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
     const body = await req.json();
-    const { control_date, route_id, trip_id, planned_time, actual_time, passenger_expected, passenger_actual, status_code, notes } = body;
-    if (!control_date || !route_id || !planned_time)
-      return NextResponse.json({ ok: false, error: "Tarih, güzergah ve planlanan saat zorunlu" }, { status: 400 });
+    const parsed = entryControlCreateSchema.safeParse(body);
+    if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    const { control_date, route_id, trip_id, planned_time, actual_time, passenger_expected, passenger_actual, status_code, notes } = parsed.data;
     const db = getDb();
     const now = nowIso();
     const id = uuidv4();
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
       ? (delay_minutes > 0 ? "delayed" : "on_time")
       : "pending");
 
-    db.prepare(
+    await db.prepare(
       `INSERT INTO entry_controls (id, control_date, route_id, trip_id, planned_time, actual_time, delay_minutes, passenger_expected, passenger_actual, status_code, notes, created_by, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(id, control_date, route_id, trip_id || null, planned_time, actual_time || null, delay_minutes,

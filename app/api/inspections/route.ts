@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
+import { inspectionCreateSchema } from "@/lib/schemas";
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     if (vehicle_id) { sql += " AND i.vehicle_id = ?"; args.push(vehicle_id); }
     if (company_id) { sql += " AND cv.company_id = ?"; args.push(company_id); }
     sql += " ORDER BY i.inspection_date DESC, i.created_at DESC";
-    const data = db.prepare(sql).all(...args);
+    const data = await db.prepare(sql).all(...args);
     return NextResponse.json({ ok: true, data });
   } catch (e) {
     console.error(e);
@@ -40,10 +41,9 @@ export async function POST(req: NextRequest) {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
     const body = await req.json();
-    const { vehicle_id, company_vehicle_id, inspection_date, type, result, checklist, notes } = body;
-
-    if (!inspection_date)
-      return NextResponse.json({ ok: false, error: "Tarih zorunlu" }, { status: 400 });
+    const parsed = inspectionCreateSchema.safeParse(body);
+    if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    const { vehicle_id, company_vehicle_id, inspection_date, type, result, checklist, notes } = parsed.data;
     if (!vehicle_id && !company_vehicle_id)
       return NextResponse.json({ ok: false, error: "Araç seçimi zorunlu" }, { status: 400 });
 
@@ -74,17 +74,17 @@ export async function POST(req: NextRequest) {
     let compVehiclePlate: string | null = null;
 
     if (company_vehicle_id && !vehicle_id) {
-      const cv = db.prepare("SELECT * FROM company_vehicles WHERE id = ?").get(company_vehicle_id) as { plate: string } | undefined;
+      const cv = await db.prepare("SELECT * FROM company_vehicles WHERE id = ?").get(company_vehicle_id) as { plate: string } | undefined;
       if (!cv) return NextResponse.json({ ok: false, error: "Firma aracı bulunamadı" }, { status: 404 });
       compVehiclePlate = cv.plate;
 
       // Find or create in vehicles table so FK is satisfied
-      const existing = db.prepare("SELECT id FROM vehicles WHERE plate = ?").get(cv.plate) as { id: string } | undefined;
+      const existing = await db.prepare("SELECT id FROM vehicles WHERE plate = ?").get(cv.plate) as { id: string } | undefined;
       if (existing) {
         resolvedVehicleId = existing.id;
       } else {
         const newVid = uuidv4();
-        db.prepare(
+        await db.prepare(
           `INSERT INTO vehicles (id, plate, type, capacity, status_code, created_by, created_at, updated_at)
            VALUES (?, ?, 'minibus', 0, 'active', ?, ?, ?)`
         ).run(newVid, cv.plate, user.id, now, now);
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    db.prepare(
+    await db.prepare(
       `INSERT INTO inspections (id, vehicle_id, company_vehicle_id, company_vehicle_plate, inspection_date, inspector_id, type, result, checklist_json, notes, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(id, resolvedVehicleId, resolvedCompVehicleId, compVehiclePlate,

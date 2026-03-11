@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { isAtLeast } from "@/lib/permissions";
 import { generateCSV } from "@/lib/csv";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     let filename = "export.csv";
 
     if (type === "worklog") {
-      rows = db
+      rows = await db
         .prepare(
           `SELECT 
              worklogs.work_date,
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         .all();
       filename = "worklog_export.csv";
     } else if (type === "todo") {
-      rows = db
+      rows = await db
         .prepare(
           `SELECT 
              todos.title,
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
         .all();
       filename = "todo_export.csv";
     } else if (type === "ticket") {
-      rows = db
+      rows = await db
         .prepare(
           `SELECT 
              tickets.ticket_no,
@@ -95,14 +95,14 @@ export async function GET(request: NextRequest) {
       if (date_from)  { where += " AND va.arrival_date >= ?"; params.push(date_from); }
       if (date_to)    { where += " AND va.arrival_date <= ?"; params.push(date_to); }
 
-      const gcRows = db.prepare(`
+      const gcRows = await db.prepare(`
         SELECT
           c.name                              AS "Firma",
           cv.plate                            AS "Plaka",
           COALESCE(cv.driver_name, '')        AS "Şöför",
           COALESCE(cv.notes, '')              AS "Notlar",
           va.arrival_date                     AS "Tarih",
-          strftime('%H:%M', va.arrived_at)    AS "Giriş Saati",
+          DATE_FORMAT(va.arrived_at, '%H:%i')    AS "Giriş Saati",
           u.full_name                         AS "Kaydeden",
           ROUND(COALESCE(va.latitude, 0), 6)  AS "Enlem",
           ROUND(COALESCE(va.longitude, 0), 6) AS "Boylam"
@@ -114,19 +114,22 @@ export async function GET(request: NextRequest) {
         ORDER BY va.arrived_at DESC
       `).all(...params) as Record<string, unknown>[];
 
-      const ws = XLSX.utils.json_to_sheet(gcRows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Giriş Kontrol");
-      const buf: Buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Giriş Kontrol");
+      if (gcRows.length > 0) {
+        ws.columns = Object.keys(gcRows[0]).map(key => ({ header: key, key })) as ExcelJS.Column[];
+        gcRows.forEach(row => ws.addRow(row));
+      }
+      const buf = await wb.xlsx.writeBuffer();
 
       const companyRow = company_id
-        ? (db.prepare("SELECT name FROM companies WHERE id = ?").get(company_id) as any)
+        ? (await db.prepare("SELECT name FROM companies WHERE id = ?").get(company_id) as any)
         : null;
       const safeName = (companyRow?.name || "tum_firmalar").replace(/[^a-zA-Z0-9_\-]/g, "_");
       const fileDate  = date_from || new Date().toISOString().split("T")[0];
       const xlsxFilename = `giris_kontrol_${safeName}_${fileDate}.xlsx`;
 
-      return new NextResponse(new Uint8Array(buf), {
+        return new NextResponse(buf as unknown as BodyInit, {
         status: 200,
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

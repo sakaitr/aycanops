@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { nowIso } from "@/lib/time";
+import { driverEvaluationCreateSchema } from "@/lib/schemas";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -10,6 +11,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
     const body = await req.json();
+    const parsed = driverEvaluationCreateSchema.safeParse(body);
+    if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     const {
       evaluation_date,
       driver_name,
@@ -24,25 +27,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       score_route_compliance,
       score_appearance,
       notes,
-    } = body;
-
-    if (!evaluation_date?.trim()) return NextResponse.json({ ok: false, error: "Tarih zorunlu" }, { status: 400 });
-    if (!driver_name?.trim()) return NextResponse.json({ ok: false, error: "Şöför adı zorunlu" }, { status: 400 });
-    if (!plate?.trim()) return NextResponse.json({ ok: false, error: "Plaka zorunlu" }, { status: 400 });
-
-    const scores = [score_punctuality, score_driving, score_communication, score_cleanliness, score_route_compliance, score_appearance];
-    for (const s of scores) {
-      if (typeof s !== "number" || s < 1 || s > 5) {
-        return NextResponse.json({ ok: false, error: "Puanlar 1-5 arasında olmalı" }, { status: 400 });
-      }
-    }
+    } = parsed.data;
 
     const db = getDb();
-    const existing = db.prepare("SELECT id, created_by FROM driver_evaluations WHERE id = ?").get(id) as any;
+    const existing = await db.prepare("SELECT id, created_by FROM driver_evaluations WHERE id = ?").get(id) as any;
     if (!existing) return NextResponse.json({ ok: false, error: "Kayıt bulunamadı" }, { status: 404 });
 
     const now = nowIso();
-    db.prepare(`
+    await db.prepare(`
       UPDATE driver_evaluations SET
         evaluation_date = ?, driver_name = ?, plate = ?, vehicle_info = ?,
         route_text = ?, company_id = ?,
@@ -71,10 +63,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const { id } = await params;
     const db = getDb();
-    const existing = db.prepare("SELECT id FROM driver_evaluations WHERE id = ?").get(id);
+    const existing = await db.prepare("SELECT id FROM driver_evaluations WHERE id = ?").get(id);
     if (!existing) return NextResponse.json({ ok: false, error: "Kayıt bulunamadı" }, { status: 404 });
 
-    db.prepare("DELETE FROM driver_evaluations WHERE id = ?").run(id);
+    await db.prepare("DELETE FROM driver_evaluations WHERE id = ?").run(id);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ ok: false, error: "Sunucu hatası" }, { status: 500 });

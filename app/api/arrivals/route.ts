@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
+import { arrivalCreateSchema } from "@/lib/schemas";
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
 
     const db = getDb();
     // All vehicles for this company + their arrival status for the given date
-    const data = db.prepare(`
+    const data = await db.prepare(`
       SELECT
         cv.id,
         cv.plate,
@@ -51,14 +52,17 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    const { vehicle_id, company_id, date, latitude, longitude } = await req.json();
+    const raw = await req.json();
+    const parsed = arrivalCreateSchema.safeParse(raw);
+    if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    const { vehicle_id, company_id, date, latitude, longitude } = parsed.data;
     if (!vehicle_id || !company_id || !date)
       return NextResponse.json({ ok: false, error: "vehicle_id, company_id ve date zorunlu" }, { status: 400 });
 
     const db = getDb();
 
     // S-4: verify vehicle belongs to company
-    const vehicleCheck = db.prepare(
+    const vehicleCheck = await db.prepare(
       "SELECT id FROM company_vehicles WHERE id = ? AND company_id = ? AND is_active = 1"
     ).get(vehicle_id, company_id);
     if (!vehicleCheck) {
@@ -76,7 +80,7 @@ export async function POST(req: NextRequest) {
     const now = nowIso();
     const id = uuidv4();
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO vehicle_arrivals (id, company_id, vehicle_id, arrival_date, arrived_at, recorded_by, latitude, longitude, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, company_id, vehicle_id, date, now, user.id, latitude ?? null, longitude ?? null, now);
@@ -99,7 +103,7 @@ export async function DELETE(req: NextRequest) {
     const id = url.searchParams.get("id");
     if (!id) return NextResponse.json({ ok: false, error: "id gerekli" }, { status: 400 });
     const db = getDb();
-    db.prepare("DELETE FROM vehicle_arrivals WHERE id = ?").run(id);
+    await db.prepare("DELETE FROM vehicle_arrivals WHERE id = ?").run(id);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ ok: false, error: "Sunucu hatası" }, { status: 500 });

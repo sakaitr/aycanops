@@ -1,86 +1,100 @@
-import fs from "fs";
-import path from "path";
-import Database from "better-sqlite3";
-import { runMigrations } from "./migrate";
+import mysql from "mysql2/promise";
+import type { RowDataPacket, ResultSetHeader, PoolConnection } from "mysql2/promise";
 
-let dbInstance: Database.Database | null = null;
-let migrationsRun = false;
+let pool: mysql.Pool | null = null;
 
-// Proje kökünü bul: bu dosya lib/ altında, bir üst dizin proje köküdür.
-// Standalone build veya cPanel gibi ortamlarda process.cwd() güvenilir olmayabileceğinden
-// önce __dirname bazlı yolu dene, yoksa process.cwd() bazlı yolu kullan.
-function findProjectRoot(): string {
-  // __dirname: derleme sonrasında lib/ (veya Next.js bundler eşdeğeri)
-  const fromDirname = path.resolve(__dirname, "..");
-  // process.cwd() bazlı
-  const fromCwd = process.cwd();
-
-  // Proje kökünü belirlemek için package.json varlığını kontrol et
-  for (const candidate of [fromDirname, fromCwd]) {
-    try {
-      if (fs.existsSync(path.join(candidate, "package.json"))) {
-        return candidate;
-      }
-    } catch { /* ignore */ }
+function getPool(): mysql.Pool {
+  if (!pool) {
+    pool = mysql.createPool({
+      host:     process.env.DB_HOST     || "localhost",
+      port:     Number(process.env.DB_PORT || 3306),
+      user:     process.env.DB_USER     || "root",
+      password: process.env.DB_PASS     || "",
+      database: process.env.DB_NAME     || "ops",
+      charset:  "utf8mb4",
+      timezone: "+00:00",
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+    });
   }
-  return fromCwd;
+  return pool;
 }
 
-function resolveDatabasePath() {
-  const raw = process.env.DATABASE_PATH;
+// Hazırlanmış sorgu benzeri arayüz — SQLite API'sine benzer syntax, ancak async
+function prepareFn(sql: string) {
+  return {
+    /** Tek satır döndürür, bulunamazsa undefined */
+    async get<T = RowDataPacket>(...params: unknown[]): Promise<T | undefined> {
+      const [rows] = await getPool().execute<RowDataPacket[]>(sql, params as any[]);
+      return (rows as T[])[0];
+    },
+    /** Tüm satırları dizi olarak döndürür */
+    async all<T = RowDataPacket>(...params: unknown[]): Promise<T[]> {
+      const [rows] = await getPool().execute<RowDataPacket[]>(sql, params as any[]);
+      return rows as T[];
+    },
+    /** INSERT / UPDATE / DELETE */
+    async run(...params: unknown[]): Promise<ResultSetHeader> {
+      const [result] = await getPool().execute<ResultSetHeader>(sql, params as any[]);
+      return result;
+    },
+  };
+}
 
-  if (raw) {
-    // Kullanıcı tarafından verilmişse: mutlaksa kullan, göreceliyse proje kökünden çöz
-    const absolutePath = path.isAbsolute(raw)
-      ? raw
-      : path.join(findProjectRoot(), raw);
-    const dir = path.dirname(absolutePath);
-    try {
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    } catch (error) {
-      console.error("Failed to create database directory:", error);
-      throw new Error(`Database directory creation failed: ${dir}`);
-    }
-    console.log("[DB] DATABASE_PATH (env):", absolutePath);
-    return absolutePath;
-  }
+/** Tek SQL cümlesi yürüt */
+async function exec(sql: string): Promise<void> {
+  await getPool().execute(sql);
+}
 
-  // Varsayılan: proje köküne göre data/opsdesk.sqlite
-  const projectRoot = findProjectRoot();
-  const absolutePath = path.join(projectRoot, "data", "opsdesk.sqlite");
-  const dir = path.dirname(absolutePath);
+/**
+ * Çok ifadeli SQL script yürüt (migration dosyaları için).
+ * Ayrı bir bağlantıda multipleStatements modunda çalışır.
+ */
+async function execScript(sql: string): Promise<void> {
+  const conn = await mysql.createConnection({
+    host:     process.env.DB_HOST     || "localhost",
+    port:     Number(process.env.DB_PORT || 3306),
+    user:     process.env.DB_USER     || "root",
+    password: process.env.DB_PASS     || "",
+    database: process.env.DB_NAME     || "ops",
+    charset:  "utf8mb4",
+    timezone: "+00:00",
+    multipleStatements: true,
+  });
   try {
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  } catch (error) {
-    console.error("Failed to create database directory:", error);
-    throw new Error(`Database directory creation failed: ${dir}`);
+    await conn.query(sql);
+  } finally {
+    await conn.end();
   }
-  console.log("[DB] DATABASE_PATH (default, project root):", absolutePath);
-  return absolutePath;
 }
+
+/** Transaction yardımcısı — hata olursa otomatik rollback */
+async function transaction<T>(fn: (conn: PoolConnection) => Promise<T>): Promise<T> {
+  const conn = await getPool().getConnection();
+  await conn.beginTransaction();
+  try {
+    const result = await fn(conn);
+    await conn.commit();
+    return result;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+const dbObj = {
+  prepare: prepareFn,
+  exec,
+  execScript,
+  transaction,
+  get pool() { return getPool(); },
+};
 
 export function getDb() {
-  if (!dbInstance) {
-    try {
-      const dbPath = resolveDatabasePath();
-      dbInstance = new Database(dbPath);
-      dbInstance.pragma("journal_mode = WAL");
-      dbInstance.pragma("foreign_keys = ON");
-    } catch (error) {
-      console.error("Database initialization failed:", error);
-      throw new Error("Failed to initialize database");
-    }
-  }
-
-  if (!migrationsRun) {
-    try {
-      runMigrations(dbInstance, process.cwd());
-      migrationsRun = true;
-    } catch (error) {
-      console.error("Migration execution failed:", error);
-      throw new Error("Database migrations failed");
-    }
-  }
-
-  return dbInstance;
+  return dbObj;
 }
+
+export type DbClient = typeof dbObj;
