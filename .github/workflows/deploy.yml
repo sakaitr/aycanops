@@ -1,4 +1,4 @@
-name: Build & Deploy to cPanel
+name: Build & Deploy to VPS
 
 on:
   push:
@@ -7,85 +7,65 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  build-and-push:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          node-version: '22'
-          cache: 'npm'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/sakaitr/aycanops:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NEXT_PUBLIC_APP_URL=${{ secrets.APP_URL }}
 
-      - name: Build application
-        run: npm run build
-        env:
-          NODE_ENV: production
-          NEXT_PUBLIC_APP_URL: ${{ secrets.APP_URL }}
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
 
-      - name: Copy assets into standalone
-        run: |
-          cp -r public .next/standalone/public
-          cp -r .next/static .next/standalone/.next/static
-          cp -r migrations .next/standalone/migrations
-          # Dereference all symlinks so lftp doesn't try SITE SYMLINK on cPanel FTP
-          cp -rL .next/standalone/.next .next/standalone-flat-next
-          cp -rL .next/standalone/node_modules .next/standalone-flat-nm 2>/dev/null || true
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/aycanops
 
-      - name: Check what changed
-        id: changes
-        run: |
-          # Detect if migrations or public changed vs previous commit
-          git diff HEAD~1 --name-only 2>/dev/null | grep -q '^migrations/' \
-            && echo "migrations=true" >> $GITHUB_OUTPUT \
-            || echo "migrations=false" >> $GITHUB_OUTPUT
-          git diff HEAD~1 --name-only 2>/dev/null | grep -q '^public/' \
-            && echo "public=true" >> $GITHUB_OUTPUT \
-            || echo "public=false" >> $GITHUB_OUTPUT
+            # Repo'yu güncelle (nginx config, docker-compose.yml vb.)
+            git pull origin main
 
-      - name: Deploy via lftp (only changed files)
-        env:
-          FTP_PASS: ${{ secrets.FTP_PASS }}
-          PUBLIC_CHANGED: ${{ steps.changes.outputs.public }}
-        run: |
-          sudo apt-get install -y lftp -q
-          lftp -u "${{ secrets.FTP_USER }}","$FTP_PASS" ftp.agno.digital <<EOF
-          set ftp:ssl-force true
-          set ftp:ssl-protect-data true
-          set ssl:verify-certificate false
-          set ftp:passive-mode true
-          set ftp:fix-pasv-address true
-          set net:timeout 120
-          set net:max-retries 3
-          set mirror:parallel-transfer-count 8
-          mirror -R --delete --transfer-all .next/standalone-flat-next/ /aycanops.agno.digital/.next/
-          mirror -R --ignore-time .next/standalone/migrations/ /aycanops.agno.digital/migrations/
-          $([ "$PUBLIC_CHANGED" = "true" ] && echo 'mirror -R --delete --ignore-time .next/standalone/public/ /aycanops.agno.digital/public/')
-          put .next/standalone/server.js -o /aycanops.agno.digital/server.js
-          put .next/standalone/package.json -o /aycanops.agno.digital/package.json
-          put .htaccess -o /aycanops.agno.digital/.htaccess
-          bye
-          EOF
+            # Yeni image'ı çek
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u sakaitr --password-stdin
+            docker compose pull app
 
-      - name: Stop app (kill old processes)
-        run: |
-          curl -s -u "${{ secrets.CPANEL_USER }}:${{ secrets.CPANEL_PASS }}" \
-            "https://cpanel.agno.digital:2083/execute/NodeApp/stop_running_app" \
-            --data-urlencode "app_path=/home/agnowzbg/aycanops.agno.digital/aycanops.agno.digital" \
-            -o /dev/null -w "Stop: HTTP %{http_code}\n"
-          sleep 5
+            # Yeniden başlat (db ve nginx dokunma, sadece app)
+            docker compose up -d --no-deps app
 
-      - name: Start app (fresh process)
-        run: |
-          curl -s -u "${{ secrets.CPANEL_USER }}:${{ secrets.CPANEL_PASS }}" \
-            "https://cpanel.agno.digital:2083/execute/NodeApp/start_app" \
-            --data-urlencode "app_path=/home/agnowzbg/aycanops.agno.digital/aycanops.agno.digital" \
-            -o /dev/null -w "Start: HTTP %{http_code}\n"
+            # Eski image'ları temizle
+            docker image prune -f
+
+            echo "✅ Deploy tamamlandı: $(date)"
 
