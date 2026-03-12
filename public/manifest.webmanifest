@@ -1,7 +1,7 @@
 {
-  "name": "Aycan Operasyon",
+  "name": "Aycan Operasyon Yönetim Sistemi",
   "short_name": "Aycan",
-  "description": "Operasyon Yönetim Sistemi",
+  "description": "Personel taşımacılığı operasyonlarını dijital ortamda yönetin",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -10,37 +10,46 @@
   "theme_color": "#09090b",
   "dir": "ltr",
   "lang": "tr",
-  "categories": ["productivity", "utilities"],
+  "categories": ["business", "productivity"],
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "icons": [
-    {
-      "src": "/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png",
-      "purpose": "any"
-    }
+    { "src": "/icons/icon-72.png",  "sizes": "72x72",   "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-96.png",  "sizes": "96x96",   "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-128.png", "sizes": "128x128", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-144.png", "sizes": "144x144", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-152.png", "sizes": "152x152", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-384.png", "sizes": "384x384", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
     {
       "name": "Giriş Kontrol",
+      "short_name": "Kontrol",
+      "description": "Sabah araç kontrollerini başlat",
       "url": "/giris-kontrol",
-      "description": "Araç giriş kontrol"
+      "icons": [{ "src": "/icons/shortcut-kontrol.png", "sizes": "192x192" }]
     },
     {
-      "name": "Günlük",
-      "url": "/gunluk",
-      "description": "Günlük iş raporu"
+      "name": "Seferler",
+      "short_name": "Seferler",
+      "description": "Günlük seferleri görüntüle",
+      "url": "/seferler",
+      "icons": [{ "src": "/icons/shortcut-sefer.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Araçlar",
+      "short_name": "Araçlar",
+      "description": "Filo yönetimi",
+      "url": "/araclar",
+      "icons": [{ "src": "/icons/shortcut-arac.png", "sizes": "192x192" }]
     }
-  ]
+  ],
+  "screenshots": []
 }

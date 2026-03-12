@@ -1,194 +1,120 @@
-// Aycan Service Worker
-const CACHE_NAME = "aycan-v2";
-const OFFLINE_URL = "/offline";
-const STATIC_PRECACHE = [
-  "/offline",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/apple-touch-icon.png",
-  "/manifest.webmanifest",
+const CACHE_NAME = 'aycan-ops-v1';
+const OFFLINE_URL = '/offline';
+
+const STATIC_ASSETS = [
+  '/',
+  '/offline',
+  '/manifest.webmanifest',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
 ];
 
-// Install: precache critical assets
-self.addEventListener("install", (event) => {
+// Install
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll(STATIC_PRECACHE)
-    )
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS);
+    })
   );
   self.skipWaiting();
 });
 
-// Activate: clean old caches, take control immediately
-self.addEventListener("activate", (event) => {
+// Activate — clean old caches
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
+    caches.keys().then((names) =>
       Promise.all(
-        keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+        names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n))
       )
     )
   );
   self.clients.claim();
 });
 
-// Message: skipWaiting from PWARegister
-self.addEventListener("message", (event) => {
-  if (event.data === "skipWaiting") {
-    self.skipWaiting();
-  }
-});
-
-// Fetch strategy
-self.addEventListener("fetch", (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  // Only same-origin GET requests
-  if (url.origin !== self.location.origin) return;
-  if (request.method !== "GET") return;
-
-  // Next.js static chunks: CacheFirst (immutable, content-hashed)
-  if (url.pathname.startsWith("/_next/static/")) {
+// Fetch
+self.addEventListener('fetch', (event) => {
+  // API: Network-first, fallback to cache
+  if (event.request.url.includes('/api/')) {
     event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ||
-          fetch(request).then((res) => {
-            const clone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(request, clone));
-            return res;
-          })
-      )
-    );
-    return;
-  }
-
-  // API routes: NetworkFirst, cache successful responses
-  if (url.pathname.startsWith("/api/")) {
-    event.respondWith(
-      fetch(request)
-        .then((res) => {
-          if (res.ok) {
-            const clone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(request, clone));
+      fetch(event.request)
+        .then((response) => {
+          if (event.request.method === 'GET') {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
           }
-          return res;
+          return response;
         })
-        .catch(() => caches.match(request))
+        .catch(() => caches.match(event.request))
     );
     return;
   }
 
-  // Images/icons: CacheFirst
-  if (/\.(png|jpg|jpeg|svg|gif|webp|ico)$/.test(url.pathname)) {
+  // Navigation: Network-first, fallback to offline page
+  if (event.request.mode === 'navigate') {
     event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ||
-          fetch(request).then((res) => {
-            const clone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(request, clone));
-            return res;
-          })
-      )
+      fetch(event.request).catch(() => caches.match(OFFLINE_URL))
     );
     return;
   }
 
-  // HTML pages: NetworkFirst with offline fallback
-  if (request.headers.get("accept")?.includes("text/html")) {
-    event.respondWith(
-      fetch(request)
-        .then((res) => {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(request, clone));
-          return res;
-        })
-        .catch(() => caches.match(request) || caches.match(OFFLINE_URL))
-    );
-    return;
-  }
-
-  // Everything else: NetworkFirst
+  // Static assets: Cache-first
   event.respondWith(
-    fetch(request).catch(() => caches.match(request))
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(event.request).then((response) => {
+        if (!response || response.status !== 200 || response.type !== 'basic') {
+          return response;
+        }
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
+        return response;
+      });
+    })
   );
 });
 
-
-// Install: cache static assets
-self.addEventListener("install", (event) => {
+// Push notifications
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  const data = event.data.json();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/badge-72.png',
+      vibrate: [100, 50, 100],
+      data: { url: data.url || '/' },
+      actions: data.actions || [],
+      tag: data.tag || 'default',
+      renotify: true,
+    })
   );
-  self.skipWaiting();
 });
 
-// Activate: clean old caches
-self.addEventListener("activate", (event) => {
+// Notification click
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/';
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
-});
-
-// Fetch strategy
-self.addEventListener("fetch", (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  // Only handle same-origin requests
-  if (url.origin !== self.location.origin) return;
-
-  // Skip non-GET requests
-  if (request.method !== "GET") return;
-
-  // API routes: NetworkFirst (fallback to cache)
-  if (url.pathname.startsWith("/api/")) {
-    event.respondWith(
-      fetch(request)
-        .then((res) => {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return res;
-        })
-        .catch(() => caches.match(request))
-    );
-    return;
-  }
-
-  // Images: CacheFirst
-  if (/\.(png|jpg|jpeg|svg|gif|webp|ico)$/.test(url.pathname)) {
-    event.respondWith(
-      caches.match(request).then(
-        (cached) => cached || fetch(request).then((res) => {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(request, clone));
-          return res;
-        })
-      )
-    );
-    return;
-  }
-
-  // Pages: NetworkFirst with offline fallback
-  if (request.headers.get("accept")?.includes("text/html")) {
-    event.respondWith(
-      fetch(request)
-        .catch(() => caches.match(OFFLINE_URL))
-    );
-    return;
-  }
-
-  // Everything else: NetworkFirst
-  event.respondWith(
-    fetch(request).catch(() => caches.match(request))
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(url);
+          return client.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
   );
 });
 
-// Message: skip waiting
-self.addEventListener("message", (event) => {
-  if (event.data === "skipWaiting") self.skipWaiting();
+// Background sync
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-data') {
+    event.waitUntil(syncData());
+  }
 });
+
+async function syncData() {
+  // Placeholder for offline queue sync via IndexedDB
+}

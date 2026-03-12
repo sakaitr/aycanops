@@ -1,0 +1,1 @@
+<?php $git=trim(shell_exec("which git 2>/dev/null")); $npm="/opt/alt/alt-nodejs22/root/usr/bin/npm"; $npmV=trim(shell_exec("$npm --version 2>&1")); echo json_encode(["git"=>$git,"npm"=>$npmV,"whoami"=>trim(shell_exec("whoami")),"home"=>trim(shell_exec("echo \$HOME"))]); ?>
