@@ -36,7 +36,7 @@ jobs:
           cp -r .next/static .next/standalone/.next/static
           cp -r migrations .next/standalone/migrations
 
-      - name: Deploy via lftp mirror (incremental)
+      - name: Deploy via lftp (code only, skip node_modules)
         env:
           FTP_PASS: ${{ secrets.FTP_PASS }}
         run: |
@@ -50,12 +50,15 @@ jobs:
           set net:timeout 120
           set net:max-retries 3
           set mirror:parallel-transfer-count 5
-          mirror -R --delete --verbose \
-            --exclude-glob=.env \
-            --exclude-glob=.env.* \
-            --exclude-glob=tmp/ \
-            --exclude-glob=restart.txt \
-            .next/standalone/ /aycanops.agno.digital/
+          # Upload .next compiled output (replaces old build)
+          mirror -R --delete --verbose .next/standalone/.next/ /aycanops.agno.digital/.next/
+          # Upload public assets
+          mirror -R --delete --verbose .next/standalone/public/ /aycanops.agno.digital/public/
+          # Upload migrations
+          mirror -R --delete --verbose .next/standalone/migrations/ /aycanops.agno.digital/migrations/
+          # Upload entry point
+          put .next/standalone/server.js -o /aycanops.agno.digital/server.js
+          put .next/standalone/package.json -o /aycanops.agno.digital/package.json
           bye
           EOF
 
