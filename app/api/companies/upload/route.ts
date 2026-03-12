@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       ).run(uuidv4(), plate, driverName, user.id, now, now);
       if (driverName) {
         await db.prepare(
-          "UPDATE vehicles SET driver_name = ?, updated_at = ? WHERE plate = ? AND (driver_name IS NULL OR driver_name = '')"
+          "UPDATE vehicles SET driver_name = ?, updated_at = ? WHERE plate = ?"
         ).run(driverName, now, plate);
       }
 
@@ -74,23 +74,27 @@ export async function POST(req: NextRequest) {
       const company = await db.prepare("SELECT id FROM companies WHERE name = ?").get<{ id: string }>(companyName);
       if (!company) { errors.push(`Firma oluşturulamadı: ${companyName}`); skipped++; continue; }
 
-      // 3. Link vehicle to company
-      const result = await db.prepare(
-        "INSERT IGNORE INTO company_vehicles (id, company_id, plate, driver_name, route_id, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)"
-      ).run(uuidv4(), company.id, plate, driverName, routeId, now, now);
-      if (result.affectedRows > 0) {
+      // 3. Link vehicle to company (upsert: insert or update existing)
+      const existing = await db.prepare(
+        "SELECT id FROM company_vehicles WHERE company_id = ? AND plate = ?"
+      ).get<{ id: string }>(company.id, plate);
+
+      if (!existing) {
+        await db.prepare(
+          "INSERT INTO company_vehicles (id, company_id, plate, driver_name, route_id, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)"
+        ).run(uuidv4(), company.id, plate, driverName, routeId, now, now);
         inserted++;
       } else {
-        if (driverName) {
-          await db.prepare(
-            "UPDATE company_vehicles SET driver_name = ?, updated_at = ? WHERE company_id = ? AND plate = ? AND (driver_name IS NULL OR driver_name = '')"
-          ).run(driverName, now, company.id, plate);
-        }
-        if (routeId) {
-          await db.prepare(
-            "UPDATE company_vehicles SET route_id = ?, updated_at = ? WHERE company_id = ? AND plate = ? AND route_id IS NULL"
-          ).run(routeId, now, company.id, plate);
-        }
+        // Always update fields that have a value in Excel; leave others untouched
+        const setParts: string[] = ["updated_at = ?"];
+        const setValues: any[] = [now];
+        if (driverName !== null) { setParts.push("driver_name = ?"); setValues.push(driverName); }
+        if (routeId !== null)    { setParts.push("route_id = ?");    setValues.push(routeId); }
+        // Reactivate if was soft-deleted
+        setParts.push("is_active = 1");
+        await db.prepare(
+          `UPDATE company_vehicles SET ${setParts.join(", ")} WHERE id = ?`
+        ).run(...setValues, existing.id);
         skipped++;
       }
     }
