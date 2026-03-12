@@ -56,7 +56,7 @@ jobs:
           set ftp:fix-pasv-address true
           set net:timeout 120
           set net:max-retries 3
-          put bundle.zip -o /aycanops.agno.digital/bundle.zip
+          put bundle.zip -o /bundle.zip
           bye
           EOF
 
