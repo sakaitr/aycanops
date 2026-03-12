@@ -405,7 +405,7 @@ function AracGelis({ user }: { user: any }) {
       ) : (
         <>
           {vehicles.length > 0 && (
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <div className="text-sm">
                 <span className="text-emerald-400 font-semibold">{arrivedCount}</span>
                 <span className="text-zinc-500"> / {vehicles.length} araç geldi</span>

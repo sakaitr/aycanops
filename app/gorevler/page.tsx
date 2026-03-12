@@ -206,7 +206,7 @@ function IsTakibiContent() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-white">İş Takibi</h1>
             <p className="text-zinc-500 text-sm mt-0.5">

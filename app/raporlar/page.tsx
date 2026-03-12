@@ -144,7 +144,7 @@ export default function RaporlarPage() {
         </div>
 
         {/* Tab nav */}
-        <div className="flex border-b border-zinc-800 mb-6 gap-1">
+        <div className="flex overflow-x-auto border-b border-zinc-800 mb-6 gap-1">
           {([
             { key: "overview",       label: "Genel Bakış" },
             { key: "worklogs",       label: "Günlük Onayları" },

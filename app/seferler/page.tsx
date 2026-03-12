@@ -113,12 +113,12 @@ export default function EkMesaiPage() {
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-white">Ek Mesai</h1>
             <p className="text-zinc-500 text-sm mt-0.5">{loading ? "..." : `${filtered.length} kayıt`}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
               className="bg-zinc-900 border border-zinc-800 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-600 [color-scheme:dark]" />
             <button onClick={openForm}

@@ -88,7 +88,7 @@ export default function Nav({ user }: { user: NavUser | null }) {
                 Aycan
               </Link>
 
-              <nav className="hidden sm:flex items-center gap-1">
+              <nav className="hidden lg:flex items-center gap-1">
                 {links.map((link) => (
                   <Link
                     key={link.href}
@@ -112,7 +112,7 @@ export default function Nav({ user }: { user: NavUser | null }) {
 
             {/* Right side */}
             <div className="flex items-center gap-2">
-              <div className="hidden sm:flex flex-col items-end">
+              <div className="hidden lg:flex flex-col items-end">
                 <span className="text-sm text-white font-medium leading-tight">{user?.full_name || "..."}</span>
                 <span className="text-xs text-zinc-500">{ROLE_LABELS[role] || role}</span>
               </div>
@@ -124,7 +124,7 @@ export default function Nav({ user }: { user: NavUser | null }) {
               {/* Hamburger – mobile only */}
               <button
                 onClick={() => setMenuOpen((o) => !o)}
-                className="sm:hidden flex flex-col justify-center items-center w-9 h-9 gap-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
+                className="lg:hidden flex flex-col justify-center items-center w-9 h-9 gap-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
                 aria-label="Menü"
                 aria-expanded={menuOpen}
               >
@@ -140,7 +140,7 @@ export default function Nav({ user }: { user: NavUser | null }) {
       {/* Mobile drawer */}
       {menuOpen && (
         <div
-          className="sm:hidden fixed inset-0 z-40 flex"
+          className="lg:hidden fixed inset-0 z-40 flex"
           onClick={() => setMenuOpen(false)}
         >
           {/* Backdrop */}
