@@ -35,6 +35,9 @@ jobs:
           cp -r public .next/standalone/public
           cp -r .next/static .next/standalone/.next/static
           cp -r migrations .next/standalone/migrations
+          # Dereference all symlinks so lftp doesn't try SITE SYMLINK on cPanel FTP
+          cp -rL .next/standalone/.next .next/standalone-flat-next
+          cp -rL .next/standalone/node_modules .next/standalone-flat-nm 2>/dev/null || true
 
       - name: Check what changed
         id: changes
@@ -62,7 +65,7 @@ jobs:
           set net:timeout 120
           set net:max-retries 3
           set mirror:parallel-transfer-count 8
-          mirror -R --delete --transfer-all .next/standalone/.next/ /aycanops.agno.digital/.next/
+          mirror -R --delete --transfer-all .next/standalone-flat-next/ /aycanops.agno.digital/.next/
           mirror -R --ignore-time .next/standalone/migrations/ /aycanops.agno.digital/migrations/
           $([ "$PUBLIC_CHANGED" = "true" ] && echo 'mirror -R --delete --ignore-time .next/standalone/public/ /aycanops.agno.digital/public/')
           put .next/standalone/server.js -o /aycanops.agno.digital/server.js
