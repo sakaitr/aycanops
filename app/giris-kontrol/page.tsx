@@ -42,6 +42,11 @@ function AracGelis({ user }: { user: any }) {
   const [locError, setLocError] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  // Sort mode
+  const [isSorting, setIsSorting] = useState(false);
+  const [sortList, setSortList] = useState<any[]>([]);
+  const [savingSortOrder, setSavingSortOrder] = useState(false);
+
   // Plaka hızlı giriş
   const [plateInput, setPlateInput] = useState("");
   const [plateMsg, setPlateMsg] = useState<{ type: "success" | "error" | "warn"; text: string } | null>(null);
@@ -243,6 +248,40 @@ function AracGelis({ user }: { user: any }) {
   const arrivedCount = vehicles.filter(v => v.arrived_at).length;
   const multiMatchIds = new Set(multiMatches.map((v: any) => v.id));
 
+  function enterSortMode() {
+    setSortList([...vehicles]);
+    setIsSorting(true);
+  }
+
+  function moveSortItem(index: number, direction: -1 | 1) {
+    setSortList(prev => {
+      const arr = [...prev];
+      const target = index + direction;
+      if (target < 0 || target >= arr.length) return arr;
+      [arr[index], arr[target]] = [arr[target], arr[index]];
+      return arr;
+    });
+  }
+
+  async function saveSortOrder() {
+    setSavingSortOrder(true);
+    try {
+      const payload = sortList.map((v, i) => ({ id: v.id, sort_order: i }));
+      const r = await fetch(`/api/companies/${selectedCompany}/vehicles`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setIsSorting(false);
+        await loadVehicles();
+      } else {
+        alert(d.error || "Sıralama kaydedilemedi");
+      }
+    } finally {
+      setSavingSortOrder(false);
+    }
+  }
+
   return (
     <div>
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
@@ -375,7 +414,7 @@ function AracGelis({ user }: { user: any }) {
                 )}
               </div>
               <div className="flex items-center gap-3">
-              {arrivedCount < vehicles.length && (
+              {arrivedCount < vehicles.length && !isSorting && (
                   <button
                     onClick={markAllArrived}
                     disabled={bulkMarking || !!marking}
@@ -384,7 +423,21 @@ function AracGelis({ user }: { user: any }) {
                     {bulkMarking ? "Kaydediliyor..." : `Tümünü Geldi İşareti (${vehicles.length - arrivedCount})`}
                   </button>
                 )}
-                <button onClick={loadVehicles} className="text-xs text-zinc-600 hover:text-white transition-colors">Yenile</button>
+                {isSorting ? (
+                  <>
+                    <button onClick={saveSortOrder} disabled={savingSortOrder}
+                      className="text-xs bg-emerald-900 border border-emerald-800 text-emerald-300 hover:bg-emerald-800 disabled:opacity-50 px-3 py-1 rounded-lg transition-colors font-medium">
+                      {savingSortOrder ? "Kaydediliyor..." : "Sıralaşmayı Kaydet"}
+                    </button>
+                    <button onClick={() => setIsSorting(false)}
+                      className="text-xs text-zinc-500 hover:text-white transition-colors">İptal</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={enterSortMode} className="text-xs text-zinc-500 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1 rounded-lg transition-colors">↕ Sırala</button>
+                    <button onClick={loadVehicles} className="text-xs text-zinc-600 hover:text-white transition-colors">Yenile</button>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -398,6 +451,35 @@ function AracGelis({ user }: { user: any }) {
             </div>
           ) : (
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
+              {isSorting ? (
+                <table className="w-full min-w-[340px]">
+                  <thead>
+                    <tr className="border-b border-zinc-800">
+                      <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Sıra</th>
+                      <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Plaka</th>
+                      <th className="px-4 py-3 w-24 text-right text-xs font-semibold text-zinc-500 uppercase tracking-wider">Taşı</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortList.map((v, idx) => (
+                      <tr key={v.id} className="border-b border-zinc-800/50 last:border-0">
+                        <td className="px-4 py-3 text-zinc-500 text-sm tabular-nums w-12">{idx + 1}</td>
+                        <td className="px-4 py-3">
+                          <span className="text-white font-mono font-semibold">{v.plate}</span>
+                          {v.driver_name && <div className="text-zinc-500 text-xs mt-0.5">{v.driver_name}</div>}
+                          {v.route_name && <div className="text-emerald-600 text-xs">{v.route_name}</div>}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => moveSortItem(idx, -1)} disabled={idx === 0}
+                            className="text-zinc-500 hover:text-white disabled:opacity-20 px-1.5 py-1 text-base transition-colors" title="Yukarı">▲</button>
+                          <button onClick={() => moveSortItem(idx, 1)} disabled={idx === sortList.length - 1}
+                            className="text-zinc-500 hover:text-white disabled:opacity-20 px-1.5 py-1 text-base transition-colors" title="Aşağı">▼</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
               <table className="w-full min-w-[400px]">
                 <thead>
                   <tr className="border-b border-zinc-800">
@@ -418,6 +500,7 @@ function AracGelis({ user }: { user: any }) {
                         <span className="text-white font-mono font-semibold">{v.plate}</span>
                         {v.notes && <span className="ml-2 text-zinc-600 text-xs">{v.notes}</span>}
                         {v.driver_name && <div className="text-zinc-500 text-xs mt-0.5">Şöför: {v.driver_name}</div>}
+                        {v.route_name && <div className="text-emerald-600 text-xs mt-0.5">{v.route_name}</div>}
                       </td>
                       <td className="px-4 py-3.5">
                         {v.arrived_at ? (
@@ -460,6 +543,7 @@ function AracGelis({ user }: { user: any }) {
                   ))}
                 </tbody>
               </table>
+              )}
             </div>
           )}
         </>
