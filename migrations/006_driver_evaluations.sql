@@ -17,4 +17,4 @@ CREATE TABLE IF NOT EXISTS driver_evaluations (
   created_by CHAR(36) NOT NULL,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

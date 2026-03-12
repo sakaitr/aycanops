@@ -12,6 +12,6 @@ CREATE TABLE IF NOT EXISTS driver_records (
   reported_by CHAR(36),
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE INDEX IF NOT EXISTS idx_driver_records_driver ON driver_records(driver_name);
 CREATE INDEX IF NOT EXISTS idx_driver_records_vehicle ON driver_records(vehicle_id);

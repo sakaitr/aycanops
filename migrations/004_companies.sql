@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS companies (
   created_by CHAR(36) NOT NULL,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Firma Araçları (Company Vehicles)
 CREATE TABLE IF NOT EXISTS company_vehicles (
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS company_vehicles (
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL,
   UNIQUE(company_id, plate)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Araç Gelişleri (Vehicle Arrivals)
 CREATE TABLE IF NOT EXISTS vehicle_arrivals (
@@ -33,4 +33,4 @@ CREATE TABLE IF NOT EXISTS vehicle_arrivals (
   longitude DOUBLE,
   created_at VARCHAR(30) NOT NULL,
   UNIQUE(vehicle_id, arrival_date)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

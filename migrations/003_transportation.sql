@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
   created_by CHAR(36) NOT NULL,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Güzergahlar (Routes)
 CREATE TABLE IF NOT EXISTS routes (
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS routes (
   created_by CHAR(36) NOT NULL,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Seferler (Trips - daily run records)
 CREATE TABLE IF NOT EXISTS trips (
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS trips (
   created_by CHAR(36) NOT NULL,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Giriş Kontrolleri (Morning entry time checks)
 CREATE TABLE IF NOT EXISTS entry_controls (
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS entry_controls (
   created_by CHAR(36) NOT NULL,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Araç Denetimleri (Vehicle inspections)
 CREATE TABLE IF NOT EXISTS inspections (
@@ -85,4 +85,4 @@ CREATE TABLE IF NOT EXISTS inspections (
   notes TEXT,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

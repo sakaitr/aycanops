@@ -1,10 +1,12 @@
+﻿SET NAMES utf8mb4;
+SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS departments (
   id CHAR(36) NOT NULL PRIMARY KEY,
   name VARCHAR(255) NOT NULL UNIQUE,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS users (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -16,14 +18,14 @@ CREATE TABLE IF NOT EXISTS users (
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS sessions (
   id CHAR(36) NOT NULL PRIMARY KEY,
   user_id CHAR(36) NOT NULL,
   expires_at VARCHAR(30) NOT NULL,
   created_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS config_categories (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -34,7 +36,7 @@ CREATE TABLE IF NOT EXISTS config_categories (
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL,
   UNIQUE(type, name)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS config_tags (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -45,7 +47,7 @@ CREATE TABLE IF NOT EXISTS config_tags (
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL,
   UNIQUE(type, name)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS config_priorities (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -57,7 +59,7 @@ CREATE TABLE IF NOT EXISTS config_priorities (
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL,
   UNIQUE(type, code)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS config_ticket_statuses (
   code VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -67,7 +69,7 @@ CREATE TABLE IF NOT EXISTS config_ticket_statuses (
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS config_worklog_statuses (
   code VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -77,7 +79,7 @@ CREATE TABLE IF NOT EXISTS config_worklog_statuses (
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS config_sla_rules (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -87,7 +89,7 @@ CREATE TABLE IF NOT EXISTS config_sla_rules (
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL,
   UNIQUE(priority_code)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS todo_templates (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -99,7 +101,7 @@ CREATE TABLE IF NOT EXISTS todo_templates (
   created_by CHAR(36) NOT NULL,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS worklogs (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -114,7 +116,7 @@ CREATE TABLE IF NOT EXISTS worklogs (
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL,
   UNIQUE(user_id, work_date)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS worklog_items (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -128,7 +130,7 @@ CREATE TABLE IF NOT EXISTS worklog_items (
   note TEXT,
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS todos (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -143,7 +145,7 @@ CREATE TABLE IF NOT EXISTS todos (
   completed_at VARCHAR(30),
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS todo_comments (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -151,7 +153,7 @@ CREATE TABLE IF NOT EXISTS todo_comments (
   user_id CHAR(36) NOT NULL,
   comment TEXT NOT NULL,
   created_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tickets (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -170,7 +172,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   closed_at VARCHAR(30),
   created_at VARCHAR(30) NOT NULL,
   updated_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS ticket_comments (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -178,7 +180,7 @@ CREATE TABLE IF NOT EXISTS ticket_comments (
   user_id CHAR(36) NOT NULL,
   comment TEXT NOT NULL,
   created_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS ticket_actions (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -187,7 +189,7 @@ CREATE TABLE IF NOT EXISTS ticket_actions (
   is_done TINYINT(1) NOT NULL DEFAULT 0,
   created_at VARCHAR(30) NOT NULL,
   completed_at VARCHAR(30)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -197,7 +199,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   entity_id CHAR(36),
   details_json TEXT,
   created_at VARCHAR(30) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_worklogs_user_date ON worklogs(user_id, work_date);
