@@ -205,7 +205,7 @@ export default function FirmalarPage() {
         {/* Excel format hint */}
         <div className="mb-5 px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl">
           <p className="text-zinc-500 text-xs">
-            <span className="text-zinc-400 font-medium">Excel formatı:</span> A sütunu = Firma Adı, B sütunu = Plaka, C sütunu = Şöför (opsiyonel). İlk satır başlık (atlanır). Plaka boş ise satır eklenmez. Firma yoksa otomatik oluşturulur.
+            <span className="text-zinc-400 font-medium">Excel formatı:</span> A = Firma Adı, B = Plaka, C = Güzergah (güzergah adı, opsiyonel), D = Şöför (opsiyonel). İlk satır başlık (atlanır). Plaka boş ise satır eklenmez. Firma yoksa otomatik oluşturulur.
           </p>
         </div>
 
