@@ -36,14 +36,7 @@ jobs:
           cp -r .next/static .next/standalone/.next/static
           cp -r migrations .next/standalone/migrations
 
-      - name: Package standalone as zip
-        run: |
-          cd .next/standalone
-          zip -r ../../bundle.zip . -x "**/.env" -x "**/.env.*"
-          cd ../..
-          echo "Bundle size: $(du -sh bundle.zip)"
-
-      - name: Upload bundle via lftp (FTPS)
+      - name: Deploy via lftp mirror (incremental)
         env:
           FTP_PASS: ${{ secrets.FTP_PASS }}
         run: |
@@ -56,24 +49,21 @@ jobs:
           set ftp:fix-pasv-address true
           set net:timeout 120
           set net:max-retries 3
-          put bundle.zip -o /bundle.zip
+          set mirror:parallel-transfer-count 5
+          mirror -R --delete --verbose \
+            --exclude-glob=.env \
+            --exclude-glob=.env.* \
+            --exclude-glob=tmp/ \
+            --exclude-glob=restart.txt \
+            .next/standalone/ /aycanops.agno.digital/
           bye
           EOF
 
-      - name: Extract & restart via cPanel API
+      - name: Restart app via cPanel API
         run: |
-          echo "Extracting bundle on server..."
-          RESULT=$(curl -s -u "${{ secrets.CPANEL_USER }}:${{ secrets.CPANEL_PASS }}" \
-            -X POST "https://cpanel.agno.digital:2083/execute/Fileman/extract_archive" \
-            --data-urlencode "dir=/home/agnowzbg/aycanops.agno.digital" \
-            --data-urlencode "files-0=bundle.zip" \
-            -w "\nHTTP_CODE:%{http_code}")
-          echo "Extract result: $RESULT"
-
-          echo "Restarting Node.js app..."
           curl -s -u "${{ secrets.CPANEL_USER }}:${{ secrets.CPANEL_PASS }}" \
             "https://cpanel.agno.digital:2083/execute/Fileman/save_file_content" \
-            --data-urlencode "dir=/home/agnowzbg/aycanops.agno.digital/tmp" \
+            --data-urlencode "dir=/home/agnowzbg/aycanops.agno.digital/aycanops.agno.digital/tmp" \
             --data-urlencode "file=restart.txt" \
             --data-urlencode "content=$(date -u)" \
             -o /dev/null -w "Restart: HTTP %{http_code}\n"
