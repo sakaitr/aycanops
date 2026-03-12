@@ -8,6 +8,11 @@ export async function register() {
     }
     const path = await import("path");
     const { runMigrations } = await import("./lib/migrate");
-    await runMigrations(path.join(process.cwd(), "migrations"));
+    try {
+      await runMigrations(path.join(process.cwd(), "migrations"));
+    } catch (e) {
+      // Migration hatası uygulamayı çöktürmesin — log'a düşsün, çalışmaya devam etsin
+      console.error("[startup] Migration hatası (uygulama yine de başlatılıyor):", e);
+    }
   }
 }
