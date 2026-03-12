@@ -70,15 +70,22 @@ jobs:
           $([ "$PUBLIC_CHANGED" = "true" ] && echo 'mirror -R --delete --ignore-time .next/standalone/public/ /aycanops.agno.digital/public/')
           put .next/standalone/server.js -o /aycanops.agno.digital/server.js
           put .next/standalone/package.json -o /aycanops.agno.digital/package.json
+          put .htaccess -o /aycanops.agno.digital/.htaccess
           bye
           EOF
 
-      - name: Restart app via cPanel API
+      - name: Stop app (kill old processes)
         run: |
           curl -s -u "${{ secrets.CPANEL_USER }}:${{ secrets.CPANEL_PASS }}" \
-            "https://cpanel.agno.digital:2083/execute/Fileman/save_file_content" \
-            --data-urlencode "dir=/home/agnowzbg/aycanops.agno.digital/aycanops.agno.digital/tmp" \
-            --data-urlencode "file=restart.txt" \
-            --data-urlencode "content=$(date -u)" \
-            -o /dev/null -w "Restart: HTTP %{http_code}\n"
+            "https://cpanel.agno.digital:2083/execute/NodeApp/stop_running_app" \
+            --data-urlencode "app_path=/home/agnowzbg/aycanops.agno.digital/aycanops.agno.digital" \
+            -o /dev/null -w "Stop: HTTP %{http_code}\n"
+          sleep 5
+
+      - name: Start app (fresh process)
+        run: |
+          curl -s -u "${{ secrets.CPANEL_USER }}:${{ secrets.CPANEL_PASS }}" \
+            "https://cpanel.agno.digital:2083/execute/NodeApp/start_app" \
+            --data-urlencode "app_path=/home/agnowzbg/aycanops.agno.digital/aycanops.agno.digital" \
+            -o /dev/null -w "Start: HTTP %{http_code}\n"
 

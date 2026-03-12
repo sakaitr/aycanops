@@ -1,0 +1,7 @@
+# Passenger process limiti — deploy sonrası process şişmesini önler
+<IfModule mod_passenger.c>
+  PassengerMaxPoolSize 5
+  PassengerMaxRequests 5000
+  PassengerPoolIdleTime 300
+  PassengerMaxPreloaderIdleTime 300
+</IfModule>
