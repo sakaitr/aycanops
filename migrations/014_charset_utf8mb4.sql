@@ -1,9 +1,9 @@
 -- ============================================================
 -- Migration 014: Convert all tables to utf8mb4
 -- Türkçe karakterlerin doğru saklanması için
+-- MariaDB 11.4 varsayılan olarak utf8mb4 kullanır,
+-- ALTER DATABASE atlanıyor (kullanıcı yetkisi gerekmez)
 -- ============================================================
-
-ALTER DATABASE `agnowzbg_aycanops` CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 ALTER TABLE `departments`           CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ALTER TABLE `users`                 CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
