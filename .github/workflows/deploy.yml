@@ -62,7 +62,7 @@ jobs:
           set net:timeout 120
           set net:max-retries 3
           set mirror:parallel-transfer-count 8
-          mirror -R --delete --ignore-time .next/standalone/.next/ /aycanops.agno.digital/.next/
+          mirror -R --delete --transfer-all .next/standalone/.next/ /aycanops.agno.digital/.next/
           mirror -R --ignore-time .next/standalone/migrations/ /aycanops.agno.digital/migrations/
           $([ "$PUBLIC_CHANGED" = "true" ] && echo 'mirror -R --delete --ignore-time .next/standalone/public/ /aycanops.agno.digital/public/')
           put .next/standalone/server.js -o /aycanops.agno.digital/server.js
