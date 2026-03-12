@@ -14,12 +14,17 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: "Aycan",
+  applicationName: "Aycan Operasyon",
   description: "Operasyon Yönetim Sistemi",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "Aycan",
+  },
+  formatDetection: { telephone: false },
+  other: {
+    "mobile-web-app-capable": "yes",
   },
   icons: {
     icon: [
