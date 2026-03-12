@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { todayIstanbul } from "@/lib/time";
 import { isAtLeast } from "@/lib/permissions";
 import Badge from "@/components/Badge";
 import StatCard from "@/components/StatCard";
@@ -12,7 +13,7 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
 
   const db = getDb();
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayIstanbul();
 
   const myTodos = await db
     .prepare(`SELECT * FROM todos WHERE (assigned_to = ? OR created_by = ?) AND status_code != 'done' ORDER BY created_at DESC LIMIT 8`)

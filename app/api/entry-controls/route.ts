@@ -2,7 +2,7 @@
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
-import { nowIso } from "@/lib/time";
+import { nowIso, todayIstanbul } from "@/lib/time";
 import { entryControlCreateSchema } from "@/lib/schemas";
 
 export async function GET(req: NextRequest) {
@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
     const { searchParams } = new URL(req.url);
-    const date = searchParams.get("date") || new Date().toISOString().split("T")[0];
+    const date = searchParams.get("date") || todayIstanbul();
     const db = getDb();
     const data = await db.prepare(
       `SELECT ec.*, r.name as route_name, r.code as route_code,

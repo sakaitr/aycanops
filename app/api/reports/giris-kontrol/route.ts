@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         cv.plate                            AS plaka,
         COALESCE(cv.notes, '')              AS notlar,
         va.arrival_date                     AS tarih,
-        DATE_FORMAT(va.arrived_at, '%H:%i')    AS giris_saati,
+        DATE_FORMAT(DATE_ADD(STR_TO_DATE(SUBSTRING(va.arrived_at, 1, 19), '%Y-%m-%dT%H:%i:%s'), INTERVAL 3 HOUR), '%H:%i') AS giris_saati,
         u.full_name                         AS kaydeden,
         ROUND(COALESCE(va.latitude,  0), 6) AS enlem,
         ROUND(COALESCE(va.longitude, 0), 6) AS boylam

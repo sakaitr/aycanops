@@ -12,7 +12,7 @@ function getPool(): mysql.Pool {
       password: process.env.DB_PASS     || "",
       database: process.env.DB_NAME     || "ops",
       charset:  "utf8mb4",
-      timezone: "+00:00",
+      timezone: "+03:00",
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,

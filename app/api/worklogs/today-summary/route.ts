@@ -2,6 +2,7 @@
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { isAtLeast } from "@/lib/permissions";
+import { todayIstanbul } from "@/lib/time";
 
 export async function GET(_request: NextRequest) {
   try {
@@ -11,7 +12,7 @@ export async function GET(_request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const db = getDb();
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayIstanbul();
 
     // All active non-admin users
     const allUsers = await db.prepare(`

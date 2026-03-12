@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
           COALESCE(cv.driver_name, '')        AS "Şöför",
           COALESCE(cv.notes, '')              AS "Notlar",
           va.arrival_date                     AS "Tarih",
-          DATE_FORMAT(va.arrived_at, '%H:%i')    AS "Giriş Saati",
+          DATE_FORMAT(DATE_ADD(STR_TO_DATE(SUBSTRING(va.arrived_at, 1, 19), '%Y-%m-%dT%H:%i:%s'), INTERVAL 3 HOUR), '%H:%i') AS "Giriş Saati",
           u.full_name                         AS "Kaydeden",
           ROUND(COALESCE(va.latitude, 0), 6)  AS "Enlem",
           ROUND(COALESCE(va.longitude, 0), 6) AS "Boylam"

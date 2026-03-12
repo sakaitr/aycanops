@@ -2,7 +2,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { nowIso } from "@/lib/time";
+import { nowIso, todayIstanbul } from "@/lib/time";
 
 export async function POST(
   request: NextRequest,
@@ -47,7 +47,7 @@ export async function POST(
     }
 
     const targetUserId = ticket.assigned_to;
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayIstanbul();
 
     let worklog = await db
       .prepare("SELECT * FROM worklogs WHERE user_id = ? AND work_date = ?")

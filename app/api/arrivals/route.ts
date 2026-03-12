@@ -2,7 +2,7 @@
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
-import { nowIso } from "@/lib/time";
+import { nowIso, todayIstanbul } from "@/lib/time";
 import { arrivalCreateSchema } from "@/lib/schemas";
 
 export async function GET(req: NextRequest) {
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
     const url = new URL(req.url);
     const company_id = url.searchParams.get("company_id");
-    const date = url.searchParams.get("date") || new Date().toISOString().split("T")[0];
+    const date = url.searchParams.get("date") || todayIstanbul();
     if (!company_id) return NextResponse.json({ ok: false, error: "company_id gerekli" }, { status: 400 });
 
     // S-3: allowed_companies enforcement
