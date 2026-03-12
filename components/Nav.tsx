@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
@@ -40,6 +40,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 export default function Nav({ user }: { user: NavUser | null }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [badges, setBadges] = useState<{ denetimCount?: number }>({});
 
@@ -88,7 +89,7 @@ export default function Nav({ user }: { user: NavUser | null }) {
                 Aycan
               </Link>
 
-              <nav className="hidden lg:flex items-center gap-1">
+              <nav className="hidden md:flex items-center gap-1">
                 {links.map((link) => (
                   <Link
                     key={link.href}
@@ -112,19 +113,20 @@ export default function Nav({ user }: { user: NavUser | null }) {
 
             {/* Right side */}
             <div className="flex items-center gap-2">
-              <div className="hidden lg:flex flex-col items-end">
+              <div className="hidden md:flex flex-col items-end">
                 <span className="text-sm text-white font-medium leading-tight">{user?.full_name || "..."}</span>
                 <span className="text-xs text-zinc-500">{ROLE_LABELS[role] || role}</span>
               </div>
-              <form action="/api/auth/logout" method="POST">
-                <button className="text-xs text-zinc-500 hover:text-red-400 transition-colors px-2 py-1 rounded border border-zinc-800 hover:border-red-800">
-                  Çıkış
-                </button>
-              </form>
+              <button
+                onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }); router.push('/login'); }}
+                className="text-xs text-zinc-500 hover:text-red-400 transition-colors px-3 py-2.5 min-h-[44px] rounded border border-zinc-800 hover:border-red-800 hidden md:inline-flex items-center"
+              >
+                Çıkış
+              </button>
               {/* Hamburger – mobile only */}
               <button
                 onClick={() => setMenuOpen((o) => !o)}
-                className="lg:hidden flex flex-col justify-center items-center w-9 h-9 gap-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
+                className="md:hidden flex flex-col justify-center items-center w-10 h-10 gap-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
                 aria-label="Menü"
                 aria-expanded={menuOpen}
               >
@@ -140,7 +142,7 @@ export default function Nav({ user }: { user: NavUser | null }) {
       {/* Mobile drawer */}
       {menuOpen && (
         <div
-          className="lg:hidden fixed inset-0 z-40 flex"
+          className="md:hidden fixed inset-0 z-40 flex"
           onClick={() => setMenuOpen(false)}
         >
           {/* Backdrop */}
@@ -149,6 +151,7 @@ export default function Nav({ user }: { user: NavUser | null }) {
           {/* Drawer */}
           <div
             className="relative ml-auto w-72 h-full bg-zinc-900 border-l border-zinc-800 flex flex-col shadow-2xl overflow-y-auto"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -191,11 +194,12 @@ export default function Nav({ user }: { user: NavUser | null }) {
 
             {/* Logout */}
             <div className="px-3 py-4 border-t border-zinc-800">
-              <form action="/api/auth/logout" method="POST">
-                <button className="w-full text-sm text-red-400 hover:text-red-300 hover:bg-zinc-800 transition-colors px-3 py-2.5 rounded-lg text-left">
-                  🚪 Çıkış Yap
-                </button>
-              </form>
+              <button
+                onClick={async () => { setMenuOpen(false); await fetch('/api/auth/logout', { method: 'POST' }); router.push('/login'); }}
+                className="w-full text-sm text-red-400 hover:text-red-300 hover:bg-zinc-800 transition-colors px-3 py-2.5 min-h-[44px] rounded-lg text-left"
+              >
+                🚪 Çıkış Yap
+              </button>
             </div>
           </div>
         </div>

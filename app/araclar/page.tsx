@@ -186,7 +186,7 @@ export default function AraclarPage() {
               <button onClick={() => setShowForm(false)} className="text-zinc-600 hover:text-white text-xl">×</button>
             </div>
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Plaka *</label>
                   <input value={form.plate} onChange={e => setForm(f => ({ ...f, plate: e.target.value.toUpperCase() }))}
@@ -217,7 +217,7 @@ export default function AraclarPage() {
                     className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500" placeholder="Transit" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Sürücü Adı</label>
                   <input value={form.driver_name} onChange={e => setForm(f => ({ ...f, driver_name: e.target.value }))}

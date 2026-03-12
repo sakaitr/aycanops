@@ -140,7 +140,7 @@ export default function EkMesaiPage() {
           </div>
         ) : (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-x-auto">
-            <table className="w-full min-w-[640px]">
+            <table className="w-full min-w-[480px]">
               <thead>
                 <tr className="border-b border-zinc-800">
                   <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Planlama Saati</th>
@@ -199,7 +199,7 @@ export default function EkMesaiPage() {
 
             <div className="space-y-3">
               {/* Firma + Araç */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Firma</label>
                   <input ref={firmaRef} type="text" value={form.firma} onChange={fld("firma")} placeholder="Firma adı"
@@ -213,7 +213,7 @@ export default function EkMesaiPage() {
               </div>
 
               {/* Tarih/Saat + Güzergah */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Tarih / Saat</label>
                   <input type="datetime-local" value={form.tarih_saat} onChange={fld("tarih_saat")}

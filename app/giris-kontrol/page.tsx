@@ -733,7 +733,7 @@ function SeferKontrol({ user }: { user: any }) {
         </div>
       ) : (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
-          <table className="w-full min-w-[560px] table-fixed">
+          <table className="w-full min-w-[480px] table-fixed">
             <thead>
               <tr className="border-b border-zinc-800">
                 <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Güzergah</th>
@@ -808,7 +808,7 @@ function ControlModal({ title, form, setForm, routes, saving, saveError, onSave,
               </select>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Planlanan Saat {isNew && "*"}</label>
               <input type="time" value={form.planned_time} onChange={fld("planned_time")} disabled={!isNew}
@@ -820,7 +820,7 @@ function ControlModal({ title, form, setForm, routes, saving, saveError, onSave,
                 className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 [color-scheme:dark]" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Beklenen Yolcu</label>
               <input type="number" min="0" value={form.passenger_expected} onChange={fld("passenger_expected")} placeholder="0"

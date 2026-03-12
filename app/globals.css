@@ -38,6 +38,36 @@ input, select, textarea {
 ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #52525b; }
 
+/* [IOS-01] iOS date/time input dark mode */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  color-scheme: dark;
+  -webkit-appearance: none;
+  appearance: none;
+  color: #fafafa;
+}
+
+input[type="date"]::-webkit-datetime-edit,
+input[type="time"]::-webkit-datetime-edit,
+input[type="datetime-local"]::-webkit-datetime-edit {
+  color: #fafafa;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.6;
+}
+
+/* [IOS-04] backdrop-blur fallback for older devices */
+@supports not (backdrop-filter: blur(1px)) {
+  .backdrop-blur {
+    background-color: rgb(9 9 11 / 0.98);
+  }
+}
+
 /* Safe-area padding utilities */
 .safe-top {
   padding-top: max(env(safe-area-inset-top), 0px);

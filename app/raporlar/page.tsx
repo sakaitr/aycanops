@@ -354,7 +354,7 @@ export default function RaporlarPage() {
                 ) : gcRows.length === 0 ? (
                   <div className="py-16 text-center text-zinc-600 text-sm">Seçilen kriterlere uygun kayıt bulunamadı</div>
                 ) : (
-                  <table className="w-full text-sm min-w-[700px]">
+                  <table className="w-full text-sm min-w-[600px]">
                     <thead>
                       <tr className="border-b border-zinc-800">
                         {["Firma", "Plaka", "Güzergah", "Tarih", "Giriş Saati", "Kaydeden", "Notlar"].map(h => (

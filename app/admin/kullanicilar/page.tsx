@@ -344,7 +344,7 @@ export default function KullanicilarPage() {
                     <input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
                       placeholder="Ahmet Yılmaz" className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500" />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Rol *</label>
                       <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}

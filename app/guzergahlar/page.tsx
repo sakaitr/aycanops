@@ -115,7 +115,7 @@ export default function GuzergahlarPage() {
               <button onClick={() => setShowForm(false)} className="text-zinc-600 hover:text-white text-xl">×</button>
             </div>
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Güzergah Adı *</label>
                   <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -135,7 +135,7 @@ export default function GuzergahlarPage() {
                 </select>
               </div>
               {(form.direction === "morning" || form.direction === "both") && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Sabah Kalkış</label>
                     <input type="time" value={form.morning_departure} onChange={e => setForm(f => ({ ...f, morning_departure: e.target.value }))}
@@ -149,7 +149,7 @@ export default function GuzergahlarPage() {
                 </div>
               )}
               {(form.direction === "evening" || form.direction === "both") && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Akşam Kalkış</label>
                     <input type="time" value={form.evening_departure} onChange={e => setForm(f => ({ ...f, evening_departure: e.target.value }))}
