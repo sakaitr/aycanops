@@ -480,13 +480,13 @@ function AracGelis({ user }: { user: any }) {
                   </tbody>
                 </table>
               ) : (
-              <table className="w-full min-w-[400px]">
+              <table className="w-full min-w-[400px] table-fixed">
                 <thead>
                   <tr className="border-b border-zinc-800">
                     <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Plaka</th>
-                    <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Durum</th>
-                    <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Giriş Saati</th>
-                    <th className="px-4 py-3"></th>
+                    <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3 w-24">Durum</th>
+                    <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3 w-28">Giriş Saati</th>
+                    <th className="px-4 py-3 w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -496,11 +496,11 @@ function AracGelis({ user }: { user: any }) {
                       (v.arrived_at ? "bg-emerald-950/10 " : "") +
                       (multiMatchIds.has(v.id) ? "ring-1 ring-inset ring-amber-500/40 bg-amber-950/10" : "")
                     }>
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-3.5 overflow-hidden">
                         <span className="text-white font-mono font-semibold">{v.plate}</span>
                         {v.notes && <span className="ml-2 text-zinc-600 text-xs">{v.notes}</span>}
-                        {v.driver_name && <div className="text-zinc-500 text-xs mt-0.5">Şöför: {v.driver_name}</div>}
-                        {v.route_name && <div className="text-emerald-600 text-xs mt-0.5">{v.route_name}</div>}
+                        {v.driver_name && <div className="text-zinc-500 text-xs mt-0.5 truncate">Şöför: {v.driver_name}</div>}
+                        {v.route_name && <div className="text-emerald-600 text-xs mt-0.5 truncate" title={v.route_name}>{v.route_name}</div>}
                       </td>
                       <td className="px-4 py-3.5">
                         {v.arrived_at ? (
@@ -733,15 +733,15 @@ function SeferKontrol({ user }: { user: any }) {
         </div>
       ) : (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
-          <table className="w-full min-w-[560px]">
+          <table className="w-full min-w-[560px] table-fixed">
             <thead>
               <tr className="border-b border-zinc-800">
                 <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Güzergah</th>
-                <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Planlanan</th>
-                <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Gerçekleşen</th>
-                <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Yolcu</th>
-                <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Durum</th>
-                {canManage && <th className="px-4 py-3 w-12"></th>}
+                <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3 w-24">Planlanan</th>
+                <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3 w-28">Gerçekleşen</th>
+                <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3 w-16">Yolcu</th>
+                <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3 w-24">Durum</th>
+                {canManage && <th className="px-4 py-3 w-16"></th>}
               </tr>
             </thead>
             <tbody>
@@ -749,9 +749,9 @@ function SeferKontrol({ user }: { user: any }) {
                 const st = STATUS_LABELS[ctrl.status_code] || STATUS_LABELS.pending;
                 return (
                   <tr key={ctrl.id} className="border-b border-zinc-800/50 last:border-0 hover:bg-zinc-800/20 transition-colors">
-                    <td className="px-4 py-3.5">
-                      <p className="text-white text-sm font-medium">{ctrl.route_name || "—"}</p>
-                      {ctrl.route_code && <p className="text-zinc-600 text-xs font-mono">{ctrl.route_code}</p>}
+                    <td className="px-4 py-3.5 overflow-hidden">
+                      <p className="text-white text-sm font-medium truncate" title={ctrl.route_name || ""}>{ctrl.route_name || "—"}</p>
+                      {ctrl.route_code && <p className="text-zinc-600 text-xs font-mono truncate">{ctrl.route_code}</p>}
                     </td>
                     <td className="px-4 py-3.5 text-zinc-300 text-sm tabular-nums">{ctrl.planned_time || "—"}</td>
                     <td className="px-4 py-3.5">
