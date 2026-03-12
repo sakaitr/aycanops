@@ -85,13 +85,16 @@ export async function GET(request: NextRequest) {
         .all();
       filename = "ticket_export.csv";
     } else if (type === "giris-kontrol") {
-      const company_id = searchParams.get("company_id");
+      const company_ids = searchParams.getAll("company_id");
       const date_from = searchParams.get("date_from");
       const date_to = searchParams.get("date_to");
 
       const params: string[] = [];
       let where = "";
-      if (company_id) { where += " AND va.company_id = ?"; params.push(company_id); }
+      if (company_ids.length > 0) {
+        where += ` AND va.company_id IN (${company_ids.map(() => "?").join(",")})`;
+        params.push(...company_ids);
+      }
       if (date_from)  { where += " AND va.arrival_date >= ?"; params.push(date_from); }
       if (date_to)    { where += " AND va.arrival_date <= ?"; params.push(date_to); }
 
@@ -99,6 +102,7 @@ export async function GET(request: NextRequest) {
         SELECT
           c.name                              AS "Firma",
           cv.plate                            AS "Plaka",
+          COALESCE(r.name, '')                AS "Güzergah",
           COALESCE(cv.driver_name, '')        AS "Şöför",
           COALESCE(cv.notes, '')              AS "Notlar",
           va.arrival_date                     AS "Tarih",
@@ -109,6 +113,7 @@ export async function GET(request: NextRequest) {
         FROM vehicle_arrivals va
         JOIN company_vehicles cv ON cv.id = va.vehicle_id
         JOIN companies c         ON c.id  = va.company_id
+        LEFT JOIN routes r       ON r.id  = cv.route_id
         LEFT JOIN users u        ON u.id  = va.recorded_by
         WHERE 1=1 ${where}
         ORDER BY va.arrived_at DESC
@@ -122,10 +127,9 @@ export async function GET(request: NextRequest) {
       }
       const buf = await wb.xlsx.writeBuffer();
 
-      const companyRow = company_id
-        ? (await db.prepare("SELECT name FROM companies WHERE id = ?").get(company_id) as any)
-        : null;
-      const safeName = (companyRow?.name || "tum_firmalar").replace(/[^a-zA-Z0-9_\-]/g, "_");
+      const safeName = company_ids.length === 1
+        ? ((await db.prepare("SELECT name FROM companies WHERE id = ?").get(company_ids[0]) as any)?.name || "firma").replace(/[^a-zA-Z0-9_\-]/g, "_")
+        : company_ids.length > 1 ? "secili_firmalar" : "tum_firmalar";
       const fileDate  = date_from || new Date().toISOString().split("T")[0];
       const xlsxFilename = `giris_kontrol_${safeName}_${fileDate}.xlsx`;
 

@@ -21,7 +21,7 @@ export default function RaporlarPage() {
 
   // Giriş Kontrol Raporu state
   const [companies, setCompanies] = useState<any[]>([]);
-  const [gcCompany, setGcCompany] = useState("");
+  const [gcCompanies, setGcCompanies] = useState<string[]>([]);
   const [gcDateFrom, setGcDateFrom] = useState(() => new Date().toISOString().split("T")[0]);
   const [gcDateTo, setGcDateTo] = useState(() => new Date().toISOString().split("T")[0]);
   const [gcRows, setGcRows] = useState<any[]>([]);
@@ -69,7 +69,7 @@ export default function RaporlarPage() {
     setGcSearched(true);
     try {
       const params = new URLSearchParams();
-      if (gcCompany) params.set("company_id", gcCompany);
+      gcCompanies.forEach(id => params.append("company_id", id));
       if (gcDateFrom) params.set("date_from", gcDateFrom);
       if (gcDateTo)   params.set("date_to",   gcDateTo);
       const res = await fetch(`/api/reports/giris-kontrol?${params.toString()}`);
@@ -82,9 +82,9 @@ export default function RaporlarPage() {
 
   function buildExportUrl() {
     const params = new URLSearchParams({ type: "giris-kontrol" });
-    if (gcCompany)  params.set("company_id", gcCompany);
-    if (gcDateFrom) params.set("date_from",  gcDateFrom);
-    if (gcDateTo)   params.set("date_to",    gcDateTo);
+    gcCompanies.forEach(id => params.append("company_id", id));
+    if (gcDateFrom) params.set("date_from", gcDateFrom);
+    if (gcDateTo)   params.set("date_to",   gcDateTo);
     return `/api/reports/export?${params.toString()}`;
   }
 
@@ -282,17 +282,31 @@ export default function RaporlarPage() {
               <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-4">Filtreler</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs text-zinc-500 mb-1">Firma</label>
-                  <select
-                    value={gcCompany}
-                    onChange={e => setGcCompany(e.target.value)}
-                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500"
-                  >
-                    <option value="">Tüm Firmalar</option>
-                    {companies.map((c: any) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs text-zinc-500 mb-1">
+                    Firma {gcCompanies.length > 0 && <span className="text-emerald-500">({gcCompanies.length} seçili)</span>}
+                  </label>
+                  <div className="bg-zinc-800 border border-zinc-700 rounded-lg overflow-y-auto max-h-36">
+                    {companies.map((c: any) => {
+                      const id = String(c.id);
+                      const checked = gcCompanies.includes(id);
+                      return (
+                        <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={e => setGcCompanies(prev => e.target.checked ? [...prev, id] : prev.filter(x => x !== id))}
+                            className="accent-emerald-500 w-3.5 h-3.5 flex-shrink-0"
+                          />
+                          <span className="text-sm text-white truncate">{c.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {gcCompanies.length > 0 && (
+                    <button onClick={() => setGcCompanies([])} className="mt-1 text-xs text-zinc-500 hover:text-zinc-300 underline">
+                      Seçimi temizle
+                    </button>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs text-zinc-500 mb-1">Başlangıç Tarihi</label>
@@ -343,7 +357,7 @@ export default function RaporlarPage() {
                   <table className="w-full text-sm min-w-[700px]">
                     <thead>
                       <tr className="border-b border-zinc-800">
-                        {["Firma", "Plaka", "Tarih", "Giriş Saati", "Kaydeden", "Notlar"].map(h => (
+                        {["Firma", "Plaka", "Güzergah", "Tarih", "Giriş Saati", "Kaydeden", "Notlar"].map(h => (
                           <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
@@ -353,6 +367,7 @@ export default function RaporlarPage() {
                         <tr key={i} className={`border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors ${i === gcRows.length - 1 ? "border-b-0" : ""}`}>
                           <td className="px-4 py-3 text-white font-medium whitespace-nowrap">{row.firma}</td>
                           <td className="px-4 py-3 font-mono text-zinc-200 whitespace-nowrap">{row.plaka}</td>
+                          <td className="px-4 py-3 text-emerald-400 text-xs whitespace-nowrap">{row.guzergah || "—"}</td>
                           <td className="px-4 py-3 text-zinc-400 whitespace-nowrap">{row.tarih}</td>
                           <td className="px-4 py-3 text-zinc-300 whitespace-nowrap">{row.giris_saati}</td>
                           <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">{row.kaydeden || "—"}</td>
