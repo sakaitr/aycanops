@@ -50,7 +50,6 @@ jobs:
       - name: Deploy via lftp (only changed files)
         env:
           FTP_PASS: ${{ secrets.FTP_PASS }}
-          MIGRATIONS_CHANGED: ${{ steps.changes.outputs.migrations }}
           PUBLIC_CHANGED: ${{ steps.changes.outputs.public }}
         run: |
           sudo apt-get install -y lftp -q
@@ -63,11 +62,9 @@ jobs:
           set net:timeout 120
           set net:max-retries 3
           set mirror:parallel-transfer-count 8
-          # --ignore-time: skip files with same size (content-hashed chunks keep same name=same size)
-          # --delete: remove chunks that no longer exist
           mirror -R --delete --ignore-time .next/standalone/.next/ /aycanops.agno.digital/.next/
+          mirror -R --ignore-time .next/standalone/migrations/ /aycanops.agno.digital/migrations/
           $([ "$PUBLIC_CHANGED" = "true" ] && echo 'mirror -R --delete --ignore-time .next/standalone/public/ /aycanops.agno.digital/public/')
-          $([ "$MIGRATIONS_CHANGED" = "true" ] && echo 'mirror -R --delete --ignore-time .next/standalone/migrations/ /aycanops.agno.digital/migrations/')
           put .next/standalone/server.js -o /aycanops.agno.digital/server.js
           put .next/standalone/package.json -o /aycanops.agno.digital/package.json
           bye
