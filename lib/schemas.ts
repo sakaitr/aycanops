@@ -20,7 +20,7 @@ export const companyUpdateSchema = z.object({
 export const companyVehicleCreateSchema = z.object({
   plate: shortStr(20),
   driver_name: z.string().max(100).optional().nullable(),
-  route_id: z.string().max(36).optional().nullable(),
+  route_name: z.string().max(100).optional().nullable(),
   sort_order: z.number().int().min(0).optional().nullable(),
   notes: z.string().max(500).optional().nullable(),
 });

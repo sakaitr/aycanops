@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       SELECT
         c.name                              AS firma,
         cv.plate                            AS plaka,
-        COALESCE(r.name, '')                AS guzergah,
+        COALESCE(cv.route_name, '')         AS guzergah,
         COALESCE(cv.notes, '')              AS notlar,
         va.arrival_date                     AS tarih,
         DATE_FORMAT(DATE_ADD(STR_TO_DATE(SUBSTRING(va.arrived_at, 1, 19), '%Y-%m-%dT%H:%i:%s'), INTERVAL 3 HOUR), '%H:%i') AS giris_saati,
@@ -41,7 +41,6 @@ export async function GET(request: NextRequest) {
       FROM vehicle_arrivals va
       JOIN company_vehicles cv ON cv.id = va.vehicle_id
       JOIN companies c         ON c.id  = va.company_id
-      LEFT JOIN routes r       ON r.id  = cv.route_id
       LEFT JOIN users u        ON u.id  = va.recorded_by
       WHERE 1=1 ${where}
       ORDER BY va.arrived_at DESC

@@ -30,16 +30,14 @@ export async function GET(req: NextRequest) {
         cv.plate,
         cv.notes,
         cv.driver_name,
-        cv.route_id,
+        cv.route_name,
         cv.sort_order,
-        r.name       AS route_name,
         va.id        AS arrival_id,
         va.arrived_at,
         va.latitude,
         va.longitude,
         u.full_name  AS recorded_by_name
       FROM company_vehicles cv
-      LEFT JOIN routes r ON r.id = cv.route_id
       LEFT JOIN vehicle_arrivals va ON va.vehicle_id = cv.id AND va.arrival_date = ?
       LEFT JOIN users u ON u.id = va.recorded_by
       WHERE cv.company_id = ? AND cv.is_active = 1

@@ -40,22 +40,15 @@ export async function POST(req: NextRequest) {
     const db = getDb();
     const now = nowIso();
 
-    // Pre-load all routes for name lookup
-    const routeRows = await db.prepare("SELECT id, name FROM routes WHERE is_active = 1").all<{ id: string; name: string }>();
-    const routeMap = new Map<string, string>(routeRows.map(r => [r.name.trim().toLowerCase(), r.id]));
-
     let inserted = 0, skipped = 0, errors: string[] = [];
 
     for (const r of dataRows) {
       const companyName = r[0] ?? "";
       const plate = (r[1] ?? "").toUpperCase();
-      const routeText = r[2] ? r[2] : null;
+      const routeName = r[2] ? r[2].trim() : null;
       const driverName = r[3] ? r[3] : null;
       if (!plate) { skipped++; continue; }
       if (!companyName) { skipped++; continue; }
-
-      // Resolve route_id from route name (case-insensitive)
-      const routeId = routeText ? (routeMap.get(routeText.toLowerCase()) ?? null) : null;
 
       // 1. Ensure plate exists in master vehicle registry
       await db.prepare(
@@ -81,15 +74,15 @@ export async function POST(req: NextRequest) {
 
       if (!existing) {
         await db.prepare(
-          "INSERT INTO company_vehicles (id, company_id, plate, driver_name, route_id, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)"
-        ).run(uuidv4(), company.id, plate, driverName, routeId, now, now);
+          "INSERT INTO company_vehicles (id, company_id, plate, driver_name, route_name, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)"
+        ).run(uuidv4(), company.id, plate, driverName, routeName, now, now);
         inserted++;
       } else {
         // Always update fields that have a value in Excel; leave others untouched
         const setParts: string[] = ["updated_at = ?"];
         const setValues: any[] = [now];
         if (driverName !== null) { setParts.push("driver_name = ?"); setValues.push(driverName); }
-        if (routeId !== null)    { setParts.push("route_id = ?");    setValues.push(routeId); }
+        if (routeName !== null)  { setParts.push("route_name = ?");  setValues.push(routeName); }
         // Reactivate if was soft-deleted
         setParts.push("is_active = 1");
         await db.prepare(

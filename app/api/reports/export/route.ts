@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
         SELECT
           c.name                              AS "Firma",
           cv.plate                            AS "Plaka",
-          COALESCE(r.name, '')                AS "Güzergah",
+          COALESCE(cv.route_name, '')         AS "Güzergah",
           COALESCE(cv.driver_name, '')        AS "Şöför",
           COALESCE(cv.notes, '')              AS "Notlar",
           va.arrival_date                     AS "Tarih",
@@ -113,7 +113,6 @@ export async function GET(request: NextRequest) {
         FROM vehicle_arrivals va
         JOIN company_vehicles cv ON cv.id = va.vehicle_id
         JOIN companies c         ON c.id  = va.company_id
-        LEFT JOIN routes r       ON r.id  = cv.route_id
         LEFT JOIN users u        ON u.id  = va.recorded_by
         WHERE 1=1 ${where}
         ORDER BY va.arrived_at DESC

@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const db = getDb();
     const data = await db.prepare(
-      "SELECT cv.*, r.name AS route_name FROM company_vehicles cv LEFT JOIN routes r ON r.id = cv.route_id WHERE cv.company_id = ? AND cv.is_active = 1 ORDER BY cv.sort_order ASC, cv.plate ASC"
+      "SELECT cv.* FROM company_vehicles cv WHERE cv.company_id = ? AND cv.is_active = 1 ORDER BY cv.sort_order ASC, cv.plate ASC"
     ).all(id);
     return NextResponse.json({ ok: true, data });
   } catch {
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const raw = await req.json();
     const parsed = companyVehicleCreateSchema.safeParse(raw);
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
-    const { plate, notes, driver_name, route_id, sort_order } = parsed.data;
+    const { plate, notes, driver_name, route_name, sort_order } = parsed.data;
     const db = getDb();
     const now = nowIso();
     const vid = uuidv4();
@@ -42,8 +42,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       finalSortOrder = maxRow?.next_order ?? 0;
     }
     await db.prepare(
-      "INSERT INTO company_vehicles (id, company_id, plate, driver_name, route_id, sort_order, notes, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)"
-    ).run(vid, id, plate.trim().toUpperCase(), driver_name?.trim() || null, route_id || null, finalSortOrder, notes || null, now, now);
+      "INSERT INTO company_vehicles (id, company_id, plate, driver_name, route_name, sort_order, notes, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)"
+    ).run(vid, id, plate.trim().toUpperCase(), driver_name?.trim() || null, route_name?.trim() || null, finalSortOrder, notes || null, now, now);
     return NextResponse.json({ ok: true, data: { id: vid } });
   } catch (e: any) {
     if (e?.message?.includes("UNIQUE")) return NextResponse.json({ ok: false, error: "Bu plaka bu firmada zaten kayıtlı" }, { status: 409 });
@@ -61,13 +61,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const url = new URL(req.url);
     const vehicleId = url.searchParams.get("vehicleId");
     if (!vehicleId) return NextResponse.json({ ok: false, error: "vehicleId gerekli" }, { status: 400 });
-    const { plate, driver_name, notes, route_id } = await req.json();
+    const { plate, driver_name, notes, route_name } = await req.json();
     if (!plate?.trim()) return NextResponse.json({ ok: false, error: "Plaka zorunlu" }, { status: 400 });
     const db = getDb();
     const now = nowIso();
     const result = await db.prepare(
-      "UPDATE company_vehicles SET plate = ?, driver_name = ?, route_id = ?, notes = ?, updated_at = ? WHERE id = ? AND company_id = ?"
-    ).run(plate.trim().toUpperCase(), driver_name?.trim() || null, route_id || null, notes?.trim() || null, now, vehicleId, id);
+      "UPDATE company_vehicles SET plate = ?, driver_name = ?, route_name = ?, notes = ?, updated_at = ? WHERE id = ? AND company_id = ?"
+    ).run(plate.trim().toUpperCase(), driver_name?.trim() || null, route_name?.trim() || null, notes?.trim() || null, now, vehicleId, id);
     if (result.affectedRows === 0) return NextResponse.json({ ok: false, error: "Araç bulunamadı" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (e: any) {

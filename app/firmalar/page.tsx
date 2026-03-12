@@ -15,17 +15,11 @@ export default function FirmalarPage() {
   const [companyForm, setCompanyForm] = useState({ name: "", notes: "" });
   const [savingCompany, setSavingCompany] = useState(false);
 
-  // Routes for dropdown
-  const [routes, setRoutes] = useState<any[]>([]);
-  useEffect(() => {
-    fetch("/api/routes").then(r => r.json()).then(d => { if (d.ok) setRoutes(d.data.filter((r: any) => r.is_active)); }).catch(() => {});
-  }, []);
-
   // Add vehicle
   const [addVehicleFor, setAddVehicleFor] = useState<string | null>(null);
   const [plateInput, setPlateInput] = useState("");
   const [driverNameInput, setDriverNameInput] = useState("");
-  const [routeIdInput, setRouteIdInput] = useState("");
+  const [routeNameInput, setRouteNameInput] = useState("");
   const [savingVehicle, setSavingVehicle] = useState(false);
 
   // Excel upload
@@ -40,7 +34,7 @@ export default function FirmalarPage() {
 
   // Edit vehicle
   const [editVehicle, setEditVehicle] = useState<{ companyId: string; vehicle: any } | null>(null);
-  const [editVehicleForm, setEditVehicleForm] = useState({ plate: "", driver_name: "", route_id: "", notes: "" });
+  const [editVehicleForm, setEditVehicleForm] = useState({ plate: "", driver_name: "", route_name: "", notes: "" });
   const [savingEditVehicle, setSavingEditVehicle] = useState(false);
 
   // Vehicle history
@@ -107,10 +101,10 @@ export default function FirmalarPage() {
     try {
       const r = await fetch(`/api/companies/${companyId}/vehicles`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plate: plateInput, driver_name: driverNameInput.trim() || undefined, route_id: routeIdInput || undefined }),
+        body: JSON.stringify({ plate: plateInput, driver_name: driverNameInput.trim() || undefined, route_name: routeNameInput.trim() || undefined }),
       });
       const d = await r.json();
-      if (d.ok) { setAddVehicleFor(null); setPlateInput(""); setDriverNameInput(""); setRouteIdInput(""); loadVehicles(companyId); loadCompanies(); }
+      if (d.ok) { setAddVehicleFor(null); setPlateInput(""); setDriverNameInput(""); setRouteNameInput(""); loadVehicles(companyId); loadCompanies(); }
       else alert(d.error);
     } finally { setSavingVehicle(false); }
   }
@@ -133,7 +127,7 @@ export default function FirmalarPage() {
     if (!editVehicle || !editVehicleForm.plate.trim()) return;
     setSavingEditVehicle(true);
     try {
-      const payload = { plate: editVehicleForm.plate, driver_name: editVehicleForm.driver_name, route_id: editVehicleForm.route_id || null, notes: editVehicleForm.notes };
+      const payload = { plate: editVehicleForm.plate, driver_name: editVehicleForm.driver_name, route_name: editVehicleForm.route_name || null, notes: editVehicleForm.notes };
       const r = await fetch(
         `/api/companies/${editVehicle.companyId}/vehicles?vehicleId=${editVehicle.vehicle.id}`,
         { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
@@ -255,7 +249,7 @@ export default function FirmalarPage() {
                             <div className="flex items-center gap-2 shrink-0">
                               {(user?.role === "yonetici" || user?.role === "admin") && (
                                 <button
-                                  onClick={() => { setEditVehicle({ companyId: c.id, vehicle: v }); setEditVehicleForm({ plate: v.plate, driver_name: v.driver_name || "", route_id: v.route_id || "", notes: v.notes || "" }); }}
+                                  onClick={() => { setEditVehicle({ companyId: c.id, vehicle: v }); setEditVehicleForm({ plate: v.plate, driver_name: v.driver_name || "", route_name: v.route_name || "", notes: v.notes || "" }); }}
                                   className="text-zinc-500 hover:text-white text-xs transition-colors"
                                   title="Düzenle"
                                 >Düzenle</button>
@@ -296,20 +290,18 @@ export default function FirmalarPage() {
                           placeholder="Şöför adı (opsiyonel)"
                           className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500"
                         />
-                        <select
-                          value={routeIdInput}
-                          onChange={e => setRouteIdInput(e.target.value)}
+                        <input
+                          value={routeNameInput}
+                          onChange={e => setRouteNameInput(e.target.value)}
+                          placeholder="Güzergah (opsiyonel)"
                           className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500"
-                        >
-                          <option value="">Güzergah seç (opsiyonel)</option>
-                          {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                        </select>
+                        />
                         <div className="flex gap-2">
                           <button onClick={() => saveVehicle(c.id)} disabled={savingVehicle || !plateInput.trim()}
                             className="bg-white text-zinc-950 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-zinc-200 disabled:opacity-50 transition-colors">
                             {savingVehicle ? "Ekleniyor..." : "Ekle"}
                           </button>
-                          <button onClick={() => { setAddVehicleFor(null); setPlateInput(""); setDriverNameInput(""); setRouteIdInput(""); }} className="text-zinc-500 hover:text-white px-3 py-2 rounded-lg border border-zinc-700 text-sm transition-colors">İptal</button>
+                          <button onClick={() => { setAddVehicleFor(null); setPlateInput(""); setDriverNameInput(""); setRouteNameInput(""); }} className="text-zinc-500 hover:text-white px-3 py-2 rounded-lg border border-zinc-700 text-sm transition-colors">İptal</button>
                         </div>
                       </div>
                     ) : (
@@ -465,14 +457,12 @@ export default function FirmalarPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Güzergah</label>
-                <select
-                  value={editVehicleForm.route_id}
-                  onChange={e => setEditVehicleForm(f => ({ ...f, route_id: e.target.value }))}
+                <input
+                  value={editVehicleForm.route_name}
+                  onChange={e => setEditVehicleForm(f => ({ ...f, route_name: e.target.value }))}
+                  placeholder="Opsiyonel"
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500"
-                >
-                  <option value="">Seçilmedi</option>
-                  {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Not</label>
