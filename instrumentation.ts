@@ -6,10 +6,9 @@ export async function register() {
         throw new Error(`[startup] Eksik zorunlu ortam değişkeni: ${key}`);
       }
     }
-    const path = await import("path");
     const { runMigrations } = await import("./lib/migrate");
     try {
-      await runMigrations(path.join(process.cwd(), "migrations"));
+      await runMigrations(process.cwd());
     } catch (e) {
       // Migration hatası uygulamayı çöktürmesin — log'a düşsün, çalışmaya devam etsin
       console.error("[startup] Migration hatası (uygulama yine de başlatılıyor):", e);
