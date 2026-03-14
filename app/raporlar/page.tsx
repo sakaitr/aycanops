@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import StatCard from "@/components/StatCard";
@@ -27,6 +28,8 @@ export default function RaporlarPage() {
   const [gcRows, setGcRows] = useState<any[]>([]);
   const [gcLoading, setGcLoading] = useState(false);
   const [gcSearched, setGcSearched] = useState(false);
+  const [showPrintView, setShowPrintView] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -336,12 +339,20 @@ export default function RaporlarPage() {
                   {gcLoading ? "Getiriliyor..." : "Listele"}
                 </button>
                 {gcSearched && gcRows.length > 0 && (
-                  <a
-                    href={buildExportUrl()}
-                    className="flex items-center gap-2 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
-                  >
-                    <span>↓</span> XLSX İndir ({gcRows.length} kayıt)
-                  </a>
+                  <>
+                    <a
+                      href={buildExportUrl()}
+                      className="flex items-center gap-2 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+                    >
+                      <span>↓</span> XLSX İndir ({gcRows.length} kayıt)
+                    </a>
+                    <button
+                      onClick={() => setShowPrintView(true)}
+                      className="flex items-center gap-2 bg-blue-800 hover:bg-blue-700 text-blue-100 text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+                    >
+                      <span>🖨</span> Yazdır
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -451,6 +462,122 @@ export default function RaporlarPage() {
           </div>
         </div>
       )}
+
+      {/* Print View Overlay */}
+      {showPrintView && (
+        <div className="fixed inset-0 bg-white z-[100] overflow-auto print-report-overlay">
+          {/* Screen-only toolbar */}
+          <div className="no-print sticky top-0 bg-zinc-900 border-b border-zinc-700 px-6 py-3 flex items-center justify-between z-10">
+            <span className="text-white text-sm font-medium">Giriş Kontrol Raporu Önizleme</span>
+            <div className="flex gap-3">
+              <button
+                onClick={() => window.print()}
+                className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+              >
+                🖨 Yazdır
+              </button>
+              <button
+                onClick={() => setShowPrintView(false)}
+                className="bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+              >
+                ✕ Kapat
+              </button>
+            </div>
+          </div>
+
+          <div ref={printRef} className="print-content max-w-[210mm] mx-auto bg-white p-8 text-black">
+            {/* Report Header */}
+            <div className="flex items-center justify-between border-b-2 border-gray-800 pb-4 mb-6">
+              <div className="flex items-center gap-4">
+                <Image src="/icons/icon-96.png" alt="Aycan Turizm" width={56} height={56} className="rounded" />
+                <div>
+                  <h1 className="text-xl font-bold text-gray-900">Aycan Turizm</h1>
+                  <p className="text-sm text-gray-500">Giriş Kontrol Raporu</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-semibold text-gray-800">
+                  {gcDateFrom === gcDateTo
+                    ? new Date(gcDateFrom + "T00:00:00").toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })
+                    : `${new Date(gcDateFrom + "T00:00:00").toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })} – ${new Date(gcDateTo + "T00:00:00").toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}`
+                  }
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">Toplam: {gcRows.length} araç</p>
+              </div>
+            </div>
+
+            {/* Vehicle Table */}
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-700">#</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-700">Plaka</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-700">Güzergah</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-700">Giriş Saati</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-700">Kontrol Yapan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gcRows.map((row: any, i: number) => (
+                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <td className="border border-gray-300 px-3 py-1.5 text-gray-500 text-xs">{i + 1}</td>
+                    <td className="border border-gray-300 px-3 py-1.5 font-mono font-semibold text-gray-800">{row.plaka}</td>
+                    <td className="border border-gray-300 px-3 py-1.5 text-gray-700">{row.guzergah || "—"}</td>
+                    <td className="border border-gray-300 px-3 py-1.5 text-gray-700">{row.giris_saati}</td>
+                    <td className="border border-gray-300 px-3 py-1.5 text-gray-700">{row.kaydeden || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Footer */}
+            <div className="mt-8 pt-4 border-t-2 border-gray-800">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold text-gray-800">Aycan Turizm Taşımacılık</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Personel ve Servis Taşımacılığı</p>
+                </div>
+                <div className="text-right text-xs text-gray-400">
+                  <p>Bu rapor Aycan OPS sistemi tarafından oluşturulmuştur.</p>
+                  <p>Oluşturulma: {new Date().toLocaleDateString("tr-TR")} {new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print Styles */}
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          .print-report-overlay,
+          .print-report-overlay * {
+            visibility: visible !important;
+          }
+          .print-report-overlay {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            background: white !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .print-content {
+            max-width: 100% !important;
+            padding: 10mm !important;
+            margin: 0 !important;
+          }
+          @page {
+            size: A4;
+            margin: 10mm;
+          }
+        }
+      `}</style>
     </div>
   );
 }
