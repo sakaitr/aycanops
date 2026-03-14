@@ -83,11 +83,12 @@ export default function RaporlarPage() {
     }
   }
 
-  function buildExportUrl() {
+  function buildExportUrl(format: "xlsx" | "pdf" = "xlsx") {
     const params = new URLSearchParams({ type: "giris-kontrol" });
     gcCompanies.forEach(id => params.append("company_id", id));
     if (gcDateFrom) params.set("date_from", gcDateFrom);
     if (gcDateTo)   params.set("date_to",   gcDateTo);
+    params.set("format", format);
     return `/api/reports/export?${params.toString()}`;
   }
 
@@ -202,21 +203,33 @@ export default function RaporlarPage() {
               <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-4">Veri Dışa Aktarma</p>
               <div className="space-y-2">
                 {[
-                  { href: "/api/reports/export?type=ticket", label: "Sorun Raporu", desc: "Tüm sorunları CSV olarak indir" },
-                  { href: "/api/reports/export?type=worklog", label: "Günlük Raporu", desc: "Tüm iş günlüklerini CSV olarak indir" },
-                  { href: "/api/reports/export?type=todo", label: "Görev Raporu", desc: "Tüm görevleri CSV olarak indir" },
+                  { type: "ticket", label: "Sorun Raporu", desc: "Tüm sorunlar" },
+                  { type: "worklog", label: "Günlük Raporu", desc: "Tüm iş günlükleri" },
+                  { type: "todo", label: "Görev Raporu", desc: "Tüm görevler" },
                 ].map(item => (
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    className="flex items-center justify-between px-4 py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg transition-colors group"
+                  <div
+                    key={item.type}
+                    className="flex items-center justify-between px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg"
                   >
                     <div>
-                      <p className="text-white text-sm font-medium group-hover:text-white">{item.label}</p>
+                      <p className="text-white text-sm font-medium">{item.label}</p>
                       <p className="text-zinc-500 text-xs mt-0.5">{item.desc}</p>
                     </div>
-                    <span className="text-zinc-500 group-hover:text-white text-sm">↓</span>
-                  </a>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`/api/reports/export?type=${item.type}&format=xlsx`}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-md bg-emerald-800 hover:bg-emerald-700 text-emerald-100 transition-colors"
+                      >
+                        XLSX
+                      </a>
+                      <a
+                        href={`/api/reports/export?type=${item.type}&format=pdf`}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-md bg-blue-800 hover:bg-blue-700 text-blue-100 transition-colors"
+                      >
+                        PDF
+                      </a>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -341,10 +354,16 @@ export default function RaporlarPage() {
                 {gcSearched && gcRows.length > 0 && (
                   <>
                     <a
-                      href={buildExportUrl()}
+                      href={buildExportUrl("xlsx")}
                       className="flex items-center gap-2 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
                     >
                       <span>↓</span> XLSX İndir ({gcRows.length} kayıt)
+                    </a>
+                    <a
+                      href={buildExportUrl("pdf")}
+                      className="flex items-center gap-2 bg-blue-800 hover:bg-blue-700 text-blue-100 text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+                    >
+                      <span>↓</span> PDF İndir
                     </a>
                     <button
                       onClick={() => setShowPrintView(true)}
