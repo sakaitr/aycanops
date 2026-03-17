@@ -180,7 +180,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!isAtLeast(user.role, "yonetici")) {
+    if (!isAtLeast(user.role, "yetkili")) {
       return NextResponse.json(
         { ok: false, error: "Yetersiz yetki" },
         { status: 403 }

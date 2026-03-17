@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     if (!user)
       return NextResponse.json({ ok: false, error: "Yetkisiz erişim" }, { status: 401 });
 
-    if (!isAtLeast(user.role, "yonetici"))
+    if (!isAtLeast(user.role, "yetkili"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { searchParams } = new URL(request.url);
