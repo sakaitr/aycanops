@@ -146,6 +146,7 @@ export default function MasrafTalebiPage() {
 
   const canCreate = hasPermission(user, "finans_masraf_talebi:create");
   const canApprove = hasPermission(user, "finans_masraf_talebi:approve");
+  const canReject = hasPermission(user, "finans_masraf_talebi:reject");
 
   return (
     <>
@@ -182,7 +183,8 @@ export default function MasrafTalebiPage() {
           ) : (
             <div className="space-y-2">
               {rows.map(row => {
-                const showActions = canApprove && row.talep_eden_user_id !== user?.id && row.durum === "bekliyor";
+                const isOwnPending = row.talep_eden_user_id !== user?.id && row.durum === "bekliyor";
+                const showActions = (canApprove || canReject) && isOwnPending;
                 return (
                   <div key={row.id} className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 transition-colors">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -199,14 +201,18 @@ export default function MasrafTalebiPage() {
                       </p>
                       {showActions && (
                         <div className="flex gap-2 shrink-0">
-                          <button onClick={() => onayla(row)} disabled={actingId === row.id}
-                            className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-950 text-emerald-300 hover:bg-emerald-900 disabled:opacity-50 transition-colors">
-                            Onayla
-                          </button>
-                          <button onClick={() => reddet(row)} disabled={actingId === row.id}
-                            className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-950 text-red-300 hover:bg-red-900 disabled:opacity-50 transition-colors">
-                            Reddet
-                          </button>
+                          {canApprove && (
+                            <button onClick={() => onayla(row)} disabled={actingId === row.id}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-950 text-emerald-300 hover:bg-emerald-900 disabled:opacity-50 transition-colors">
+                              Onayla
+                            </button>
+                          )}
+                          {canReject && (
+                            <button onClick={() => reddet(row)} disabled={actingId === row.id}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-950 text-red-300 hover:bg-red-900 disabled:opacity-50 transition-colors">
+                              Reddet
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

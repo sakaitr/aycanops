@@ -43,6 +43,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     const d = parsed.data;
     const now = nowIso();
+    // brut_tutar istemciden gelen değer değil, her zaman net+vergi olarak
+    // sunucuda yeniden hesaplanır — istemcinin tutarsız bir brüt göndermesini engeller.
+    const vergiTutari = d.vergi_tutari ?? 0;
+    const brutTutar = d.net_tutar + vergiTutari;
     await db.prepare(
       `UPDATE finans_gelir_gider SET
          tur = ?, belge_tarihi = ?, tahakkuk_tarihi = ?, vade_tarihi = ?, cari_tip = ?, cari_id = ?,
@@ -51,7 +55,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
        WHERE id = ?`
     ).run(
       d.tur, d.belge_tarihi, d.tahakkuk_tarihi || null, d.vade_tarihi || null, d.cari_tip || null, d.cari_id || null,
-      d.kategori_id || null, d.net_tutar, d.vergi_tutari ?? 0, d.brut_tutar, d.para_birimi_kod || "TRY", d.kur ?? 1,
+      d.kategori_id || null, d.net_tutar, vergiTutari, brutTutar, d.para_birimi_kod || "TRY", d.kur ?? 1,
       d.company_id || null, d.department_id || null, d.proje_id || null, d.masraf_merkezi_id || null,
       d.aciklama || null, now, id
     );

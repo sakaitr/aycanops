@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     if (!hasPermission(user, "finans_masraf_talebi:read"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
-    const canApprove = hasPermission(user, "finans_masraf_talebi:approve");
+    const canApprove = hasPermission(user, "finans_masraf_talebi:approve") || hasPermission(user, "finans_masraf_talebi:reject");
     const { searchParams } = new URL(req.url);
     const durum = searchParams.get("durum");
 

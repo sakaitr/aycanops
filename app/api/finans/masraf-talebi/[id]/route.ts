@@ -21,14 +21,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (existing.durum !== "bekliyor")
       return NextResponse.json({ ok: false, error: "Bu talep zaten sonuçlandırılmış" }, { status: 400 });
 
-    if (!hasPermission(user, "finans_masraf_talebi:approve"))
-      return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
     if (existing.talep_eden_user_id === user.id)
       return NextResponse.json({ ok: false, error: "Kendi talebinizi onaylayamazsınız" }, { status: 403 });
 
     const now = nowIso();
 
     if (raw.action === "reddet") {
+      if (!hasPermission(user, "finans_masraf_talebi:reject"))
+        return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
       if (!raw.red_nedeni?.trim())
         return NextResponse.json({ ok: false, error: "Red nedeni zorunludur" }, { status: 400 });
       await db.prepare(
@@ -43,6 +43,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     if (raw.action === "onayla") {
+      if (!hasPermission(user, "finans_masraf_talebi:approve"))
+        return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
       const ggId = uuidv4();
       await db.prepare(
         `INSERT INTO finans_gelir_gider

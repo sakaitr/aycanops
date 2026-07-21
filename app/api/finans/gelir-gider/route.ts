@@ -64,6 +64,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: false, error: "Bu firmaya erişim yetkiniz yok" }, { status: 403 });
     }
 
+    // brut_tutar istemciden gelen değer değil, her zaman net+vergi olarak
+    // sunucuda yeniden hesaplanır — istemcinin tutarsız bir brüt göndermesini engeller.
+    const vergiTutari = d.vergi_tutari ?? 0;
+    const brutTutar = d.net_tutar + vergiTutari;
+
     const db = getDb();
     const id = uuidv4();
     const now = nowIso();
@@ -77,7 +82,7 @@ export async function POST(req: NextRequest) {
     ).run(
       id, d.tur, d.belge_tarihi, now, d.tahakkuk_tarihi || null, d.vade_tarihi || null,
       d.cari_tip || null, d.cari_id || null, d.kategori_id || null,
-      d.net_tutar, d.vergi_tutari ?? 0, d.brut_tutar, d.para_birimi_kod || "TRY", d.kur ?? 1,
+      d.net_tutar, vergiTutari, brutTutar, d.para_birimi_kod || "TRY", d.kur ?? 1,
       d.company_id || null, d.department_id || null, d.proje_id || null, d.masraf_merkezi_id || null,
       d.aciklama || null, d.etiketler ? JSON.stringify(d.etiketler) : null,
       user.id, now, now
