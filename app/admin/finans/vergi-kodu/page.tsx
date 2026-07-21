@@ -12,6 +12,16 @@ function formatDate(d: string | null | undefined) {
 
 const EMPTY_FORM = { ad: "", oran: "", gecerlilik_baslangic: "", gecerlilik_bitis: "" };
 
+function toDateInputValue(v: unknown): string {
+  if (!v) return "";
+  const d = v instanceof Date ? v : new Date(v as string);
+  if (Number.isNaN(d.getTime())) return typeof v === "string" ? v.slice(0, 10) : "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function VergiKoduPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -45,8 +55,8 @@ export default function VergiKoduPage() {
     setForm({
       ad: row.ad,
       oran: String(row.oran),
-      gecerlilik_baslangic: row.gecerlilik_baslangic ? String(row.gecerlilik_baslangic).slice(0, 10) : "",
-      gecerlilik_bitis: row.gecerlilik_bitis ? String(row.gecerlilik_bitis).slice(0, 10) : "",
+      gecerlilik_baslangic: toDateInputValue(row.gecerlilik_baslangic),
+      gecerlilik_bitis: toDateInputValue(row.gecerlilik_bitis),
     });
     setSaveError(null); setShowForm(true);
   }

@@ -16,6 +16,16 @@ const DURUM_BADGE_CLASS: Record<string, string> = {
 };
 const EMPTY_FORM = { ad: "", kod: "", company_id: "", baslangic_tarihi: "", bitis_tarihi: "", durum: "aktif" };
 
+function toDateInputValue(v: unknown): string {
+  if (!v) return "";
+  const d = v instanceof Date ? v : new Date(v as string);
+  if (Number.isNaN(d.getTime())) return typeof v === "string" ? v.slice(0, 10) : "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function ProjePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -52,8 +62,8 @@ export default function ProjePage() {
       ad: row.ad,
       kod: row.kod || "",
       company_id: row.company_id || "",
-      baslangic_tarihi: row.baslangic_tarihi ? String(row.baslangic_tarihi).slice(0, 10) : "",
-      bitis_tarihi: row.bitis_tarihi ? String(row.bitis_tarihi).slice(0, 10) : "",
+      baslangic_tarihi: toDateInputValue(row.baslangic_tarihi),
+      bitis_tarihi: toDateInputValue(row.bitis_tarihi),
       durum: row.durum || "aktif",
     });
     setSaveError(null); setShowForm(true);
