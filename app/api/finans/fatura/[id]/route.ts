@@ -19,9 +19,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const raw = await req.json();
     const db = getDb();
-    const existing = await db.prepare(`SELECT id, durum FROM finans_fatura WHERE id = ?`).get(id) as
-      { id: string; durum: string } | undefined;
+    const existing = await db.prepare(`SELECT id, durum, cari_tip, cari_id FROM finans_fatura WHERE id = ?`).get(id) as
+      { id: string; durum: string; cari_tip: string; cari_id: string } | undefined;
     if (!existing) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
+
+    // finans_fatura'da company_id kolonu yok — cari_tip='musteri' kayıtlarında
+    // cari_id bir companies.id'dir ve firma kısıtlaması buradan uygulanır.
+    // cari_tip='tedarikci' kayıtları (GET'teki ilkeyle tutarlı olarak)
+    // kısıtlamaya tabi değildir.
+    if (existing.cari_tip === "musteri" && user.allowed_companies) {
+      const allowed: string[] = JSON.parse(user.allowed_companies);
+      if (!allowed.includes(existing.cari_id))
+        return NextResponse.json({ ok: false, error: "Bu firmaya erişim yetkiniz yok" }, { status: 403 });
+    }
 
     // Durum makinesi: taslak → onay_bekliyor → onaylandı/iptal. Bu fazda
     // onaylama tek adımlı işler (Faz 1'in dört-göz kuralı burada uygulanmaz —
@@ -86,8 +96,14 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
     const { id } = await params;
     const db = getDb();
-    const existing = await db.prepare(`SELECT durum FROM finans_fatura WHERE id = ?`).get(id) as { durum: string } | undefined;
+    const existing = await db.prepare(`SELECT durum, cari_tip, cari_id FROM finans_fatura WHERE id = ?`).get(id) as
+      { durum: string; cari_tip: string; cari_id: string } | undefined;
     if (!existing) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
+    if (existing.cari_tip === "musteri" && user.allowed_companies) {
+      const allowed: string[] = JSON.parse(user.allowed_companies);
+      if (!allowed.includes(existing.cari_id))
+        return NextResponse.json({ ok: false, error: "Bu firmaya erişim yetkiniz yok" }, { status: 403 });
+    }
     if (existing.durum !== "taslak")
       return NextResponse.json({ ok: false, error: "Onaylanmış veya iptal edilmiş fatura silinemez" }, { status: 400 });
 

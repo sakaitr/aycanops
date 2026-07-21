@@ -21,6 +21,17 @@ export async function GET(req: NextRequest) {
     const params: unknown[] = [];
     if (tur) { conditions.push("f.tur = ?"); params.push(tur); }
     if (durum) { conditions.push("f.durum = ?"); params.push(durum); }
+    if (user.allowed_companies) {
+      const allowed: string[] = JSON.parse(user.allowed_companies);
+      if (allowed.length === 0) return NextResponse.json({ ok: true, data: [] });
+      // finans_fatura'da company_id kolonu yok — cari_tip='musteri' olan
+      // kayıtlarda cari_id bir companies.id'dir ve buradan sınırlandırılır.
+      // cari_tip='tedarikci' kayıtları (tedarikçi tarafı) bu repodaki
+      // yerleşik ilkeye göre (Faz1 incelemesinde teyit edildi) firma
+      // kısıtlamasına tabi değildir.
+      conditions.push(`(f.cari_tip = 'tedarikci' OR (f.cari_tip = 'musteri' AND f.cari_id IN (${allowed.map(() => "?").join(",")})))`);
+      params.push(...allowed);
+    }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const db = getDb();
@@ -88,30 +99,32 @@ export async function POST(req: NextRequest) {
 
     const id = uuidv4();
     const now = nowIso();
-    await db.prepare(
-      `INSERT INTO finans_fatura
-         (id, tur, durum, belge_turu_id, cari_tip, cari_id, tarih, vade_tarihi,
-          para_birimi_kod, kur, ara_toplam, vergi_toplam, genel_toplam, odeme_durumu,
-          iliskili_fatura_id, aciklama, created_by, created_at, updated_at)
-       VALUES (?, ?, 'taslak', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'odenmedi', ?, ?, ?, ?, ?)`
-    ).run(
-      id, d.tur, d.belge_turu_id || null, d.cari_tip, d.cari_id, d.tarih, d.vade_tarihi || null,
-      d.para_birimi_kod || "TRY", d.kur ?? 1, araToplam, vergiToplam, genelToplam,
-      d.iliskili_fatura_id || null, d.aciklama || null, user.id, now, now
-    );
-
-    for (const k of d.kalemler) {
-      const kalemTutar = k.miktar * k.birim_fiyat;
-      await db.prepare(
-        `INSERT INTO finans_fatura_kalemi
-           (id, fatura_id, urun_hizmet_adi, miktar, birim_fiyat, vergi_kodu_id, tutar,
-            masraf_merkezi_id, proje_id, department_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        uuidv4(), id, k.urun_hizmet_adi, k.miktar, k.birim_fiyat, k.vergi_kodu_id || null,
-        kalemTutar, k.masraf_merkezi_id || null, k.proje_id || null, k.department_id || null
+    // Başlık ve kalem eklemeleri tek transaction içinde yapılır — aradaki bir
+    // kalem insert'i başarısız olursa fatura başlığı yetim (kalemsiz) kalmaz.
+    await db.transaction(async (conn) => {
+      await conn.execute(
+        `INSERT INTO finans_fatura
+           (id, tur, durum, belge_turu_id, cari_tip, cari_id, tarih, vade_tarihi,
+            para_birimi_kod, kur, ara_toplam, vergi_toplam, genel_toplam, odeme_durumu,
+            iliskili_fatura_id, aciklama, created_by, created_at, updated_at)
+         VALUES (?, ?, 'taslak', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'odenmedi', ?, ?, ?, ?, ?)`,
+        [id, d.tur, d.belge_turu_id || null, d.cari_tip, d.cari_id, d.tarih, d.vade_tarihi || null,
+         d.para_birimi_kod || "TRY", d.kur ?? 1, araToplam, vergiToplam, genelToplam,
+         d.iliskili_fatura_id || null, d.aciklama || null, user.id, now, now]
       );
-    }
+
+      for (const k of d.kalemler) {
+        const kalemTutar = k.miktar * k.birim_fiyat;
+        await conn.execute(
+          `INSERT INTO finans_fatura_kalemi
+             (id, fatura_id, urun_hizmet_adi, miktar, birim_fiyat, vergi_kodu_id, tutar,
+              masraf_merkezi_id, proje_id, department_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [uuidv4(), id, k.urun_hizmet_adi, k.miktar, k.birim_fiyat, k.vergi_kodu_id || null,
+           kalemTutar, k.masraf_merkezi_id || null, k.proje_id || null, k.department_id || null]
+        );
+      }
+    });
 
     return NextResponse.json({ ok: true, data: { id } }, { status: 201 });
   } catch (e) { return apiError(e); }
