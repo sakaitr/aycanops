@@ -75,6 +75,30 @@ kaydı için liste+form sayfası (`/finans/gelir-gider`).
 **Onay:** mevcut `hasPermission` deseniyle, `finans_gelir_gider:approve` — kaydı
 oluşturan kendi kaydını onaylayamaz (Faz 4'te netleşecek dört-göz kuralının ilk hali).
 
+### Masraf talebi (satın alma öncesi onay)
+
+Personelin harcama yapmadan önce talep açtığı ayrı bir akış — "bilgisayarıma X
+alacağım" gibi, henüz para harcanmadan önce onay istenen durumlar. Faz 2'deki
+"fatura/fiş" işlemlerinden farkı: bunlar henüz gerçekleşmemiş, tahmini tutarlı
+taleplerdir; onaylanınca gerçek harcamaya (Faz 2 fiş veya Faz 1 gelir-gider kaydı)
+dönüştürülür.
+
+- `finans_masraf_talebi` — id, talep_eden_user_id, tarih, baslik, aciklama,
+  tahmini_tutar, para_birimi_kod, kategori_id, department_id, proje_id,
+  masraf_merkezi_id, durum (bekliyor/onaylandi/reddedildi/tamamlandi),
+  onaylayan_user_id, onay_tarihi, red_nedeni, iliskili_gelir_gider_id (onaylanıp
+  gerçek harcama girildiğinde bağlanır), created_at, updated_at
+- **Sayfa:** `/finans/masraf-talebi` — personel "+ Talep Oluştur" ile yeni talep
+  açar (başlık, açıklama, tahmini tutar, kategori, gerekirse departman/proje).
+  Kendi taleplerini ve durumlarını görür. Onay yetkisi olanlar (yönetici/admin,
+  `finans_masraf_talebi:approve`) bekleyen talepleri onaylar/reddeder — kaydı
+  oluşturan kendi talebini onaylayamaz.
+- Onaylanan talep otomatik olarak taslak durumda bir `finans_gelir_gider` kaydına
+  dönüşür (tutar hâlâ tahmini, gerçek fiş/fatura geldiğinde güncellenir); reddedilen
+  talep sadece durum+red_nedeni ile kapanır, kayıt oluşturmaz.
+- Bildirim: talep açıldığında onaylayacak role, onaylandığında/reddedildiğinde
+  talep edene bildirim gider (mevcut `notifications` altyapısı kullanılır).
+
 ## Faz 2 — Fatura + Fiş/Belge + Kasa-Banka-Ödeme
 
 **Yeni tablolar:**
