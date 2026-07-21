@@ -56,12 +56,12 @@ gerektirmez.
 - `finans_proje` — id, ad, kod, company_id, başlangıç/bitiş, durum
 - `finans_kasa_banka_hesabi` — id, ad, tip (kasa/banka/kredi kartı/pos), banka_adı,
   iban, para_birimi, açılış_bakiyesi, company_id
-- `finans_para_birimi` — id, kod (TRY/USD/EUR...), ad
-- `finans_kur` — id, para_birimi_kod, tarih, kur (manuel giriş, günlük)
+- `finans_para_birimi` — id, kod (TRY/USD/EUR...), ad (Faz 1'de sadece TRY/USD/EUR
+  seed edilir, salt-okunur kullanılır; günlük kur girişi ve kur farkı Faz 3'e ait —
+  bkz. aşağıda `finans_kur`)
 - `finans_vergi_kodu` — id, ad, oran, geçerlilik_başlangıç/bitiş (tarih aralıklı,
   koda sabit değer gömülmez)
 - `finans_odeme_yontemi` — id, ad (nakit/havale/çek/kredi kartı...)
-- `finans_belge_turu` — id, ad, numara_serisi_prefix, sonraki_numara
 - `finans_gelir_gider` — asıl işlem tablosu: id, tur (gelir/gider), belge_tarihi,
   kayit_tarihi, tahakkuk_tarihi, vade_tarihi, cari_tip (musteri/tedarikci),
   cari_id, kategori_id, net_tutar, vergi_tutari, brut_tutar, para_birimi_kod, kur,
@@ -102,6 +102,8 @@ dönüştürülür.
 ## Faz 2 — Fatura + Fiş/Belge + Kasa-Banka-Ödeme
 
 **Yeni tablolar:**
+- `finans_belge_turu` — id, ad, numara_serisi_prefix, sonraki_numara (Faz 1'den
+  taşındı — ilk gerçek kullanıcısı buradaki `fatura_no` üretimi)
 - `finans_fatura` — id, tur (satis/alis), durum (taslak/onay_bekliyor/onaylandi/
   muhasebelesti/iptal), fatura_no (belge_turu seri), cari_id, tarih, vade_tarihi,
   para_birimi_kod, kur, ara_toplam, vergi_toplam, genel_toplam, odeme_durumu
@@ -140,6 +142,8 @@ hareketleri + CSV import + manuel eşleştirme ekranı).
   `onaylı_bütçe − gerçekleşen − taahhüt_edilen`.
 
 **Tam muhasebe:**
+- `finans_kur` — id, para_birimi_kod, tarih, kur (Faz 1'den taşındı — günlük resmi
+  kur girişi ve kur farkı hesaplaması burada gerçek bir tüketicisine kavuşuyor)
 - `finans_yevmiye` — id, tarih, aciklama, donem_id, kaynak_tip (gelir_gider/fatura/
   fis/manuel), kaynak_id
 - `finans_yevmiye_satiri` — id, yevmiye_id, hesap_id, borc, alacak (her yevmiyede
