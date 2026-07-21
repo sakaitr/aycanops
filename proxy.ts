@@ -3,11 +3,33 @@ import { NextRequest, NextResponse } from "next/server";
 // Public pages & API routes that do not require authentication
 const PUBLIC_PATHS = new Set(["/login", "/api/auth/login"]);
 
+const PUBLIC_FILE_EXTENSIONS = [
+  ".css",
+  ".js",
+  ".mjs",
+  ".map",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".svg",
+  ".ico",
+  ".webp",
+  ".avif",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".txt",
+  ".xml",
+  ".json",
+  ".webmanifest",
+];
+
 // Mutating HTTP methods that require CSRF protection on API routes
 const CSRF_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 // Pages accessible only by the "personel" role
-const PERSONEL_ALLOWED_PATHS = ["/giris-kontrol"];
+const PERSONEL_ALLOWED_PATHS = ["/giris-kontrol", "/yetkisiz", "/finans/masraf-talebi"];
 
 function isAllowedForPersonel(pathname: string): boolean {
   return PERSONEL_ALLOWED_PATHS.some((p) => pathname.startsWith(p));
@@ -19,35 +41,53 @@ export function proxy(request: NextRequest) {
   // ── 1. CSRF protection – mutation methods on /api/ routes ──────────────────
   if (pathname.startsWith("/api/") && CSRF_METHODS.has(request.method)) {
     if (pathname !== "/api/auth/login") {
-      const origin = request.headers.get("origin");
+      const origin = request.headers.get("origin") || request.headers.get("referer");
       const host = request.headers.get("host");
 
-      if (origin) {
-        try {
-          const originHostname = new URL(origin).hostname;
-          const hostHostname = (host || "").split(":")[0];
-          if (originHostname !== hostHostname) {
-            return NextResponse.json(
-              { ok: false, error: "CSRF: geçersiz origin" },
-              { status: 403 }
-            );
-          }
-        } catch {
+      if (!origin) {
+        return NextResponse.json(
+          { ok: false, error: "CSRF: origin başlığı eksik" },
+          { status: 403 }
+        );
+      }
+
+      try {
+        const originHostname = new URL(origin).hostname;
+        const hostHostname = (host || "").split(":")[0];
+        if (originHostname !== hostHostname) {
           return NextResponse.json(
-            { ok: false, error: "CSRF: hatalı origin başlığı" },
+            { ok: false, error: "CSRF: geçersiz origin" },
             { status: 403 }
           );
         }
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: "CSRF: hatalı origin başlığı" },
+          { status: 403 }
+        );
       }
     }
   }
 
-  // ── 2. Skip static assets and all /api/ routes ─────────────────────────────
-  const staticPaths = ["/sw.js", "/workbox-", "/icons/", "/manifest.json", "/offline", "/favicon"];
+  // ── 2. Skip static assets, all /api/ routes, and portal (separate auth) ────
+  const staticPaths = [
+    "/sw.js",
+    "/workbox-",
+    "/icons/",
+    "/branding/",
+    "/screenshots/",
+    "/manifest",
+    "/manifest.json",
+    "/manifest.webmanifest",
+    "/offline",
+    "/favicon",
+  ];
   if (
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/api/") ||
-    staticPaths.some((p) => pathname.startsWith(p))
+    pathname.startsWith("/portal") ||
+    staticPaths.some((p) => pathname.startsWith(p)) ||
+    PUBLIC_FILE_EXTENSIONS.some((ext) => pathname.endsWith(ext))
   ) {
     return NextResponse.next();
   }
@@ -80,7 +120,8 @@ export function proxy(request: NextRequest) {
   const role = request.cookies.get("opsdesk_role")?.value || "";
   if (role === "personel" && !isAllowedForPersonel(pathname)) {
     const url = request.nextUrl.clone();
-    url.pathname = "/giris-kontrol";
+    url.pathname = "/yetkisiz";
+    url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
 
