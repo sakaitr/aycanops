@@ -1,6 +1,7 @@
 -- Migration: 076_finans_temel_tanimlar
 -- Finans modülü Faz 1: hesap planı, kategori, masraf merkezi, proje, kasa/banka,
--- para birimi/kur, vergi kodu, ödeme yöntemi, belge türü, gelir-gider, masraf talebi.
+-- para birimi, vergi kodu, ödeme yöntemi, gelir-gider, masraf talebi.
+-- (finans_kur Faz 3'e, finans_belge_turu Faz 2'ye ertelendi — bkz. design spec.)
 
 CREATE TABLE IF NOT EXISTS finans_hesap_plani (
   id VARCHAR(36) NOT NULL PRIMARY KEY,
