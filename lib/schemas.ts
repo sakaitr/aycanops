@@ -557,3 +557,72 @@ export const finansMasrafTalebiSchema = z.object({
   proje_id: z.string().optional().nullable(),
   masraf_merkezi_id: z.string().optional().nullable(),
 });
+
+// ─── Finans: Belge Türü ─────────────────────────────────────────────────
+export const finansBelgeTuruSchema = z.object({
+  ad: shortStr(100),
+  numara_serisi_prefix: z.string().max(20).optional().nullable(),
+});
+
+// ─── Finans: Fatura ─────────────────────────────────────────────────────
+export const finansFaturaKalemiSchema = z.object({
+  urun_hizmet_adi: shortStr(300),
+  miktar: z.number().min(0.01),
+  birim_fiyat: z.number().min(0),
+  vergi_kodu_id: z.string().optional().nullable(),
+  masraf_merkezi_id: z.string().optional().nullable(),
+  proje_id: z.string().optional().nullable(),
+  department_id: z.string().optional().nullable(),
+});
+
+export const finansFaturaSchema = z.object({
+  tur: z.enum(["satis", "alis"]),
+  belge_turu_id: z.string().optional().nullable(),
+  cari_tip: z.enum(["musteri", "tedarikci"]),
+  cari_id: shortStr(36),
+  tarih: z.string().min(1),
+  vade_tarihi: z.string().optional().nullable(),
+  para_birimi_kod: z.string().max(10).optional(),
+  kur: z.number().optional(),
+  iliskili_fatura_id: z.string().optional().nullable(),
+  aciklama: z.string().max(2000).optional().nullable(),
+  kalemler: z.array(finansFaturaKalemiSchema).min(1, "En az bir kalem gerekli"),
+});
+
+// ─── Finans: Fiş ─────────────────────────────────────────────────────────
+export const finansFisSchema = z.object({
+  tip: z.enum([
+    "gider_fisi", "tahsilat_makbuzu", "tediye_makbuzu", "kasa_giris", "kasa_cikis",
+    "banka_islem", "virman", "mahsup", "acilis_kapanis", "personel_masraf",
+  ]),
+  tarih: z.string().min(1),
+  tutar: z.number(),
+  kasa_banka_hesabi_id: z.string().optional().nullable(),
+  karsi_hesap_id: z.string().optional().nullable(),
+  belge_id: z.string().optional().nullable(),
+  aciklama: z.string().max(2000).optional().nullable(),
+});
+
+// ─── Finans: Ödeme ──────────────────────────────────────────────────────
+export const finansOdemeSchema = z.object({
+  tutar: z.number().min(0.01),
+  tarih: z.string().min(1),
+  kasa_banka_hesabi_id: shortStr(36),
+  odeme_yontemi_id: z.string().optional().nullable(),
+  cari_tip: z.enum(["musteri", "tedarikci"]),
+  cari_id: shortStr(36),
+  aciklama: z.string().max(2000).optional().nullable(),
+  fatura_eslesme: z.array(z.object({
+    fatura_id: z.string(),
+    tutar: z.number().min(0.01),
+  })).optional(),
+});
+
+// ─── Finans: Banka Hareketi ─────────────────────────────────────────────
+export const finansBankaHareketiSchema = z.object({
+  kasa_banka_hesabi_id: shortStr(36),
+  tarih: z.string().min(1),
+  aciklama: z.string().max(500).optional().nullable(),
+  tutar: z.number(),
+  yon: z.enum(["gelen", "giden"]),
+});
