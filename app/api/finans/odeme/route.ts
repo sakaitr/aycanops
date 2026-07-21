@@ -1,0 +1,73 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getDb } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
+import { v4 as uuidv4 } from "uuid";
+import { nowIso } from "@/lib/time";
+import { apiError } from "@/lib/api-error";
+import { finansOdemeSchema } from "@/lib/schemas";
+
+export async function GET(req: NextRequest) {
+  try {
+    const user = await requireUser();
+    if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!hasPermission(user, "finans_odeme:read"))
+      return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+
+    const rows = await getDb().prepare(
+      `SELECT o.*, kb.ad AS kasa_banka_ad, oy.ad AS odeme_yontemi_ad,
+              (SELECT COUNT(*) FROM finans_odeme_fatura WHERE odeme_id = o.id) AS eslesen_fatura_sayisi
+       FROM finans_odeme o
+       LEFT JOIN finans_kasa_banka_hesabi kb ON kb.id = o.kasa_banka_hesabi_id
+       LEFT JOIN finans_odeme_yontemi oy ON oy.id = o.odeme_yontemi_id
+       ORDER BY o.tarih DESC, o.created_at DESC`
+    ).all();
+    return NextResponse.json({ ok: true, data: rows });
+  } catch (e) { return apiError(e); }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const user = await requireUser();
+    if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!hasPermission(user, "finans_odeme:create"))
+      return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+
+    const raw = await req.json();
+    const parsed = finansOdemeSchema.safeParse(raw);
+    if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    const d = parsed.data;
+
+    const db = getDb();
+    const id = uuidv4();
+    const now = nowIso();
+    await db.prepare(
+      `INSERT INTO finans_odeme
+         (id, tutar, tarih, kasa_banka_hesabi_id, odeme_yontemi_id, cari_tip, cari_id, aciklama, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, d.tutar, d.tarih, d.kasa_banka_hesabi_id, d.odeme_yontemi_id || null, d.cari_tip, d.cari_id, d.aciklama || null, user.id, now);
+
+    for (const eslesme of d.fatura_eslesme || []) {
+      await db.prepare(
+        `INSERT INTO finans_odeme_fatura (id, odeme_id, fatura_id, tutar, created_at) VALUES (?, ?, ?, ?, ?)`
+      ).run(uuidv4(), id, eslesme.fatura_id, eslesme.tutar, now);
+
+      const fatura = await db.prepare(`SELECT genel_toplam FROM finans_fatura WHERE id = ?`).get(eslesme.fatura_id) as
+        { genel_toplam: number } | undefined;
+      if (fatura) {
+        const toplamEslesen = await db.prepare(
+          `SELECT COALESCE(SUM(tutar), 0) AS toplam FROM finans_odeme_fatura WHERE fatura_id = ?`
+        ).get(eslesme.fatura_id) as { toplam: number };
+        let yeniDurum = "odenmedi";
+        const toplam = Number(toplamEslesen.toplam);
+        const genelToplam = Number(fatura.genel_toplam);
+        if (toplam > genelToplam) yeniDurum = "fazla_odendi";
+        else if (toplam === genelToplam) yeniDurum = "odendi";
+        else if (toplam > 0) yeniDurum = "kismen_odendi";
+        await db.prepare(`UPDATE finans_fatura SET odeme_durumu = ? WHERE id = ?`).run(yeniDurum, eslesme.fatura_id);
+      }
+    }
+
+    return NextResponse.json({ ok: true, data: { id } }, { status: 201 });
+  } catch (e) { return apiError(e); }
+}
