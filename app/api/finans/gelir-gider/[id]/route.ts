@@ -21,6 +21,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (raw.action === "onayla" || raw.action === "reddet") {
       if (!hasPermission(user, "finans_gelir_gider:approve"))
         return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+      if (existing.durum !== "taslak")
+        return NextResponse.json({ ok: false, error: "Bu kayıt zaten sonuçlandırılmış" }, { status: 400 });
       if (existing.created_by === user.id)
         return NextResponse.json({ ok: false, error: "Kendi kaydınızı onaylayamazsınız" }, { status: 403 });
 

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import { toast } from "@/lib/toast";
 import { hasPermission } from "@/lib/permissions";
+import { todayIstanbul } from "@/lib/time";
 
 const TUR_LABELS: Record<string, string> = { gelir: "Gelir", gider: "Gider" };
 const TUR_BADGE_CLASS: Record<string, string> = {
@@ -21,13 +22,14 @@ const DURUM_BADGE_CLASS: Record<string, string> = {
 };
 const EMPTY_FORM = {
   tur: "gider",
-  belge_tarihi: new Date().toISOString().slice(0, 10),
+  belge_tarihi: todayIstanbul(),
   tahakkuk_tarihi: "",
   vade_tarihi: "",
   kategori_id: "",
   net_tutar: "",
   vergi_tutari: "",
   para_birimi_kod: "TRY",
+  kur: "1",
   company_id: "",
   department_id: "",
   proje_id: "",
@@ -112,6 +114,7 @@ export default function GelirGiderPage() {
       net_tutar: row.net_tutar != null ? String(row.net_tutar) : "",
       vergi_tutari: row.vergi_tutari != null ? String(row.vergi_tutari) : "",
       para_birimi_kod: row.para_birimi_kod || "TRY",
+      kur: row.kur != null ? String(row.kur) : "1",
       company_id: row.company_id || "",
       department_id: row.department_id || "",
       proje_id: row.proje_id || "",
@@ -133,6 +136,15 @@ export default function GelirGiderPage() {
   const brutTutar = (Number(form.net_tutar) || 0) + (Number(form.vergi_tutari) || 0);
   const filteredKategoriler = kategoriler.filter(k => k.tip === form.tur);
 
+  // Kullanıcı allowed_companies ile kısıtlıysa (null = kısıtlama yok), firma dropdown'unu
+  // sadece izinli firmalarla sınırla. Sunucu kayıt sırasında zaten kısıtlamayı uyguluyor;
+  // bu sadece dropdown'da izinsiz seçeneklerin görünmesini engelleyen bir UX düzeltmesi.
+  let allowedCompanyIds: string[] | null = null;
+  try { allowedCompanyIds = user?.allowed_companies ? JSON.parse(user.allowed_companies) : null; } catch {}
+  const visibleCompanies = allowedCompanyIds
+    ? companies.filter(c => allowedCompanyIds!.includes(c.id))
+    : companies;
+
   async function save() {
     const net = Number(form.net_tutar);
     if (!form.belge_tarihi) { setSaveError("Belge tarihi zorunludur"); return; }
@@ -149,6 +161,7 @@ export default function GelirGiderPage() {
         vergi_tutari: Number(form.vergi_tutari) || 0,
         brut_tutar: brutTutar,
         para_birimi_kod: form.para_birimi_kod || "TRY",
+        kur: Number(form.kur) || 1,
         company_id: form.company_id || null,
         department_id: form.department_id || null,
         proje_id: form.proje_id || null,
@@ -341,22 +354,34 @@ export default function GelirGiderPage() {
                   className="w-full bg-zinc-900 border border-zinc-800 text-zinc-400 text-sm px-3 py-2 rounded-lg cursor-not-allowed" />
               </label>
 
-              <label className="block">
-                <span className="text-zinc-400 text-xs font-medium mb-1 block">Para Birimi</span>
-                <select value={form.para_birimi_kod} onChange={e => setForm(f => ({ ...f, para_birimi_kod: e.target.value }))}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
-                  <option value="TRY">TRY</option>
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                </select>
-              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-zinc-400 text-xs font-medium mb-1 block">Para Birimi</span>
+                  <select value={form.para_birimi_kod} onChange={e => {
+                      const yeniKod = e.target.value;
+                      setForm(f => ({ ...f, para_birimi_kod: yeniKod, kur: yeniKod === "TRY" ? "1" : f.kur }));
+                    }}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
+                    <option value="TRY">TRY</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-zinc-400 text-xs font-medium mb-1 block">Kur</span>
+                  <input type="number" step="0.0001" min="0" value={form.kur}
+                    disabled={form.para_birimi_kod === "TRY"}
+                    onChange={e => setForm(f => ({ ...f, kur: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed" />
+                </label>
+              </div>
 
               <label className="block">
                 <span className="text-zinc-400 text-xs font-medium mb-1 block">Firma</span>
                 <select value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
                   <option value="">— Seçilmedi —</option>
-                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {visibleCompanies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </label>
 
