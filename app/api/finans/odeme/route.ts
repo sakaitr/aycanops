@@ -14,14 +14,30 @@ export async function GET(req: NextRequest) {
     if (!hasPermission(user, "finans_odeme:read"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (user.allowed_companies) {
+      const allowed: string[] = JSON.parse(user.allowed_companies);
+      if (allowed.length === 0) return NextResponse.json({ ok: true, data: [] });
+      // finans_odeme'de company_id kolonu yok — finans_fatura'daki ile aynı
+      // polymorphic cari_tip/cari_id şeması kullanılır: cari_tip='musteri'
+      // kayıtlarında cari_id bir companies.id'dir ve firma kısıtlaması buradan
+      // uygulanır. cari_tip='tedarikci' kayıtları (finans_fatura GET'teki
+      // yerleşik ilkeyle tutarlı olarak) firma kısıtlamasına tabi değildir.
+      conditions.push(`(o.cari_tip = 'tedarikci' OR (o.cari_tip = 'musteri' AND o.cari_id IN (${allowed.map(() => "?").join(",")})))`);
+      params.push(...allowed);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
     const rows = await getDb().prepare(
       `SELECT o.*, kb.ad AS kasa_banka_ad, oy.ad AS odeme_yontemi_ad,
               (SELECT COUNT(*) FROM finans_odeme_fatura WHERE odeme_id = o.id) AS eslesen_fatura_sayisi
        FROM finans_odeme o
        LEFT JOIN finans_kasa_banka_hesabi kb ON kb.id = o.kasa_banka_hesabi_id
        LEFT JOIN finans_odeme_yontemi oy ON oy.id = o.odeme_yontemi_id
+       ${where}
        ORDER BY o.tarih DESC, o.created_at DESC`
-    ).all();
+    ).all(...params);
     return NextResponse.json({ ok: true, data: rows });
   } catch (e) { return apiError(e); }
 }

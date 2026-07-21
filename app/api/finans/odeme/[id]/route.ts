@@ -9,7 +9,10 @@ import type { RowDataPacket } from "mysql2/promise";
 // finans_odeme kaynağına sadece read/create atandı) — silme işlemi,
 // ödemeyi oluşturabilen kullanıcının kendi kaydını geri alabilmesinin makul
 // olduğu kabulüyle finans_odeme:create iznine bağlanıyor. Ayrı bir :delete
-// action'ı bu MVP'de gereksiz karmaşıklık.
+// action'ı bu MVP'de gereksiz karmaşıklık. finans_odeme:delete izni yalnızca
+// admin'e (blanket grant üzerinden) verilir — bu izne sahip kullanıcılar
+// kendi oluşturmadıkları ödemeleri de silebilir; diğer herkes yalnızca
+// kendi oluşturduğu kaydı silebilir (aşağıdaki created_by kontrolü).
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
@@ -20,8 +23,24 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     const db = getDb();
 
-    const existing = await db.prepare(`SELECT id FROM finans_odeme WHERE id = ?`).get(id);
+    const existing = await db.prepare(`SELECT id, created_by, cari_tip, cari_id FROM finans_odeme WHERE id = ?`).get(id) as
+      { id: string; created_by: string; cari_tip: string; cari_id: string } | undefined;
     if (!existing) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
+
+    if (!hasPermission(user, "finans_odeme:delete") && existing.created_by !== user.id)
+      return NextResponse.json({ ok: false, error: "Sadece kendi oluşturduğunuz ödemeyi silebilirsiniz" }, { status: 403 });
+
+    // finans_odeme'de company_id kolonu yok — finans_fatura'daki ile aynı
+    // polymorphic cari_tip/cari_id şeması kullanılır: cari_tip='musteri'
+    // kayıtlarında cari_id bir companies.id'dir ve firma kısıtlaması buradan
+    // uygulanır. cari_tip='tedarikci' kayıtları (GET'teki ilkeyle tutarlı
+    // olarak) kısıtlamaya tabi değildir. Bu kontrol yukarıdaki ownership
+    // kontrolünden bağımsızdır — ikisi de geçmelidir.
+    if (existing.cari_tip === "musteri" && user.allowed_companies) {
+      const allowed: string[] = JSON.parse(user.allowed_companies);
+      if (!allowed.includes(existing.cari_id))
+        return NextResponse.json({ ok: false, error: "Bu firmaya erişim yetkiniz yok" }, { status: 403 });
+    }
 
     await db.transaction(async (conn) => {
       // Silinecek eşleşmelerden etkilenecek faturaları önce topla.
