@@ -104,6 +104,13 @@ Mevcut 8 sabit dizi ve `NAV_PERMISSION_BY_HREF` kalkar. Bunların yerine:
   `gorevler`, `yonetim`, `yonetim-teknik`; yeni gruplar admin panelinde
   otomatik üretilen bir uuid alır).
 - `minRole`: `null | "yonetici" | "admin"` — grup seviyesinde ekstra kapı.
+- **Ek (planlama sırasında bulunan gerçek durum):** bugünkü "Yönetim" grubunda
+  tüm linkler aynı role gerektirmiyor ("Toplu İşlem" yönetici yeterli, diğer
+  9 link admin gerektiriyor), tek grup seviyesinde `minRole` bunu ifade
+  edemez. Bu yüzden `item.minRole` de opsiyonel olarak eklendi — verilirse
+  grubun `minRole`'ünü o link için ezer (override), verilmezse grubun
+  `minRole`'ü geçerli olur. Admin panelinde her linkin kendi rol alanı da
+  (opsiyonel, "Grubun varsayılanını kullan" seçeneğiyle) düzenlenebilir.
 - `item.permission`: `PERMISSIONS` kataloğundaki tam `"resource:action"`
   string'i. Boş/geçersiz permission girilirse (admin formda serbest metin
   yerine dropdown'dan seçtiği için bu normalde olmaz, ama API tarafında da
