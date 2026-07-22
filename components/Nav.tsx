@@ -73,6 +73,11 @@ const FINANS_LINKS = [
   { href: "/raporlar", label: "Raporlar", Icon: IconBarChart },
   { href: "/finans/gelir-gider", label: "Gelir-Gider", Icon: IconCoin },
   { href: "/finans/masraf-talebi", label: "Masraf Talebi", Icon: IconClipboard2 },
+  { href: "/finans/faturalar", label: "Faturalar", Icon: IconDocument },
+  { href: "/finans/fisler", label: "Fişler", Icon: IconClipboard2 },
+  { href: "/finans/belgeler", label: "Finans Belgeleri", Icon: IconDocument },
+  { href: "/finans/odemeler", label: "Ödemeler", Icon: IconCoin },
+  { href: "/finans/banka-hareketleri", label: "Banka Hareketleri", Icon: IconActivity },
 ];
 
 const GOREVLER_LINKS = [
@@ -164,6 +169,11 @@ const NAV_PERMISSION_BY_HREF: Record<string, PermissionKey> = {
   "/raporlar": "reports:read",
   "/finans/gelir-gider": "finans_gelir_gider:read",
   "/finans/masraf-talebi": "finans_masraf_talebi:read",
+  "/finans/faturalar": "finans_fatura:read",
+  "/finans/fisler": "finans_fis:read",
+  "/finans/belgeler": "finans_belge:read",
+  "/finans/odemeler": "finans_odeme:read",
+  "/finans/banka-hareketleri": "finans_banka_hareketi:read",
   "/gorevler": "dashboard:read",
   "/oneriler": "suggestions:read",
   "/notlar": "dashboard:read",
