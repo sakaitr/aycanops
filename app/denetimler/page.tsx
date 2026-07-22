@@ -74,6 +74,10 @@ export default function DenetimlerPage() {
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [expandedPhotos, setExpandedPhotos] = useState<Record<string, any[]>>({});
+  // Fotoğraf yükleme başarısız olup kullanıcı "Kaydet"e tekrar bastığında
+  // aynı denetim kaydını yeniden oluşturmamak için, ilk başarılı POST
+  // /api/inspections'ın döndürdüğü id burada tutulur.
+  const [createdInspectionId, setCreatedInspectionId] = useState<string | null>(null);
 
   // Görev oluştur modal
   const [gorevModal, setGorevModal] = useState<any | null>(null);
@@ -160,6 +164,7 @@ export default function DenetimlerPage() {
     setResultOverride(null);
     setSaveError(null);
     setPhotoFiles([]);
+    setCreatedInspectionId(null);
     setWizardStep("setup");
     setCurrentCriterionIdx(0);
     setShowForm(true);
@@ -212,39 +217,52 @@ export default function DenetimlerPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const payload: any = {
-        inspection_date: formDate,
-        type: inspectionTypes.find(t => t.id === formType)?.code || formType,
-        notes: formNotes,
-        checklist,
-        result: finalResult,
-      };
-      if (formPlate.trim()) {
-        // Serbest plaka modu — firma seçili olabilir veya olmayabilir
-        payload.company_vehicle_plate = formPlate.trim().toUpperCase();
-        if (formCompanyId && formCompanyId !== "__other__") payload.company_id = formCompanyId;
-      } else if (formCompVehicleId) {
-        payload.company_vehicle_id = formCompVehicleId;
-      } else {
-        payload.vehicle_id = formVehicleId;
-      }
+      // Denetim kaydı daha önce (bu form açıkken) başarıyla oluşturulduysa —
+      // örn. fotoğraf yüklemesi başarısız olup kullanıcı "Kaydet"e tekrar
+      // bastıysa — aynı kaydı yeniden oluşturmak yerine mevcut id'yi
+      // kullanıp doğrudan fotoğraf yüklemesini tekrar dene.
+      let inspectionId = createdInspectionId;
 
-      const res = await fetch("/api/inspections", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const d = await res.json();
-      if (!d.ok) { setSaveError(d.error || "Kaydetme başarısız"); return; }
+      if (!inspectionId) {
+        const payload: any = {
+          inspection_date: formDate,
+          type: inspectionTypes.find(t => t.id === formType)?.code || formType,
+          notes: formNotes,
+          checklist,
+          result: finalResult,
+        };
+        if (formPlate.trim()) {
+          // Serbest plaka modu — firma seçili olabilir veya olmayabilir
+          payload.company_vehicle_plate = formPlate.trim().toUpperCase();
+          if (formCompanyId && formCompanyId !== "__other__") payload.company_id = formCompanyId;
+        } else if (formCompVehicleId) {
+          payload.company_vehicle_id = formCompVehicleId;
+        } else {
+          payload.vehicle_id = formVehicleId;
+        }
+
+        const res = await fetch("/api/inspections", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const d = await res.json();
+        if (!d.ok) { setSaveError(d.error || "Kaydetme başarısız"); return; }
+        inspectionId = d.data.id;
+        setCreatedInspectionId(inspectionId);
+      }
 
       if (photoFiles.length > 0) {
         setUploadingPhotos(true);
         try {
           const photoForm = new FormData();
           for (const f of photoFiles) photoForm.append("photos", f);
-          const photoRes = await fetch(`/api/inspections/${d.data.id}/photos`, { method: "POST", body: photoForm });
+          const photoRes = await fetch(`/api/inspections/${inspectionId}/photos`, { method: "POST", body: photoForm });
           const photoD = await photoRes.json();
           if (!photoD.ok) {
-            // Denetim zaten kaydedildi, sadece fotoğraf yükleme hatasını göster
+            // Denetim zaten kaydedildi (createdInspectionId'de tutuluyor),
+            // sadece fotoğraf yükleme hatasını göster — "Kaydet"e tekrar
+            // basılırsa yeni bir kayıt oluşturulmaz, sadece fotoğraf
+            // yüklemesi tekrar denenir.
             setSaveError(`Denetim kaydedildi ancak fotoğraflar yüklenemedi: ${photoD.error}`);
             setUploadingPhotos(false);
             load();
@@ -254,6 +272,7 @@ export default function DenetimlerPage() {
       }
 
       setPhotoFiles([]);
+      setCreatedInspectionId(null);
       setShowForm(false);
       load();
     } finally { setSaving(false); }

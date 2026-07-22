@@ -31,6 +31,12 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: isMobile ? "export" : "standalone",
+  // Denetim fotoğraf yükleme (birden fazla dosya, her biri 8MB'a kadar)
+  // Next'in middleware body-buffer varsayılanını (10MB) aşıyor — nginx'in
+  // zaten izin verdiği client_max_body_size 20m ile eşleştiriyoruz.
+  experimental: {
+    middlewareClientMaxBodySize: "20mb",
+  },
   // Static export (mobile) doesn’t support image optimisation
   ...(isMobile && { images: { unoptimized: true } }),
   // Prevent webpack from bundling Node.js-only server packages
