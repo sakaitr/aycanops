@@ -68,7 +68,8 @@ Mevcut 8 sabit dizi ve `NAV_PERMISSION_BY_HREF` kalkar. Bunların yerine:
    mantığı, artık `NAV_PERMISSION_BY_HREF` yerine config'in kendi
    `item.permission` alanını okuyor). Grup, kendi `minRole` alanına göre
    (varsa) ek bir kapıdan geçer (`minRole === "admin"` ise `isAdmin`,
-   `"yonetici"` ise `isManager`, `null` ise kapı yok) — bugünkü
+   `"yetkili"` ise `isManager` yani `isAtLeast(role,"yetkili")`, `null` ise
+   kapı yok) — bugünkü
    `isManager ? filterByAllowed(...) : []` deseninin veri-tabanlı hali.
 
 ## Veri Şeması (JSON)
@@ -103,10 +104,10 @@ Mevcut 8 sabit dizi ve `NAV_PERMISSION_BY_HREF` kalkar. Bunların yerine:
   kebab-case hali: `bugun`, `araclar`, `insan`, `rota`, `finans`,
   `gorevler`, `yonetim`, `yonetim-teknik`; yeni gruplar admin panelinde
   otomatik üretilen bir uuid alır).
-- `minRole`: `null | "yonetici" | "admin"` — grup seviyesinde ekstra kapı.
+- `minRole`: `null | "yetkili" | "admin"` — grup seviyesinde ekstra kapı.
 - **Ek (planlama sırasında bulunan gerçek durum):** bugünkü "Yönetim" grubunda
-  tüm linkler aynı role gerektirmiyor ("Toplu İşlem" yönetici yeterli, diğer
-  9 link admin gerektiriyor), tek grup seviyesinde `minRole` bunu ifade
+  tüm linkler aynı role gerektirmiyor ("Toplu İşlem" `isAtLeast(role,"yetkili")`
+  yeterli, diğer 9 link sadece admin), tek grup seviyesinde `minRole` bunu ifade
   edemez. Bu yüzden `item.minRole` de opsiyonel olarak eklendi — verilirse
   grubun `minRole`'ünü o link için ezer (override), verilmezse grubun
   `minRole`'ü geçerli olur. Admin panelinde her linkin kendi rol alanı da
