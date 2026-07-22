@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
 import { finansOdemeSchema } from "@/lib/schemas";
+import type { RowDataPacket } from "mysql2/promise";
 
 export async function GET(req: NextRequest) {
   try {
@@ -57,32 +58,47 @@ export async function POST(req: NextRequest) {
     const db = getDb();
     const id = uuidv4();
     const now = nowIso();
-    await db.prepare(
-      `INSERT INTO finans_odeme
-         (id, tutar, tarih, kasa_banka_hesabi_id, odeme_yontemi_id, cari_tip, cari_id, aciklama, created_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, d.tutar, d.tarih, d.kasa_banka_hesabi_id, d.odeme_yontemi_id || null, d.cari_tip, d.cari_id, d.aciklama || null, user.id, now);
 
-    for (const eslesme of d.fatura_eslesme || []) {
-      await db.prepare(
-        `INSERT INTO finans_odeme_fatura (id, odeme_id, fatura_id, tutar, created_at) VALUES (?, ?, ?, ?, ?)`
-      ).run(uuidv4(), id, eslesme.fatura_id, eslesme.tutar, now);
+    // Başlık ve eşleşme eklemeleri (+ etkilenen faturaların odeme_durumu
+    // yeniden hesaplaması) tek transaction içinde yapılır — aradaki bir
+    // eşleşme insert'i veya durum güncellemesi başarısız olursa ödeme kaydı
+    // yarım (bazı eşleşmeleri veya durum güncellemeleri eksik) kalmaz. Bu,
+    // DELETE route'undaki (app/api/finans/odeme/[id]/route.ts) aynı sınıf
+    // işlemin transaction kullanımıyla tutarlıdır.
+    await db.transaction(async (conn) => {
+      await conn.execute(
+        `INSERT INTO finans_odeme
+           (id, tutar, tarih, kasa_banka_hesabi_id, odeme_yontemi_id, cari_tip, cari_id, aciklama, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, d.tutar, d.tarih, d.kasa_banka_hesabi_id, d.odeme_yontemi_id || null, d.cari_tip, d.cari_id, d.aciklama || null, user.id, now]
+      );
 
-      const fatura = await db.prepare(`SELECT genel_toplam FROM finans_fatura WHERE id = ?`).get(eslesme.fatura_id) as
-        { genel_toplam: number } | undefined;
-      if (fatura) {
-        const toplamEslesen = await db.prepare(
-          `SELECT COALESCE(SUM(tutar), 0) AS toplam FROM finans_odeme_fatura WHERE fatura_id = ?`
-        ).get(eslesme.fatura_id) as { toplam: number };
-        let yeniDurum = "odenmedi";
-        const toplam = Number(toplamEslesen.toplam);
-        const genelToplam = Number(fatura.genel_toplam);
-        if (toplam > genelToplam) yeniDurum = "fazla_odendi";
-        else if (toplam === genelToplam) yeniDurum = "odendi";
-        else if (toplam > 0) yeniDurum = "kismen_odendi";
-        await db.prepare(`UPDATE finans_fatura SET odeme_durumu = ? WHERE id = ?`).run(yeniDurum, eslesme.fatura_id);
+      for (const eslesme of d.fatura_eslesme || []) {
+        await conn.execute(
+          `INSERT INTO finans_odeme_fatura (id, odeme_id, fatura_id, tutar, created_at) VALUES (?, ?, ?, ?, ?)`,
+          [uuidv4(), id, eslesme.fatura_id, eslesme.tutar, now]
+        );
+
+        const [faturaRows] = await conn.execute<RowDataPacket[]>(
+          `SELECT genel_toplam FROM finans_fatura WHERE id = ?`,
+          [eslesme.fatura_id]
+        );
+        const fatura = (faturaRows as { genel_toplam: number }[])[0];
+        if (fatura) {
+          const [toplamRows] = await conn.execute<RowDataPacket[]>(
+            `SELECT COALESCE(SUM(tutar), 0) AS toplam FROM finans_odeme_fatura WHERE fatura_id = ?`,
+            [eslesme.fatura_id]
+          );
+          const toplam = Number((toplamRows as { toplam: number }[])[0].toplam);
+          const genelToplam = Number(fatura.genel_toplam);
+          let yeniDurum = "odenmedi";
+          if (toplam > genelToplam) yeniDurum = "fazla_odendi";
+          else if (toplam === genelToplam) yeniDurum = "odendi";
+          else if (toplam > 0) yeniDurum = "kismen_odendi";
+          await conn.execute(`UPDATE finans_fatura SET odeme_durumu = ? WHERE id = ?`, [yeniDurum, eslesme.fatura_id]);
+        }
       }
-    }
+    });
 
     return NextResponse.json({ ok: true, data: { id } }, { status: 201 });
   } catch (e) { return apiError(e); }
