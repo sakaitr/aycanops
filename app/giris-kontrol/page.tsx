@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Nav from "@/components/Nav";
+import ComboboxSearch from "@/components/ComboboxSearch";
+import { useGlobalCompany } from "@/contexts/CompanyContext";
 
 function todayStr() { return new Date().toISOString().split("T")[0]; }
 
@@ -30,9 +32,11 @@ function suggestFullPlate(input: string): string {
 }
 
 function AracGelis({ user }: { user: any }) {
+  const { selectedCompanyId: globalCompanyId } = useGlobalCompany();
   const [date, setDate] = useState(todayStr());
   const [companies, setCompanies] = useState<any[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string>("");
+  const didInitFromGlobal = useRef(false);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingCompanies, setLoadingCompanies] = useState(true);
@@ -58,6 +62,16 @@ function AracGelis({ user }: { user: any }) {
   const [addError, setAddError] = useState<string | null>(null);
   const plateInputRef = useRef<HTMLInputElement>(null);
 
+  // Güzergah seçimi (yeni araç ekleme modalı)
+  const [companyRoutes, setCompanyRoutes] = useState<any[]>([]);
+  const [routeQuery, setRouteQuery] = useState("");
+  const [selectedRouteId, setSelectedRouteId] = useState("");
+  const [routeDropdownOpen, setRouteDropdownOpen] = useState(false);
+
+  // Vardiya
+  const [shifts, setShifts] = useState<any[]>([]);
+  const [activeShift, setActiveShift] = useState<string>("sabah");
+
   useEffect(() => {
     setLoadingCompanies(true);
     fetch("/api/companies")
@@ -66,12 +80,53 @@ function AracGelis({ user }: { user: any }) {
       .finally(() => setLoadingCompanies(false));
   }, []);
 
+  // Sağ üstten seçilen global firmayı, sayfa ilk açıldığında varsayılan olarak al.
+  // Kullanıcı burada farklı bir firma seçerse global'i etkilemez — sadece bu sayfada geçerli kalır.
+  useEffect(() => {
+    if (didInitFromGlobal.current) return;
+    if (!globalCompanyId) return;
+    if (companies.length === 0) return;
+    didInitFromGlobal.current = true;
+    setSelectedCompany(globalCompanyId);
+  }, [globalCompanyId, companies]);
+
+  // Vardiya yükle ve anlık saate göre otomatik seç (±3 saat tolerans)
+  useEffect(() => {
+    if (!selectedCompany) { setShifts([]); setActiveShift("sabah"); return; }
+    fetch(`/api/company-shifts?company_id=${selectedCompany}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok && d.data.length > 0) {
+          setShifts(d.data);
+          const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+          const match = d.data.find((s: any) => {
+            const [h, m] = s.expected_time.split(":").map(Number);
+            return Math.abs(nowMin - (h * 60 + m)) <= 180;
+          });
+          setActiveShift(match ? match.shift_name : d.data[0].shift_name);
+        } else {
+          setShifts([]);
+          setActiveShift("sabah");
+        }
+      }).catch(() => { setShifts([]); });
+  }, [selectedCompany]);
+
+  // Firma değişince güzergah listesini yükle
+  useEffect(() => {
+    if (!selectedCompany) { setCompanyRoutes([]); return; }
+    fetch(`/api/routes?company_id=${selectedCompany}`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setCompanyRoutes(d.data); else setCompanyRoutes([]); })
+      .catch(() => setCompanyRoutes([]));
+  }, [selectedCompany]);
+
   const loadVehicles = useCallback(async () => {
     if (!selectedCompany) { setVehicles([]); return; }
     setLoading(true);
     setFetchError(null);
     try {
-      const r = await fetch("/api/arrivals?company_id=" + selectedCompany + "&date=" + date);
+      const shiftParam = activeShift ? `&shift=${encodeURIComponent(activeShift)}` : "";
+      const r = await fetch(`/api/arrivals?company_id=${selectedCompany}&date=${date}${shiftParam}`);
       const d = await r.json();
       if (d.ok) setVehicles(d.data);
       else setFetchError(d.error || "Yükleme hatası");
@@ -80,7 +135,7 @@ function AracGelis({ user }: { user: any }) {
     } finally {
       setLoading(false);
     }
-  }, [selectedCompany, date]);
+  }, [selectedCompany, date, activeShift]);
 
   useEffect(() => { loadVehicles(); }, [loadVehicles]);
 
@@ -93,7 +148,8 @@ function AracGelis({ user }: { user: any }) {
 
   const canRecordLocation = user?.role === "admin" || user?.role === "yonetici" || user?.role === "yetkili";
   const canUndo = user?.role === "admin" || user?.role === "yonetici";
-  const canAddVehicle = !!user;
+  // Araç ekleme sadece yönetici ve admin yetkisinde
+  const canAddVehicle = user?.role === "admin" || user?.role === "yonetici";
 
   async function getCoords(): Promise<{ latitude: number; longitude: number } | null> {
     if (!canRecordLocation) return null;
@@ -116,7 +172,7 @@ function AracGelis({ user }: { user: any }) {
     let coords: { latitude: number; longitude: number } | null = null;
     if (canRecordLocation) coords = await getCoords();
     for (const veh of pending) {
-      const body: any = { vehicle_id: veh.id, company_id: selectedCompany, date };
+    const body: any = { vehicle_id: veh.id, company_id: selectedCompany, date, shift: activeShift || "sabah" };
       if (coords) { body.latitude = coords.latitude; body.longitude = coords.longitude; }
       try {
         const r = await fetch("/api/arrivals", {
@@ -141,7 +197,7 @@ function AracGelis({ user }: { user: any }) {
     try {
       let coords: { latitude: number; longitude: number } | null = null;
       if (canRecordLocation) coords = await getCoords();
-      const body: any = { vehicle_id: vehicleId, company_id: selectedCompany, date };
+      const body: any = { vehicle_id: vehicleId, company_id: selectedCompany, date, shift: activeShift || "sabah" };
       if (coords) { body.latitude = coords.latitude; body.longitude = coords.longitude; }
       const r = await fetch("/api/arrivals", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -184,24 +240,45 @@ function AracGelis({ user }: { user: any }) {
       setMultiMatches(found);
       setPlateMsg({ type: "warn", text: `${found.length} araç eşleşti, birini seçin` });
     } else {
-      // Eşleşme yok — plaka tamamla ve ekleme modal'ı aç
-      const suggested = suggestFullPlate(plateInput);
-      setSuggestedPlate(suggested);
-      setNewPlate(suggested);
-      setAddError(null);
-      setShowAddModal(true);
+      // Eşleşme yok
+      if (canAddVehicle) {
+        // Yönetici/admin: plaka tamamla ve ekleme modal'ı aç
+        const suggested = suggestFullPlate(plateInput);
+        setSuggestedPlate(suggested);
+        setNewPlate(suggested);
+        setAddError(null);
+        setRouteQuery("");
+        setSelectedRouteId("");
+        setRouteDropdownOpen(false);
+        setShowAddModal(true);
+      } else {
+        // Personel/yetkili: modal açma, sadece uyarı göster
+        setPlateMsg({ type: "warn", text: "Plaka bulunamadı. Yöneticiden bu plakayı sisteme eklemesini isteyin." });
+      }
     }
   }
 
   async function handleAddAndMark() {
     if (!newPlate.trim()) { setAddError("Plaka zorunlu"); return; }
+    if (!routeQuery.trim()) { setAddError("Güzergah zorunlu"); return; }
     setAddingVehicle(true);
     setAddError(null);
     try {
+      // Serbest yazılan güzergah adı listedeki bir güzergaha eşleşiyorsa (büyük/küçük harf, boşluk fark etmez)
+      // o güzergaha bağla — aksi halde yalnızca isim olarak kaydet (route_id boş kalır).
+      const typed = routeQuery.trim();
+      const matched = companyRoutes.find(r => r.name.trim().toLowerCase() === typed.toLowerCase());
+      const finalRouteId = selectedRouteId || matched?.id || "";
+      const finalRouteName = matched?.name || typed;
+
       // 1. Araca ekle
       const r1 = await fetch(`/api/companies/${selectedCompany}/vehicles`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plate: newPlate.trim().toUpperCase() }),
+        body: JSON.stringify({
+          plate: newPlate.trim().toUpperCase(),
+          route_name: finalRouteName,
+          route_id: finalRouteId || undefined,
+        }),
       });
       const d1 = await r1.json();
       if (!d1.ok) { setAddError(d1.error || "Araç eklenemedi"); return; }
@@ -211,7 +288,7 @@ function AracGelis({ user }: { user: any }) {
       // 2. Varış işaretle
       let coords: { latitude: number; longitude: number } | null = null;
       if (canRecordLocation) coords = await getCoords();
-      const body: any = { vehicle_id: vehicleId, company_id: selectedCompany, date };
+      const body: any = { vehicle_id: vehicleId, company_id: selectedCompany, date, shift: activeShift || "sabah" };
       if (coords) { body.latitude = coords.latitude; body.longitude = coords.longitude; }
       await fetch("/api/arrivals", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -291,13 +368,38 @@ function AracGelis({ user }: { user: any }) {
             {loadingCompanies ? (
               <div className="bg-zinc-800 rounded-lg px-3 py-2.5 text-zinc-600 text-sm">Yükleniyor...</div>
             ) : (
-              <select value={selectedCompany} onChange={e => { setSelectedCompany(e.target.value); }}
-                className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500">
-                <option value="">— Firma seçin —</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <ComboboxSearch
+                options={companies.map(c => ({ value: c.id, label: c.name }))}
+                value={selectedCompany}
+                onChange={v => setSelectedCompany(v)}
+                placeholder="Firma ara..."
+                emptyLabel="— Firma seçin —"
+              />
             )}
           </div>
+          {/* Vardiya seçici */}
+          {selectedCompany && shifts.length > 0 && (
+            <div className="sm:w-auto">
+              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Vardiya</label>
+              <div className="flex gap-1.5 flex-wrap">
+                {shifts.map((s: any) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setActiveShift(s.shift_name)}
+                    className={`text-sm px-3 py-2 rounded-lg border transition-colors font-medium whitespace-nowrap ${
+                      activeShift === s.shift_name
+                        ? "bg-emerald-900 border-emerald-700 text-emerald-300"
+                        : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500"
+                    }`}
+                  >
+                    {s.shift_name}
+                    <span className="ml-1.5 text-xs opacity-60">{s.expected_time.slice(0, 5)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="sm:w-44">
             <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Tarih</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
@@ -576,6 +678,44 @@ function AracGelis({ user }: { user: any }) {
                   </button>
                 )}
               </div>
+              <div className="relative">
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Güzergah *</label>
+                <input
+                  type="text"
+                  value={routeQuery}
+                  onChange={e => {
+                    setRouteQuery(e.target.value);
+                    setSelectedRouteId("");
+                    setRouteDropdownOpen(true);
+                  }}
+                  onFocus={() => setRouteDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setRouteDropdownOpen(false), 150)}
+                  placeholder="Güzergah adı yazın veya listeden seçin"
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 placeholder-zinc-600"
+                  autoComplete="off"
+                />
+                {routeDropdownOpen && (() => {
+                  const q = routeQuery.trim().toLowerCase();
+                  const matches = q ? companyRoutes.filter(r => r.name.toLowerCase().includes(q)) : companyRoutes;
+                  if (matches.length === 0) return null;
+                  return (
+                    <div className="absolute z-50 top-full mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                      {matches.map(r => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => { setRouteQuery(r.name); setSelectedRouteId(r.id); setRouteDropdownOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-sm text-white hover:bg-zinc-700 transition-colors"
+                        >
+                          {r.name}{r.code ? ` (${r.code})` : ""}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+                <p className="text-zinc-600 text-xs mt-1">Listede yoksa serbest yazabilirsiniz, aynı isimde güzergah varsa otomatik eşleştirilir.</p>
+              </div>
               {addError && <p className="text-red-400 text-sm bg-red-950 border border-red-800 rounded-lg px-3 py-2">{addError}</p>}
               {!canAddVehicle && (
                 <p className="text-amber-400 text-sm bg-amber-950 border border-amber-800 rounded-lg px-3 py-2">
@@ -586,7 +726,7 @@ function AracGelis({ user }: { user: any }) {
             <div className="flex gap-3 mt-5">
               <button onClick={() => setShowAddModal(false)} className="flex-1 bg-zinc-800 text-zinc-300 text-sm font-medium py-2.5 rounded-lg hover:bg-zinc-700 transition-colors">İptal</button>
               {canAddVehicle && (
-                <button onClick={handleAddAndMark} disabled={addingVehicle || !newPlate.trim()}
+                <button onClick={handleAddAndMark} disabled={addingVehicle || !newPlate.trim() || !routeQuery.trim()}
                   className="flex-1 bg-white text-zinc-950 text-sm font-semibold py-2.5 rounded-lg hover:bg-zinc-200 disabled:bg-zinc-700 disabled:text-zinc-500 transition-colors">
                   {addingVehicle ? "Ekleniyor..." : "Ekle ve Geldi İşaretle"}
                 </button>

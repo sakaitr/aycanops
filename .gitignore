@@ -45,6 +45,9 @@ data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
 
+# Yüklenen denetim fotoğrafları (kalıcı Docker volume, repo'ya alınmaz)
+data/uploads/
+
 # Deploy artifacts
 bsq-extract/
 bsq-linux.tar.gz
@@ -58,6 +61,10 @@ deploy_key.pub
 askpass.sh
 vps-setup.sh
 
+# Fast deploy script (contains credentials, stays local)
+../deploy-fast.ps1
+dist/
+
 # Logs
 run_logs/
 run_logs2/
@@ -65,3 +72,22 @@ run_logs.zip
 run_logs2.zip
 https-proxy.log
 https-proxy-err.log
+
+# design-sync artifacts (regenerated)
+.ds-sync/
+ds-bundle/
+.design-sync/
+_ds_compiled.css
+_ds_entry.tsx
+
+# Claude Code plugin/tooling data (not app code)
+.github/prompts/ui-ux-pro-max/
+
+# Manual hotfix tarballs (build artifacts, not source)
+hotfix-*.tar.gz
+deploy_output.txt
+
+# Local scratch/planning notes
+/*.md
+!README.md
+/*.txt

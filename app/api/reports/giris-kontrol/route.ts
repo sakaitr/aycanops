@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { isAtLeast } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     if (!user)
       return NextResponse.json({ ok: false, error: "Yetkisiz erişim" }, { status: 401 });
 
-    if (!isAtLeast(user.role, "yetkili"))
+    if (!hasPermission(user, "reports:read"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { searchParams } = new URL(request.url);
@@ -32,12 +32,10 @@ export async function GET(request: NextRequest) {
         c.name                              AS firma,
         cv.plate                            AS plaka,
         COALESCE(cv.route_name, '')         AS guzergah,
-        COALESCE(cv.notes, '')              AS notlar,
         va.arrival_date                     AS tarih,
         DATE_FORMAT(DATE_ADD(STR_TO_DATE(SUBSTRING(va.arrived_at, 1, 19), '%Y-%m-%dT%H:%i:%s'), INTERVAL 3 HOUR), '%H:%i') AS giris_saati,
         u.full_name                         AS kaydeden,
-        ROUND(COALESCE(va.latitude,  0), 6) AS enlem,
-        ROUND(COALESCE(va.longitude, 0), 6) AS boylam
+        va.note                             AS notlar
       FROM vehicle_arrivals va
       JOIN company_vehicles cv ON cv.id = va.vehicle_id
       JOIN companies c         ON c.id  = va.company_id

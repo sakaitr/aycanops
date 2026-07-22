@@ -1,0 +1,14 @@
+-- Migration 051: Transfer workflow geçiş alanları
+
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS planned_at VARCHAR(30) NULL;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS started_at VARCHAR(30) NULL;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS completed_at VARCHAR(30) NULL;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS cancelled_at VARCHAR(30) NULL;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS planned_by CHAR(36) NULL;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS started_by CHAR(36) NULL;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS completed_by CHAR(36) NULL;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS cancelled_by CHAR(36) NULL;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS driver_id CHAR(36) NULL;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS actual_passenger_count INT NULL;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS completion_notes TEXT NULL;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS cancellation_reason TEXT NULL;

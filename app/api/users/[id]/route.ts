@@ -5,12 +5,13 @@ import { hashPassword } from "@/lib/auth";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
 import { userUpdateSchema } from "@/lib/schemas";
+import { hasPermission } from "@/lib/permissions";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (user.role !== "admin") return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+    if (!hasPermission(user, "users:read")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { id } = await params;
     const db = getDb();
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       SELECT u.id, u.username, u.full_name, u.role, u.is_active,
              u.department_id, d.name as department_name,
              u.allowed_pages, u.allowed_companies,
+             u.whatsapp_phone,
              u.created_at, u.updated_at
       FROM users u
       LEFT JOIN departments d ON d.id = u.department_id
@@ -34,7 +36,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (user.role !== "admin") return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+    if (!hasPermission(user, "users:update")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { id } = await params;
     const raw = await req.json();
@@ -42,6 +44,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     const body = parsed.data;
     const { full_name, role, department_id, is_active, password } = body;
+    if (("allowed_pages" in body || "allowed_companies" in body) && !hasPermission(user, "users:permissions")) {
+      return NextResponse.json({ ok: false, error: "İzin kapsamı değiştirme yetkiniz yok" }, { status: 403 });
+    }
 
     const now = nowIso();
 
@@ -60,6 +65,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if ("allowed_companies" in body) {
       fields.push("allowed_companies = ?");
       values.push(body.allowed_companies !== null ? JSON.stringify(body.allowed_companies) : null);
+    }
+    if ("whatsapp_phone" in body) {
+      fields.push("whatsapp_phone = ?");
+      values.push(body.whatsapp_phone?.trim() || null);
     }
     if (password) {
       if (password.length < 6) return NextResponse.json({ ok: false, error: "Şifre en az 6 karakter olmalı" }, { status: 400 });
@@ -81,6 +90,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (is_active !== undefined) {
       await logAudit({ actorUserId: user.id, action: is_active ? "user_activate" : "user_deactivate", entityType: "user", entityId: id });
     }
+    if ("allowed_pages" in body || "allowed_companies" in body) {
+      await logAudit({
+        actorUserId: user.id,
+        action: "user_permissions_change",
+        entityType: "user",
+        entityId: id,
+        details: {
+          allowed_pages: body.allowed_pages ?? null,
+          allowed_companies: body.allowed_companies ?? null,
+        },
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch {
@@ -92,7 +113,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (user.role !== "admin") return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+    if (!hasPermission(user, "users:deactivate")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { id } = await params;
     if (id === user.id) return NextResponse.json({ ok: false, error: "Kendi hesabınızı silemezsiniz" }, { status: 400 });

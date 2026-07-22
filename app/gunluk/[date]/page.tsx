@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect, use, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import Badge from "@/components/Badge";
@@ -22,11 +22,15 @@ interface Row {
 }
 
 export default function GunlukDetailPage({ params }: { params: Promise<{ date: string }> }) {
+  const router = useRouter();
   const { date } = use(params);
   const searchParams = useSearchParams();
   const targetUserId = searchParams.get("userId") || null; // Manager viewing another user's worklog
   const [user, setUser] = useState<any>(null);
-  useEffect(() => { fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); }).catch(() => {}); }, []);
+  useEffect(() => {
+    fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); else router.replace("/login"); }).catch(() => { router.replace("/login"); });
+    fetch("/api/companies").then(r => r.json()).then(d => { if (d.ok) setCompanies(d.data); });
+  }, []);
   const [worklog, setWorklog] = useState<any>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [description, setDescription] = useState("");
@@ -37,6 +41,14 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
   const [returnNote, setReturnNote] = useState("");
   const [showReturn, setShowReturn] = useState(false);
   const [showLateWarning, setShowLateWarning] = useState(false);
+  const [visits, setVisits] = useState<any[]>([]);
+  const [issues, setIssues] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [newVisitCompany, setNewVisitCompany] = useState("");
+  const [newVisitNote, setNewVisitNote] = useState("");
+  const [newIssue, setNewIssue] = useState("");
+  const [savingVisit, setSavingVisit] = useState(false);
+  const [savingIssue, setSavingIssue] = useState(false);
   const newRowRef = useRef<HTMLInputElement>(null);
 
   const today = new Date().toISOString().split("T")[0];
@@ -60,8 +72,10 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
         })));
         setDescription(d.data.summary || "");
         setDescSaved(d.data.summary || "");
+        loadNotes(d.data.id);
       } else {
         setWorklog(null); setRows([]); setDescription(""); setDescSaved("");
+        setVisits([]); setIssues([]);
       }
     } finally { setLoading(false); }
   }
@@ -130,6 +144,59 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
     if (id) {
       try { await fetch(`/api/worklogs/${date}/items/${id}`, { method: "DELETE" }); } catch {}
     }
+  }
+
+  async function loadNotes(worklogId: string) {
+    const res = await fetch(`/api/worklog-notes?worklog_id=${worklogId}`);
+    const d = await res.json();
+    if (d.ok) { setVisits(d.visits); setIssues(d.issues); }
+  }
+
+  async function addVisit() {
+    if (!newVisitCompany || !worklog) return;
+    setSavingVisit(true);
+    try {
+      await fetch("/api/worklog-notes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "visit", worklog_id: worklog.id, company_id: newVisitCompany, note: newVisitNote }),
+      });
+      setNewVisitCompany(""); setNewVisitNote("");
+      loadNotes(worklog.id);
+    } finally { setSavingVisit(false); }
+  }
+
+  async function addIssue() {
+    if (!newIssue.trim() || !worklog) return;
+    setSavingIssue(true);
+    try {
+      await fetch("/api/worklog-notes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "issue", worklog_id: worklog.id, description: newIssue }),
+      });
+      setNewIssue("");
+      loadNotes(worklog.id);
+    } finally { setSavingIssue(false); }
+  }
+
+  async function deleteVisit(id: number) {
+    if (!worklog) return;
+    await fetch(`/api/worklog-notes?visit_id=${id}`, { method: "DELETE" });
+    loadNotes(worklog.id);
+  }
+
+  async function deleteIssue(id: number) {
+    if (!worklog) return;
+    await fetch(`/api/worklog-notes?issue_id=${id}`, { method: "DELETE" });
+    loadNotes(worklog.id);
+  }
+
+  async function toggleIssue(id: number, resolved: boolean) {
+    if (!worklog) return;
+    await fetch("/api/worklog-notes", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ issue_id: id, resolved }),
+    });
+    loadNotes(worklog.id);
   }
 
   async function saveDescription() {
@@ -288,6 +355,97 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
                 )}
               </div>
             </div>
+
+            {/* Ziyaret Edilen Firmalar */}
+            {worklog && (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-zinc-800">
+                  <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Ziyaret Edilen Firmalar</span>
+                </div>
+                <div className="p-4 space-y-3">
+                  {visits.length > 0 && (
+                    <div className="space-y-2">
+                      {visits.map((v: any) => (
+                        <div key={v.id} className="flex items-start gap-2 group">
+                          <div className="flex-1 bg-zinc-800 rounded-lg px-3 py-2">
+                            <p className="text-white text-sm font-medium">{v.company_name || "Firma"}</p>
+                            {v.note && <p className="text-zinc-500 text-xs mt-0.5">{v.note}</p>}
+                          </div>
+                          {isEditable && (
+                            <button onClick={() => deleteVisit(v.id)}
+                              className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all text-lg leading-none mt-1.5">×</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {isEditable && (
+                    <div className="space-y-2">
+                      <select value={newVisitCompany} onChange={e => setNewVisitCompany(e.target.value)}
+                        className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500">
+                        <option value="">— Firma seç —</option>
+                        {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      <div className="flex gap-2">
+                        <input value={newVisitNote} onChange={e => setNewVisitNote(e.target.value)}
+                          placeholder="Not (opsiyonel)"
+                          className="flex-1 bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 placeholder-zinc-600" />
+                        <button onClick={addVisit} disabled={savingVisit || !newVisitCompany}
+                          className="px-4 py-2 bg-zinc-700 text-white text-sm rounded-lg hover:bg-zinc-600 disabled:opacity-40 transition-colors">
+                          {savingVisit ? "..." : "Ekle"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {visits.length === 0 && !isEditable && (
+                    <p className="text-zinc-600 text-sm">Ziyaret kaydı yok</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Günün Sorunları */}
+            {worklog && (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-zinc-800">
+                  <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Günün Sorunları</span>
+                </div>
+                <div className="p-4 space-y-3">
+                  {issues.length > 0 && (
+                    <div className="space-y-2">
+                      {issues.map((iss: any) => (
+                        <div key={iss.id} className="flex items-start gap-2 group">
+                          <button onClick={() => isEditable && toggleIssue(iss.id, !iss.resolved)}
+                            className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 transition-colors ${iss.resolved ? "bg-emerald-700 border-emerald-600" : "border-zinc-600 hover:border-zinc-400"}`}>
+                            {iss.resolved && <span className="text-white text-xs flex items-center justify-center w-full h-full leading-none">✓</span>}
+                          </button>
+                          <p className={`flex-1 text-sm ${iss.resolved ? "line-through text-zinc-600" : "text-zinc-300"}`}>{iss.description}</p>
+                          {isEditable && (
+                            <button onClick={() => deleteIssue(iss.id)}
+                              className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all text-lg leading-none">×</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {isEditable && (
+                    <div className="flex gap-2">
+                      <input value={newIssue} onChange={e => setNewIssue(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") addIssue(); }}
+                        placeholder="Sorun / engel yazın..."
+                        className="flex-1 bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 placeholder-zinc-600" />
+                      <button onClick={addIssue} disabled={savingIssue || !newIssue.trim()}
+                        className="px-4 py-2 bg-zinc-700 text-white text-sm rounded-lg hover:bg-zinc-600 disabled:opacity-40 transition-colors">
+                        {savingIssue ? "..." : "Ekle"}
+                      </button>
+                    </div>
+                  )}
+                  {issues.length === 0 && !isEditable && (
+                    <p className="text-emerald-400 text-sm italic">✓ Sorunsuz tamamlandı</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Manager return note */}
             {worklog?.manager_note && (

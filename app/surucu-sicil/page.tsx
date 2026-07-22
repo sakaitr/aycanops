@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
+import { hasPermission } from "@/lib/permissions";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -42,11 +44,13 @@ const EMPTY_FORM = {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function SurucuSicilPage() {
+  const router = useRouter();
   const [user, setUser]           = useState<any>(null);
   const [tab, setTab]             = useState<"puanlar" | "kayitlar">("puanlar");
   const [summary, setSummary]     = useState<any[]>([]);
   const [records, setRecords]     = useState<any[]>([]);
   const [vehicles, setVehicles]   = useState<any[]>([]);
+  const [drivers, setDrivers]     = useState<any[]>([]);
   const [loading, setLoading]     = useState(true);
   const [showForm, setShowForm]   = useState(false);
   const [form, setForm]           = useState({ ...EMPTY_FORM });
@@ -61,8 +65,9 @@ export default function SurucuSicilPage() {
   const [drillDriver, setDrillDriver] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); });
+    fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); else router.replace("/login"); }).catch(() => { router.replace("/login"); });
     fetch("/api/vehicles").then(r => r.json()).then(d => { if (d.ok) setVehicles(d.data); });
+    fetch("/api/suruculer?limit=9999").then(r => r.json()).then(d => { if (d.ok) setDrivers(d.data); });
   }, []);
 
   useEffect(() => { loadAll(); }, []);
@@ -125,8 +130,8 @@ export default function SurucuSicilPage() {
     loadAll();
   }
 
-  const canWrite  = user && ["yetkili", "yonetici", "admin"].includes(user.role);
-  const canDelete = user && ["yonetici", "admin"].includes(user.role);
+  const canWrite  = hasPermission(user, "driver_records:create");
+  const canDelete = hasPermission(user, "driver_records:delete");
 
   return (
     <div className="min-h-screen bg-zinc-950">
@@ -240,13 +245,13 @@ export default function SurucuSicilPage() {
               )}
               {!drillDriver && (
                 <select value={filterDriver} onChange={e => setFilterDriver(e.target.value)}
-                  className="bg-zinc-900 border border-zinc-800 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-600">
+                  className="max-w-[180px] min-w-0 bg-zinc-900 border border-zinc-800 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-600">
                   <option value="">Tüm Sürücüler</option>
                   {driverNames.map(n => <option key={n as string} value={n as string}>{n as string}</option>)}
                 </select>
               )}
               <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
-                className="bg-zinc-900 border border-zinc-800 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-600">
+                className="max-w-[180px] min-w-0 bg-zinc-900 border border-zinc-800 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-600">
                 <option value="">Tüm Kategoriler</option>
                 {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.icon} {c.label}</option>)}
               </select>
@@ -313,26 +318,28 @@ export default function SurucuSicilPage() {
 
               {/* Driver name */}
               <div>
-                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Sürücü Adı *</label>
-                <input
-                  list="driver-names-list"
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Sürücü *</label>
+                <select
                   value={form.driver_name}
                   onChange={e => setForm(f => ({ ...f, driver_name: e.target.value }))}
-                  placeholder="Sürücü adı yazın veya seçin..."
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500"
-                />
-                <datalist id="driver-names-list">
-                  {vehicles.filter(v => v.driver_name).map((v: any) => (
-                    <option key={v.id} value={v.driver_name} />
-                  ))}
-                  {driverNames.map(n => <option key={n as string} value={n as string} />)}
-                </datalist>
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500">
+                  <option value="">— Sürücü seçin —</option>
+                  {drivers.map((d: any) => <option key={d.id} value={d.name}>{d.name}{d.phone ? ` · ${d.phone}` : ""}</option>)}
+                </select>
               </div>
 
               {/* Vehicle (optional) */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Araç (opsiyonel)</label>
-                <select value={form.vehicle_id} onChange={e => setForm(f => ({ ...f, vehicle_id: e.target.value }))}
+                <select value={form.vehicle_id} onChange={e => {
+                  const vid = e.target.value;
+                  const v = vehicles.find((v: any) => v.id === vid);
+                  setForm(f => ({
+                    ...f,
+                    vehicle_id: vid,
+                    driver_name: vid && v?.driver_name ? v.driver_name : f.driver_name,
+                  }));
+                }}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500">
                   <option value="">— Araç seç —</option>
                   {vehicles.map((v: any) => (

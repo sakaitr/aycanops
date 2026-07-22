@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { isAtLeast } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { departmentSchema } from "@/lib/schemas";
 
@@ -9,7 +9,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (!isAtLeast(user.role, "yonetici")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+    if (!hasPermission(user, "departments:update")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { id } = await params;
     const body = await req.json();
@@ -33,7 +33,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (user.role !== "admin") return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+    if (!hasPermission(user, "departments:delete")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { id } = await params;
     const db = getDb();

@@ -1,13 +1,13 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { isAtLeast } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (!isAtLeast(user.role, "yonetici"))
+    if (!hasPermission(user, "driver_records:delete"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
     const { id } = await params;
     const db = getDb();

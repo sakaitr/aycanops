@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { driverEvaluationCreateSchema } from "@/lib/schemas";
 
@@ -8,6 +9,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!hasPermission(user, "drivers:update"))
+      return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { id } = await params;
     const body = await req.json();
@@ -60,6 +63,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!hasPermission(user, "drivers:update"))
+      return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { id } = await params;
     const db = getDb();

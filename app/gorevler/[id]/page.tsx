@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import Badge from "@/components/Badge";
@@ -13,6 +14,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function GorevDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter();
   const { id } = use(params);
   const [todo, setTodo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -21,7 +23,7 @@ export default function GorevDetailPage({ params }: { params: Promise<{ id: stri
   const [commenting, setCommenting] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [user, setUser] = useState<any>(null);
-  useEffect(() => { fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); }).catch(() => {}); }, []);
+  useEffect(() => { fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); else router.replace("/login"); }).catch(() => { router.replace("/login"); }); }, []);
 
   useEffect(() => { loadTodo(); }, [id]);
 

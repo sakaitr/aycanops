@@ -9,6 +9,7 @@ const ROLE_LABELS: Record<string, { label: string; cls: string }> = {
   yetkili:  { label: "Yetkili",   cls: "text-blue-300 bg-blue-950 border-blue-800" },
   personel: { label: "Personel",  cls: "text-zinc-400 bg-zinc-800 border-zinc-700" },
 };
+const CUSTOM_ROLE_CLS = "text-amber-300 bg-amber-950 border-amber-800";
 
 const ALL_PAGES = [
   { href: "/", label: "Panel" },
@@ -36,6 +37,24 @@ const EMPTY_FORM = {
   username: "", password: "", full_name: "", role: "personel", department_id: "", is_active: true,
   restricted_pages: false, allowed_pages: [] as string[],
   restricted_companies: false, allowed_companies: [] as string[],
+  whatsapp_phone: "",
+};
+
+type PermissionPreview = {
+  role: string;
+  roleLabel: string;
+  totalPermissions: number;
+  groups: {
+    resource: string;
+    label: string;
+    allowedCount: number;
+    totalCount: number;
+    permissions: { key: string; label: string; allowed: boolean }[];
+  }[];
+  restrictions: {
+    pages: { restricted: boolean; count: number; values: string[] };
+    companies: { restricted: boolean; count: number; values: string[] };
+  };
 };
 
 export default function KullanicilarPage() {
@@ -43,6 +62,7 @@ export default function KullanicilarPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
+  const [roles, setRoles] = useState<{ name: string; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("");
@@ -54,6 +74,8 @@ export default function KullanicilarPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [permissionPreview, setPermissionPreview] = useState<PermissionPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [resetPassId, setResetPassId] = useState<string | null>(null);
@@ -67,9 +89,42 @@ export default function KullanicilarPage() {
     }).catch(() => router.replace("/"));
     fetch("/api/departments").then(r => r.json()).then(d => { if (d.ok) setDepartments(d.data); });
     fetch("/api/companies").then(r => r.json()).then(d => { if (d.ok) setCompanies(d.data); });
+    fetch("/api/admin/roles").then(r => r.json()).then(d => { if (d.ok) setRoles(d.data); });
   }, [router]);
 
   useEffect(() => { if (user) load(); }, [user]);
+
+  useEffect(() => {
+    if (!showForm || formTab !== "izinler") return;
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setPreviewLoading(true);
+      try {
+        const r = await fetch("/api/users/permission-preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            role: form.role,
+            allowed_pages: form.restricted_pages ? form.allowed_pages : null,
+            allowed_companies: form.restricted_companies ? form.allowed_companies : null,
+          }),
+          signal: controller.signal,
+        });
+        const d = await r.json();
+        if (d.ok) setPermissionPreview(d.data);
+      } catch (e: any) {
+        if (e?.name !== "AbortError") setPermissionPreview(null);
+      } finally {
+        if (!controller.signal.aborted) setPreviewLoading(false);
+      }
+    }, 150);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [showForm, formTab, form.role, form.restricted_pages, form.allowed_pages, form.restricted_companies, form.allowed_companies]);
 
   async function load() {
     setLoading(true);
@@ -110,6 +165,7 @@ export default function KullanicilarPage() {
       allowed_pages: ap ?? [],
       restricted_companies: ac !== null,
       allowed_companies: ac ?? [],
+      whatsapp_phone: u.whatsapp_phone || "",
     });
     setFormError(null);
     setFormTab("temel");
@@ -148,6 +204,7 @@ export default function KullanicilarPage() {
         is_active: form.is_active,
         allowed_pages: form.restricted_pages ? form.allowed_pages : null,
         allowed_companies: form.restricted_companies ? form.allowed_companies : null,
+        whatsapp_phone: form.whatsapp_phone.trim() || null,
       };
       if (!editing) { body.username = form.username; body.password = form.password; }
       else if (form.password) { body.password = form.password; }
@@ -230,10 +287,7 @@ export default function KullanicilarPage() {
           <select value={filterRole} onChange={e => setFilterRole(e.target.value)}
             className="bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500">
             <option value="">Tüm Roller</option>
-            <option value="admin">Admin</option>
-            <option value="yonetici">Yönetici</option>
-            <option value="yetkili">Yetkili</option>
-            <option value="personel">Personel</option>
+            {roles.map(r => <option key={r.name} value={r.name}>{r.label}</option>)}
           </select>
         </div>
 
@@ -256,9 +310,12 @@ export default function KullanicilarPage() {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="px-5 py-12 text-center text-zinc-600">Kullanıcı bulunamadı</td></tr>
+                  <tr><td colSpan={7} className="px-5 py-12 text-center text-zinc-600">Kullanıcı bulunamadı</td></tr>
                 ) : filtered.map(u => {
-                  const roleInfo = ROLE_LABELS[u.role] || ROLE_LABELS.personel;
+                  const roleInfo = ROLE_LABELS[u.role] || {
+                    label: roles.find(r => r.name === u.role)?.label ?? u.role,
+                    cls: CUSTOM_ROLE_CLS,
+                  };
                   const isSelf = u.id === user?.id;
                   const { ap, ac } = parsePermUser(u);
                   return (
@@ -316,7 +373,7 @@ export default function KullanicilarPage() {
       {/* Add / Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4 overflow-y-auto py-8">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg my-auto">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-2xl my-auto">
             <div className="flex items-center justify-between px-6 pt-6">
               <h2 className="text-lg font-bold text-white">{editing ? "Kullanıcıyı Düzenle" : "Yeni Kullanıcı"}</h2>
               <button onClick={() => setShowForm(false)} className="text-zinc-600 hover:text-white text-xl">×</button>
@@ -349,10 +406,7 @@ export default function KullanicilarPage() {
                       <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Rol *</label>
                       <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
                         className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500">
-                        <option value="personel">Personel</option>
-                        <option value="yetkili">Yetkili</option>
-                        <option value="yonetici">Yönetici</option>
-                        <option value="admin">Admin</option>
+                        {roles.map(r => <option key={r.name} value={r.name}>{r.label}</option>)}
                       </select>
                     </div>
                     <div>
@@ -372,6 +426,17 @@ export default function KullanicilarPage() {
                       placeholder={editing ? "Değiştirmek için doldurun" : "En az 6 karakter"}
                       className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500" />
                   </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">WhatsApp Numarası</label>
+                    <input
+                      value={form.whatsapp_phone}
+                      onChange={e => setForm(f => ({ ...f, whatsapp_phone: e.target.value.replace(/\D/g, "") }))}
+                      placeholder="905XXXXXXXXX"
+                      maxLength={15}
+                      className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 font-mono"
+                    />
+                    <p className="text-xs text-zinc-600 mt-1">Uluslararası format, + işareti olmadan (örn. 905321234567)</p>
+                  </div>
                   {editing && (
                     <div className="flex items-center gap-3 py-1">
                       <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Durum</label>
@@ -387,6 +452,58 @@ export default function KullanicilarPage() {
 
               {formTab === "izinler" && (
                 <div className="space-y-5">
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">Etkili İzin Önizlemesi</p>
+                        <p className="text-xs text-zinc-500">Rol, sayfa ve firma kısıtları kaydetmeden önce burada özetlenir.</p>
+                      </div>
+                      <span className="text-xs border border-zinc-700 text-zinc-300 px-2.5 py-1 rounded-full">
+                        {previewLoading ? "Hesaplanıyor..." : `${permissionPreview?.totalPermissions ?? 0} işlem izni`}
+                      </span>
+                    </div>
+                    {permissionPreview ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-3">
+                            <p className="text-xs text-zinc-500">Rol</p>
+                            <p className="text-sm font-semibold text-white">{permissionPreview.roleLabel}</p>
+                          </div>
+                          <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-3">
+                            <p className="text-xs text-zinc-500">Sayfa kapsamı</p>
+                            <p className="text-sm font-semibold text-white">
+                              {permissionPreview.restrictions.pages.restricted ? `${permissionPreview.restrictions.pages.count} sayfa` : "Kısıtlama yok"}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-3">
+                            <p className="text-xs text-zinc-500">Firma kapsamı</p>
+                            <p className="text-sm font-semibold text-white">
+                              {permissionPreview.restrictions.companies.restricted ? `${permissionPreview.restrictions.companies.count} firma` : "Kısıtlama yok"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="max-h-44 overflow-y-auto pr-1 space-y-2">
+                          {permissionPreview.groups.filter(g => g.allowedCount > 0).map(group => (
+                            <div key={group.resource} className="rounded-lg bg-zinc-900/80 border border-zinc-800 p-3">
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <p className="text-xs font-semibold text-zinc-200">{group.label}</p>
+                                <span className="text-[11px] text-zinc-500">{group.allowedCount}/{group.totalCount}</span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {group.permissions.filter(p => p.allowed).map(permission => (
+                                  <span key={permission.key} className="text-[11px] text-emerald-300 bg-emerald-950/50 border border-emerald-900 px-2 py-0.5 rounded-full">
+                                    {permission.label}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-zinc-600">Önizleme yüklenemedi.</p>
+                    )}
+                  </div>
                   {/* Page restrictions */}
                   <div>
                     <div className="flex items-center gap-3 mb-3">

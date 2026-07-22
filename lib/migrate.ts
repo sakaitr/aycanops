@@ -42,7 +42,7 @@ export async function runMigrations(baseDir: string): Promise<void> {
     try {
       const raw = fs.readFileSync(path.join(migrationsDir, file), "utf8");
       // Strip UTF-8 BOM if present
-      const sql = raw.replace(/^\uFEFF/, "");
+      const sql = raw.replace(/^﻿/, "");
       if (!sql || sql.trim().length === 0) {
         console.warn(`Migration file ${file} is empty, skipping`);
         continue;

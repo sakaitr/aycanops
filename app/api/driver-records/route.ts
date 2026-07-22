@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { isAtLeast } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { driverRecordCreateSchema } from "@/lib/schemas";
@@ -13,6 +13,8 @@ export async function GET(req: NextRequest) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!hasPermission(user, "driver_records:read"))
+      return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
     const driver_name = searchParams.get("driver");
@@ -66,7 +68,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (!isAtLeast(user.role, "yetkili"))
+    if (!hasPermission(user, "driver_records:create"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const raw = await req.json();

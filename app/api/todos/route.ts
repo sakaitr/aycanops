@@ -6,6 +6,9 @@ import { canViewTodo, isAtLeast } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
 import { todoCreateSchema } from "@/lib/schemas";
+import { sendPushToUser } from "@/lib/push";
+import { sendWhatsAppToUser } from "@/lib/whatsapp";
+import { apiError } from "@/lib/api-error";
 
 export async function GET(request: NextRequest) {
   try {
@@ -53,13 +56,7 @@ export async function GET(request: NextRequest) {
     sql += " ORDER BY todos.created_at DESC LIMIT ? OFFSET ?";
     const rows = await db.prepare(sql).all(...params, limit, offset);
     return NextResponse.json({ ok: true, data: rows, meta: { total, page, limit, pages: Math.ceil(total / limit) } });
-  } catch (error) {
-    console.error("Todos list error:", error);
-    return NextResponse.json(
-      { ok: false, error: "Sunucu hatası" },
-      { status: 500 }
-    );
-  }
+  } catch (e) { return apiError(e); }
 }
 
 export async function POST(request: NextRequest) {
@@ -136,9 +133,10 @@ export async function POST(request: NextRequest) {
 
       for (const userId of targetUsers) {
         const id = uuidv4();
+        const reminderMax = (body as any).reminder_daily_max || 4;
         await db.prepare(
-          `INSERT INTO todos (id, title, description, status_code, priority_code, assigned_to, created_by, department_id, due_date, created_at, updated_at)
-           VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO todos (id, title, description, status_code, priority_code, assigned_to, created_by, department_id, due_date, reminder_daily_max, created_at, updated_at)
+           VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(
           id,
           title,
@@ -148,6 +146,7 @@ export async function POST(request: NextRequest) {
           user.id,
           department_id || null,
           due_date || null,
+          reminderMax,
           now,
           now
         );
@@ -159,6 +158,16 @@ export async function POST(request: NextRequest) {
           entityId: id,
           details: { assigned_to: userId },
         });
+        // Auto-notification
+        if (userId !== user.id) {
+          const notifId = uuidv4();
+          await db.prepare(
+            `INSERT INTO notifications (id, user_id, title, body, link, is_read, created_by, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
+          ).run(notifId, userId, `Yeni görev: ${title}`, description || null, `/gorevler`, user.id, now, now);
+          sendPushToUser(userId, { title: `Yeni görev: ${title}`, body: description || undefined, url: "/gorevler" }).catch(() => {});
+          sendWhatsAppToUser(userId, { title: `Yeni görev: ${title}`, body: description || undefined, url: "/gorevler" }).catch(() => {});
+        }
       }
 
       return NextResponse.json(
@@ -168,9 +177,10 @@ export async function POST(request: NextRequest) {
     }
 
     const id = uuidv4();
+    const reminderMax = (body as any).reminder_daily_max || 4;
     await db.prepare(
-      `INSERT INTO todos (id, title, description, status_code, priority_code, assigned_to, created_by, department_id, due_date, created_at, updated_at)
-       VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO todos (id, title, description, status_code, priority_code, assigned_to, created_by, department_id, due_date, reminder_daily_max, created_at, updated_at)
+       VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       title,
@@ -180,6 +190,7 @@ export async function POST(request: NextRequest) {
       user.id,
       department_id || null,
       due_date || null,
+      reminderMax,
       now,
       now
     );
@@ -191,14 +202,19 @@ export async function POST(request: NextRequest) {
       entityId: id,
     });
 
+    // Auto-notification for assignee
+    if (assigned_to && assigned_to !== user.id) {
+      const notifId = uuidv4();
+      await db.prepare(
+        `INSERT INTO notifications (id, user_id, title, body, link, is_read, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
+      ).run(notifId, assigned_to, `Yeni görev: ${title}`, description || null, `/gorevler`, user.id, now, now);
+      sendPushToUser(assigned_to, { title: `Yeni görev: ${title}`, body: description || undefined, url: "/gorevler" }).catch(() => {});
+      sendWhatsAppToUser(assigned_to, { title: `Yeni görev: ${title}`, body: description || undefined, url: "/gorevler" }).catch(() => {});
+    }
+
     const created = await db.prepare("SELECT * FROM todos WHERE id = ?").get(id);
     return NextResponse.json({ ok: true, data: created }, { status: 201 });
-  } catch (error) {
-    console.error("Todo create error:", error);
-    return NextResponse.json(
-      { ok: false, error: "Sunucu hatası" },
-      { status: 500 }
-    );
-  }
+  } catch (e) { return apiError(e); }
 }
 

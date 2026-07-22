@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { tripCreateSchema } from "@/lib/schemas";
+import { apiError } from "@/lib/api-error";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date");
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
-    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "100")));
+    const limit = Math.min(9999, Math.max(1, parseInt(searchParams.get("limit") || "100")));
     const offset = (page - 1) * limit;
     const db = getDb();
 
@@ -32,9 +33,7 @@ export async function GET(req: NextRequest) {
     sql += " ORDER BY t.created_at DESC LIMIT ? OFFSET ?";
     const rows = await db.prepare(sql).all(...params, limit, offset);
     return NextResponse.json({ ok: true, data: rows, meta: { total, page, limit, pages: Math.ceil(total / limit) } });
-  } catch (e) {
-    return NextResponse.json({ ok: false, error: "Sunucu hatası" }, { status: 500 });
-  }
+  } catch (e) { return apiError(e); }
 }
 
 export async function POST(req: NextRequest) {
@@ -55,7 +54,5 @@ export async function POST(req: NextRequest) {
       planned_departure || null, planned_arrival || null, passenger_count || 0,
       notes || null, user.id, now, now);
     return NextResponse.json({ ok: true, data: { id } });
-  } catch (e) {
-    return NextResponse.json({ ok: false, error: "Sunucu hatası" }, { status: 500 });
-  }
+  } catch (e) { return apiError(e); }
 }

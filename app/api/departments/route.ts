@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { isAtLeast } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { departmentSchema } from "@/lib/schemas";
@@ -10,6 +10,7 @@ export async function GET() {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!hasPermission(user, "departments:read")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const db = getDb();
     const data = await db.prepare(`
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (!isAtLeast(user.role, "yonetici")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+    if (!hasPermission(user, "departments:create")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const body = await req.json();
     const parsed = departmentSchema.safeParse(body);

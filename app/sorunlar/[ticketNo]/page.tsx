@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import Badge from "@/components/Badge";
@@ -23,6 +24,7 @@ function timeAgo(iso: string) {
 }
 
 export default function SorunDetailPage({ params }: { params: Promise<{ ticketNo: string }> }) {
+  const router = useRouter();
   const { ticketNo } = use(params);
   const [ticket, setTicket] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +33,7 @@ export default function SorunDetailPage({ params }: { params: Promise<{ ticketNo
   const [commenting, setCommenting] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [user, setUser] = useState<any>(null);
-  useEffect(() => { fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); }).catch(() => {}); }, []);
+  useEffect(() => { fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); else router.replace("/login"); }).catch(() => { router.replace("/login"); }); }, []);
 
   useEffect(() => { loadTicket(); }, [ticketNo]);
 

@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://ops.aycanturizm.com.tr";
 
+// BUILD_TARGET=mobile → static export for Capacitor
+// BUILD_TARGET=web (default) → standalone for Docker/VPS
+const isMobile = process.env.BUILD_TARGET === "mobile";
+
 const securityHeaders = [
   { key: "X-Frame-Options",          value: "DENY" },
   { key: "X-Content-Type-Options",   value: "nosniff" },
@@ -12,10 +16,10 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob:",
+      "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
+      "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://cdnjs.cloudflare.com",
       "font-src 'self'",
-      "connect-src 'self'",
+      "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org",
       "frame-ancestors 'none'",
     ].join("; "),
   },
@@ -26,7 +30,19 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  output: isMobile ? "export" : "standalone",
+  // Static export (mobile) doesn’t support image optimisation
+  ...(isMobile && { images: { unoptimized: true } }),
+  // Prevent webpack from bundling Node.js-only server packages
+  serverExternalPackages: [
+    "whatsapp-web.js",
+    "puppeteer",
+    "puppeteer-core",
+    "puppeteer-real-browser",
+    "@puppeteer/browsers",
+    "qrcode",
+    "firebase-admin",
+  ],
   env: {
     NEXT_PUBLIC_APP_URL: appUrl,
   },
@@ -57,5 +73,21 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Wrap with Sentry only when DSN is configured (no-op otherwise)
+const hasSentry = !!(process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN);
+
+let finalConfig: NextConfig = nextConfig;
+
+if (hasSentry && !isMobile) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { withSentryConfig } = require("@sentry/nextjs");
+  finalConfig = withSentryConfig(nextConfig, {
+    silent: true,
+    hideSourceMaps: true,
+    disableLogger: true,
+    automaticVercelMonitors: false,
+  });
+}
+
+export default finalConfig;
 

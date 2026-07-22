@@ -1,13 +1,28 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { isAtLeast } from "@/lib/permissions";
+import { hasReportPermission } from "@/lib/permissions";
 import ExcelJS from "exceljs";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { getReport } from "@/lib/reports/catalog";
+import { runReport } from "@/lib/reports/queries";
+import { buildXlsx, buildPdf } from "@/lib/reports/engine";
 
 type ReportRow = Record<string, unknown>;
+
+/** Replace Turkish chars that WinAnsi (Helvetica) cannot encode */
+function safeText(s: string): string {
+  return String(s)
+    .replace(/İ/g, "I").replace(/ı/g, "i")
+    .replace(/Ş/g, "S").replace(/ş/g, "s")
+    .replace(/Ğ/g, "G").replace(/ğ/g, "g")
+    .replace(/Ü/g, "U").replace(/ü/g, "u")
+    .replace(/Ö/g, "O").replace(/ö/g, "o")
+    .replace(/Ç/g, "C").replace(/ç/g, "c")
+    .replace(/[^\x00-\xFF]/g, "?");
+}
 
 async function buildPdfReport(
   title: string,
@@ -26,7 +41,7 @@ async function buildPdfReport(
     logoImage = null;
   }
 
-  const columns = rows.length > 0 ? Object.keys(rows[0]) : ["Kayıt"];
+  const columns = rows.length > 0 ? Object.keys(rows[0]) : ["Kayit"];
   const pageMargin = 36;
   const rowHeight = 18;
   const headerTop = 805;
@@ -61,7 +76,7 @@ async function buildPdfReport(
       color: rgb(0.05, 0.17, 0.38),
     });
 
-    page.drawText(title, {
+    page.drawText(safeText(title), {
       x: pageMargin,
       y: headerTop - 28,
       size: 11,
@@ -69,7 +84,7 @@ async function buildPdfReport(
       color: rgb(0.05, 0.17, 0.38),
     });
 
-    page.drawText(new Date().toLocaleString("tr-TR"), {
+    page.drawText(safeText(new Date().toLocaleString("tr-TR")), {
       x: width - 185,
       y: headerTop,
       size: 9,
@@ -99,7 +114,7 @@ async function buildPdfReport(
     });
 
     columns.forEach((col, i) => {
-      const label = String(col);
+      const label = safeText(String(col));
       page.drawText(label.length > 20 ? `${label.slice(0, 19)}...` : label, {
         x: pageMargin + i * colWidth + 4,
         y: y - 12,
@@ -115,7 +130,7 @@ async function buildPdfReport(
   if (rows.length === 0) {
     const page = pdf.addPage();
     drawPageHeader(page);
-    page.drawText("Veri bulunamadı", {
+    page.drawText("Veri bulunamadi", {
       x: pageMargin,
       y: tableStartY,
       size: 11,
@@ -154,7 +169,7 @@ async function buildPdfReport(
     columns.forEach((col, i) => {
       const raw = row[col];
       const text = raw == null || raw === "" ? "-" : String(raw);
-      const cell = text.length > 24 ? `${text.slice(0, 23)}...` : text;
+      const cell = safeText(text.length > 24 ? `${text.slice(0, 23)}...` : text);
       page.drawText(cell, {
         x: pageMargin + i * colWidth + 4,
         y: currentY - 12,
@@ -180,7 +195,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!isAtLeast(user.role, "yetkili")) {
+    if (!hasReportPermission(user, "export")) {
       return NextResponse.json(
         { ok: false, error: "Yetersiz yetki" },
         { status: 403 }
@@ -190,10 +205,52 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");
     const format = (searchParams.get("format") || "xlsx").toLowerCase();
+    const logoPath = path.join(process.cwd(), "public", "branding", "aycan-logo.png");
+
+    // ── New catalog-based 20-report path ──────────────────────────────────────
+    const reportParam = searchParams.get("report");
+    if (reportParam) {
+      const def = getReport(reportParam);
+      if (!def) return NextResponse.json({ ok: false, error: "Geçersiz rapor ID" }, { status: 400 });
+      if (!hasReportPermission(user, "export", def.roleMin)) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+
+      const companyIds = searchParams.getAll("company_id");
+      const dateFrom = searchParams.get("date_from") ?? undefined;
+      const dateTo = searchParams.get("date_to") ?? undefined;
+
+      const result = await runReport(def.id, companyIds, dateFrom, dateTo);
+      const safeSlug = def.slug.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const fileDate = dateFrom ?? new Date().toISOString().split("T")[0];
+
+      if (format === "xlsx") {
+        const buf = await buildXlsx(def.name, result);
+        return new NextResponse(buf as unknown as BodyInit, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": `attachment; filename="${safeSlug}_${fileDate}.xlsx"`,
+          },
+        });
+      }
+
+      if (format === "pdf") {
+        const pdfBytes = await buildPdf(def.name, result, logoPath);
+        return new NextResponse(Buffer.from(pdfBytes), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename="${safeSlug}_${fileDate}.pdf"`,
+          },
+        });
+      }
+
+      return NextResponse.json({ ok: false, error: "Geçersiz format" }, { status: 400 });
+    }
+    // ── End catalog path ──────────────────────────────────────────────────────
 
     if (!type) {
       return NextResponse.json(
-        { ok: false, error: "Rapor tipi gerekli (worklog, todo, ticket, giris-kontrol)" },
+        { ok: false, error: "Rapor tipi gerekli (worklog, todo, ticket, giris-kontrol) ya da report= parametresi" },
         { status: 400 }
       );
     }
@@ -273,13 +330,10 @@ export async function GET(request: NextRequest) {
           c.name                              AS "Firma",
           cv.plate                            AS "Plaka",
           COALESCE(cv.route_name, '')         AS "Güzergah",
-          COALESCE(cv.driver_name, '')        AS "Şöför",
-          COALESCE(cv.notes, '')              AS "Notlar",
           va.arrival_date                     AS "Tarih",
           DATE_FORMAT(DATE_ADD(STR_TO_DATE(SUBSTRING(va.arrived_at, 1, 19), '%Y-%m-%dT%H:%i:%s'), INTERVAL 3 HOUR), '%H:%i') AS "Giriş Saati",
           u.full_name                         AS "Kaydeden",
-          ROUND(COALESCE(va.latitude, 0), 6)  AS "Enlem",
-          ROUND(COALESCE(va.longitude, 0), 6) AS "Boylam"
+          va.note                             AS "Not"
         FROM vehicle_arrivals va
         JOIN company_vehicles cv ON cv.id = va.vehicle_id
         JOIN companies c         ON c.id  = va.company_id
@@ -307,7 +361,22 @@ export async function GET(request: NextRequest) {
       const ws = wb.addWorksheet(sheetTitle.slice(0, 31));
       if (rows.length > 0) {
         ws.columns = Object.keys(rows[0]).map((key) => ({ header: key, key })) as ExcelJS.Column[];
-        rows.forEach((row) => ws.addRow(row));
+        rows.forEach((row) => {
+          const formatted = Object.fromEntries(
+            Object.entries(row).map(([k, v]) => {
+              if (typeof v === "string") {
+                if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                  const [y, m, d] = v.split("-"); return [k, `${d}.${m}.${y}`];
+                }
+                if (/^\d{4}-\d{2}-\d{2}T/.test(v)) {
+                  const [y, m, d] = v.split("T")[0].split("-"); return [k, `${d}.${m}.${y}`];
+                }
+              }
+              return [k, v];
+            })
+          );
+          ws.addRow(formatted);
+        });
       }
       const buf = await wb.xlsx.writeBuffer();
 
@@ -321,7 +390,6 @@ export async function GET(request: NextRequest) {
     }
 
     if (format === "pdf") {
-      const logoPath = path.join(process.cwd(), "public", "branding", "aycan-logo.png");
       const pdfBytes = await buildPdfReport(sheetTitle, rows, logoPath);
 
       return new NextResponse(Buffer.from(pdfBytes), {

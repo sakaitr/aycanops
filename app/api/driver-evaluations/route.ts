@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { driverEvaluationCreateSchema } from "@/lib/schemas";
@@ -9,6 +10,8 @@ export async function GET(req: NextRequest) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!hasPermission(user, "drivers:read"))
+      return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
     const companyId = searchParams.get("company_id");
@@ -40,6 +43,8 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!hasPermission(user, "drivers:create"))
+      return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const body = await req.json();
     const {

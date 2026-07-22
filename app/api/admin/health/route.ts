@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 
 export async function GET() {
   try {
     const user = await requireUser();
-    if (!user || user.role !== "admin") {
+    if (!user || !hasPermission(user, "settings:read")) {
       return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
     }
 
@@ -18,7 +19,7 @@ export async function GET() {
 
     // Migration count
     const migrationRow = await db
-      .prepare("SELECT COUNT(*) AS cnt FROM schema_migrations")
+      .prepare("SELECT COUNT(*) AS cnt FROM migrations")
       .get<{ cnt: number }>();
 
     // Uptime

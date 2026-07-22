@@ -7,6 +7,8 @@ import { nowIso, addMinutes } from "@/lib/time";
 import { nextTicketNo } from "@/lib/ticketNo";
 import { logAudit } from "@/lib/audit";
 import { ticketCreateSchema } from "@/lib/schemas";
+import { sendPushToUser } from "@/lib/push";
+import { sendWhatsAppToUser } from "@/lib/whatsapp";
 
 export async function GET(request: NextRequest) {
   try {
@@ -163,6 +165,18 @@ export async function POST(request: NextRequest) {
     });
 
     const created = await db.prepare("SELECT * FROM tickets WHERE id = ?").get(id);
+
+    // Notify assignee
+    if (assigned_to && assigned_to !== user.id) {
+      const notifId = uuidv4();
+      await db.prepare(
+        `INSERT INTO notifications (id, user_id, title, body, link, is_read, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
+      ).run(notifId, assigned_to, `Yeni sorun: ${title}`, description || null, `/sorunlar/${ticketNo}`, user.id, now, now);
+      sendPushToUser(assigned_to, { title: `Yeni sorun: ${title}`, body: description || undefined, url: `/sorunlar/${ticketNo}` }).catch(() => {});
+      sendWhatsAppToUser(assigned_to, { title: `Yeni sorun: ${title}`, body: description || undefined, url: `/sorunlar/${ticketNo}` }).catch(() => {});
+    }
+
     return NextResponse.json({ ok: true, data: created }, { status: 201 });
   } catch (error) {
     console.error("Ticket create error:", error);

@@ -22,6 +22,21 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
       { src: "/icons/maskable-icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
-    screenshots: [],
+    screenshots: [
+      {
+        src: "/screenshots/desktop-1.png",
+        sizes: "1920x1080",
+        type: "image/png",
+        form_factor: "wide" as const,
+        label: "Kontrol Paneli",
+      },
+      {
+        src: "/screenshots/mobile-1.png",
+        sizes: "390x844",
+        type: "image/png",
+        form_factor: "narrow" as const,
+        label: "Mobil Görünüm",
+      },
+    ],
   };
 }

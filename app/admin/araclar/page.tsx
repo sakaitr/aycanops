@@ -11,6 +11,8 @@ export default function AdminAraclarPage() {
   const router = useRouter();
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
@@ -24,7 +26,7 @@ export default function AdminAraclarPage() {
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch("/api/vehicles");
+      const r = await fetch("/api/vehicles?limit=9999");
       const d = await r.json();
       if (d.ok) setVehicles(d.data);
     } finally { setLoading(false); }
@@ -36,9 +38,27 @@ export default function AdminAraclarPage() {
     try {
       const r = await fetch(`/api/vehicles/${id}`, { method: "DELETE" });
       const d = await r.json();
-      if (d.ok) load();
+      if (d.ok) { setSelectedIds(prev => { const s = new Set(prev); s.delete(id); return s; }); load(); }
       else alert(d.error);
     } finally { setDeletingId(null); }
+  }
+
+  async function bulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`${ids.length} aracı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) return;
+    setBulkDeleting(true);
+    try {
+      let failed = 0;
+      for (const id of ids) {
+        const r = await fetch(`/api/vehicles/${id}`, { method: "DELETE" });
+        const d = await r.json();
+        if (!d.ok) failed++;
+      }
+      setSelectedIds(new Set());
+      await load();
+      if (failed > 0) alert(`${failed} araç silinemedi.`);
+    } finally { setBulkDeleting(false); }
   }
 
   const STATUS_MAP: Record<string, { label: string; cls: string }> = {
@@ -55,6 +75,22 @@ export default function AdminAraclarPage() {
       (v.model || "").toLowerCase().includes(q) ||
       (v.driver_name || "").toLowerCase().includes(q);
   });
+
+  const filteredIds = filtered.map(v => v.id);
+  const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedIds.has(id));
+  const someSelected = filteredIds.some(id => selectedIds.has(id));
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedIds(prev => { const s = new Set(prev); filteredIds.forEach(id => s.delete(id)); return s; });
+    } else {
+      setSelectedIds(prev => { const s = new Set(prev); filteredIds.forEach(id => s.add(id)); return s; });
+    }
+  }
+
+  function toggleOne(id: string) {
+    setSelectedIds(prev => { const s = new Set(prev); if (s.has(id)) s.delete(id); else s.add(id); return s; });
+  }
 
   if (!user) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><p className="text-zinc-500">Yükleniyor...</p></div>;
 
@@ -83,12 +119,23 @@ export default function AdminAraclarPage() {
           <p className="text-sm text-zinc-400">Bu sayfada yalnızca araç <strong className="text-white">silme</strong> işlemi yapılabilir. Yeni araç eklemek veya düzenlemek için <a href="/araclar" className="text-blue-400 hover:text-blue-300 underline">Araçlar sayfasına</a> gidin.</p>
         </div>
 
-        {/* Search */}
-        <div className="relative mb-5">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm pointer-events-none">🔍</span>
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Plaka, marka, model veya şöför ara..."
-            className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm pl-8 pr-4 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 placeholder-zinc-600" />
+        {/* Search + bulk actions */}
+        <div className="flex gap-3 mb-5">
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm pointer-events-none">🔍</span>
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Plaka, marka, model veya şöför ara..."
+              className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm pl-8 pr-4 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 placeholder-zinc-600" />
+          </div>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={bulkDelete}
+              disabled={bulkDeleting}
+              className="flex items-center gap-2 bg-red-900/30 border border-red-800 text-red-400 hover:bg-red-900/50 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              {bulkDeleting ? "Siliniyor..." : `${selectedIds.size} Aracı Sil`}
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -100,7 +147,16 @@ export default function AdminAraclarPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-800">
-                  <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-5 py-3">Plaka</th>
+                  <th className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                      onChange={toggleAll}
+                      className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 accent-red-500 cursor-pointer"
+                    />
+                  </th>
+                  <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Plaka</th>
                   <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3 hidden sm:table-cell">Marka / Model</th>
                   <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3 hidden md:table-cell">Şöför</th>
                   <th className="text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider px-4 py-3">Durum</th>
@@ -110,9 +166,18 @@ export default function AdminAraclarPage() {
               <tbody>
                 {filtered.map(v => {
                   const st = STATUS_MAP[v.status_code] || { label: v.status_code, cls: "text-zinc-500" };
+                  const isSelected = selectedIds.has(v.id);
                   return (
-                    <tr key={v.id} className="border-b border-zinc-800/50 last:border-0 hover:bg-zinc-800/20">
-                      <td className="px-5 py-3.5">
+                    <tr key={v.id} className={`border-b border-zinc-800/50 last:border-0 hover:bg-zinc-800/20 ${isSelected ? "bg-red-950/20" : ""}`}>
+                      <td className="px-4 py-3.5">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleOne(v.id)}
+                          className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 accent-red-500 cursor-pointer"
+                        />
+                      </td>
+                      <td className="px-4 py-3.5">
                         <span className="font-mono text-white font-semibold text-sm">{v.plate}</span>
                         {v.type && <div className="text-xs text-zinc-500 mt-0.5">{v.type} · {v.capacity} kişi</div>}
                       </td>
@@ -125,7 +190,7 @@ export default function AdminAraclarPage() {
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex justify-end">
-                          <button onClick={() => deleteVehicle(v.id, v.plate)} disabled={deletingId === v.id}
+                          <button onClick={() => deleteVehicle(v.id, v.plate)} disabled={deletingId === v.id || bulkDeleting}
                             className="text-xs text-zinc-600 hover:text-red-400 border border-zinc-700 hover:border-red-800 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40">
                             {deletingId === v.id ? "..." : "Sil"}
                           </button>

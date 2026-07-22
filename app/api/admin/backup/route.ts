@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { hasPermission } from "@/lib/permissions";
 
 // Tables to export (in dependency order so import is safe)
 const TABLES = [
@@ -19,7 +20,7 @@ const TABLES = [
 export async function GET() {
   try {
     const user = await requireUser();
-    if (!user || user.role !== "admin") {
+    if (!user || !hasPermission(user, "settings:update")) {
       return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 403 });
     }
 

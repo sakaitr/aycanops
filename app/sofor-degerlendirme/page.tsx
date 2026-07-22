@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Nav from "@/components/Nav";
+import AppSelect from "@/components/AppSelect";
 
 const CRITERIA = [
   { key: "score_punctuality", label: "Dakiklik", desc: "Planlı saate uyum" },
@@ -225,16 +226,16 @@ export default function SoforDegerlendirmePage() {
 
         {/* Filters & view toggle */}
         <div className="flex flex-wrap items-center gap-3 mb-6">
-          <select
+          <AppSelect
             value={filterCompany}
-            onChange={e => setFilterCompany(e.target.value)}
-            className="bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 min-w-[200px]"
-          >
-            <option value="">Tüm Firmalar</option>
-            {companies.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+            onChange={setFilterCompany}
+            options={[
+              { value: "", label: "Tüm Firmalar" },
+              ...companies.map(c => ({ value: c.id, label: c.name })),
+            ]}
+            triggerClass="bg-zinc-800 border-zinc-700"
+            className="min-w-[200px]"
+          />
 
           <div className="flex bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden ml-auto">
             <button
@@ -248,6 +249,12 @@ export default function SoforDegerlendirmePage() {
               className={`px-4 py-2 text-sm font-medium transition-colors ${viewMode === "summary" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-white"}`}
             >
               Özet
+            </button>
+            <button
+              onClick={() => setViewMode("trend" as any)}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${viewMode === ("trend" as any) ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-white"}`}
+            >
+              Trend
             </button>
           </div>
         </div>
@@ -322,8 +329,105 @@ export default function SoforDegerlendirmePage() {
               );
             })}
           </div>
+        ) : (viewMode as any) === "trend" ? (
+          /* TREND VIEW — monthly average scores */
+          (() => {
+            // Group by YYYY-MM
+            const monthMap = new Map<string, { sum: number; count: number }>();
+            for (const ev of evaluations) {
+              const month = (ev.evaluation_date || "").slice(0, 7);
+              if (!month) continue;
+              const avg = avgScore(ev);
+              const entry = monthMap.get(month) || { sum: 0, count: 0 };
+              entry.sum += avg;
+              entry.count++;
+              monthMap.set(month, entry);
+            }
+            const months = Array.from(monthMap.entries())
+              .sort(([a], [b]) => a.localeCompare(b))
+              .slice(-12)
+              .map(([month, v]) => ({ month, avg: v.sum / v.count }));
+
+            if (months.length === 0) return (
+              <div className="py-16 text-center text-zinc-600 text-sm">Trend için yeterli veri yok</div>
+            );
+
+            const maxVal = 5;
+            const W = 600, H = 200, padL = 40, padB = 36, padT = 16, padR = 16;
+            const chartW = W - padL - padR;
+            const chartH = H - padT - padB;
+            const barW = Math.min(40, chartW / months.length - 6);
+
+            return (
+              <div className="space-y-6">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 overflow-x-auto">
+                  <h3 className="text-sm font-semibold text-zinc-400 mb-4">Aylık Ortalama Değerlendirme Puanı</h3>
+                  <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 320, maxHeight: 220 }}>
+                    {/* Y axis labels & grid */}
+                    {[0,1,2,3,4,5].map(v => {
+                      const y = padT + chartH - (v / maxVal) * chartH;
+                      return (
+                        <g key={v}>
+                          <line x1={padL} x2={W - padR} y1={y} y2={y} stroke="#27272a" strokeWidth="1" />
+                          <text x={padL - 6} y={y + 4} textAnchor="end" fill="#52525b" fontSize="10">{v}</text>
+                        </g>
+                      );
+                    })}
+                    {/* Bars */}
+                    {months.map(({ month, avg }, i) => {
+                      const x = padL + (i + 0.5) * (chartW / months.length) - barW / 2;
+                      const barH = (avg / maxVal) * chartH;
+                      const y = padT + chartH - barH;
+                      const color = avg >= 4.5 ? "#34d399" : avg >= 3.5 ? "#fbbf24" : avg >= 2.5 ? "#f97316" : "#f87171";
+                      const label = month.slice(5); // MM
+                      return (
+                        <g key={month}>
+                          <rect x={x} y={y} width={barW} height={barH} rx="4" fill={color} opacity="0.85" />
+                          <text x={x + barW/2} y={y - 5} textAnchor="middle" fill={color} fontSize="9" fontWeight="bold">{avg.toFixed(1)}</text>
+                          <text x={x + barW/2} y={H - padB + 14} textAnchor="middle" fill="#71717a" fontSize="9">{label}</text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+                {/* Criteria breakdown for last month */}
+                {months.length > 0 && (() => {
+                  const lastMonth = months[months.length - 1].month;
+                  const lastMonthEvs = evaluations.filter(e => (e.evaluation_date || "").startsWith(lastMonth));
+                  if (lastMonthEvs.length === 0) return null;
+                  const criteriaAvgs = CRITERIA.map(c => ({
+                    label: c.label,
+                    avg: lastMonthEvs.reduce((s, e) => s + e[c.key], 0) / lastMonthEvs.length,
+                  }));
+                  return (
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                      <h3 className="text-sm font-semibold text-zinc-400 mb-3">
+                        Son Ay Kriter Dağılımı <span className="text-zinc-600 font-normal">({lastMonth})</span>
+                      </h3>
+                      <div className="space-y-2.5">
+                        {criteriaAvgs.map(({ label, avg }) => (
+                          <div key={label} className="flex items-center gap-3">
+                            <span className="text-xs text-zinc-500 w-36 shrink-0">{label}</span>
+                            <div className="flex-1 bg-zinc-800 rounded-full h-2">
+                              <div
+                                className="h-2 rounded-full transition-all"
+                                style={{
+                                  width: `${(avg / 5) * 100}%`,
+                                  backgroundColor: avg >= 4 ? "#34d399" : avg >= 3 ? "#fbbf24" : "#f87171",
+                                }}
+                              />
+                            </div>
+                            <span className="text-xs font-semibold text-zinc-300 w-8 text-right">{avg.toFixed(1)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            );
+          })()
         ) : (
-          /* SUMMARY VIEW */
           <div>
             {/* Criteria legend */}
             <div className="mb-4 flex flex-wrap gap-2">
@@ -333,7 +437,7 @@ export default function SoforDegerlendirmePage() {
                 </span>
               ))}
             </div>
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-zinc-800">
@@ -395,16 +499,14 @@ export default function SoforDegerlendirmePage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Firma (Opsiyonel)</label>
-                <select
+                <AppSelect
                   value={form.company_id}
-                  onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500"
-                >
-                  <option value="">— Firma Seçin —</option>
-                  {companies.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                  onChange={v => setForm(f => ({ ...f, company_id: v }))}
+                  options={[
+                    { value: "", label: "— Firma Seçin —" },
+                    ...companies.map(c => ({ value: c.id, label: c.name })),
+                  ]}
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Şöför Adı Soyadı *</label>

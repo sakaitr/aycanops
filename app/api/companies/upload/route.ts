@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import ExcelJS from "exceljs";
@@ -9,7 +10,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (user.role !== "admin" && user.role !== "yonetici")
+    if (!hasPermission(user, "companies:update"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const formData = await req.formData();

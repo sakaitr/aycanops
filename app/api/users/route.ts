@@ -2,10 +2,11 @@
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { hashPassword } from "@/lib/auth";
-import { isAtLeast } from "@/lib/permissions";
+import { hasPermission, isAtLeast } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { userCreateSchema } from "@/lib/schemas";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
   try {
@@ -26,13 +27,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, data });
     }
 
-    if (user.role !== "admin") return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+    if (!hasPermission(user, "users:read")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const db = getDb();
     const data = await db.prepare(`
       SELECT u.id, u.username, u.full_name, u.role, u.is_active,
              u.department_id, d.name as department_name,
              u.allowed_pages, u.allowed_companies,
+             u.whatsapp_phone,
              u.created_at, u.updated_at
       FROM users u
       LEFT JOIN departments d ON d.id = u.department_id
@@ -50,12 +52,15 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (user.role !== "admin") return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+    if (!hasPermission(user, "users:create")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const body = await req.json();
     const parsed = userCreateSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
-    const { username, password, full_name, role, department_id } = parsed.data;
+    const { username, password, full_name, role, department_id, allowed_pages, allowed_companies, whatsapp_phone } = parsed.data;
+    if ((allowed_pages !== undefined || allowed_companies !== undefined) && !hasPermission(user, "users:permissions")) {
+      return NextResponse.json({ ok: false, error: "İzin kapsamı değiştirme yetkiniz yok" }, { status: 403 });
+    }
 
     const db = getDb();
     const now = nowIso();
@@ -63,8 +68,30 @@ export async function POST(req: NextRequest) {
     const hash = hashPassword(password);
 
     await db.prepare(
-      "INSERT INTO users (id, username, password_hash, full_name, role, department_id, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)"
-    ).run(id, username.trim().toLowerCase(), hash, full_name.trim(), role, department_id || null, now, now);
+      `INSERT INTO users
+       (id, username, password_hash, full_name, role, department_id, is_active, allowed_pages, allowed_companies, whatsapp_phone, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`
+    ).run(
+      id,
+      username.trim().toLowerCase(),
+      hash,
+      full_name.trim(),
+      role,
+      department_id || null,
+      allowed_pages !== undefined && allowed_pages !== null ? JSON.stringify(allowed_pages) : null,
+      allowed_companies !== undefined && allowed_companies !== null ? JSON.stringify(allowed_companies) : null,
+      whatsapp_phone?.trim() || null,
+      now,
+      now
+    );
+
+    await logAudit({
+      actorUserId: user.id,
+      action: "user_create",
+      entityType: "user",
+      entityId: id,
+      details: { role, allowed_pages: allowed_pages ?? null, allowed_companies: allowed_companies ?? null },
+    });
 
     return NextResponse.json({ ok: true, data: { id } });
   } catch (e: any) {

@@ -5,6 +5,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import Badge from "@/components/Badge";
+import { isAtLeast } from "@/lib/permissions";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 const TODO_STATUSES = [
   { code: "todo", label: "Yapılacak" },
@@ -20,6 +22,13 @@ const TICKET_STATUSES = [
   { code: "solved", label: "Çözüldü" },
   { code: "closed", label: "Kapalı" },
 ];
+
+function smartCase(str: string): string {
+  if (!str) return str;
+  return str.length > 2 && str === str.toUpperCase()
+    ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
+    : str;
+}
 
 function timeAgo(iso: string) {
   if (!iso) return "";
@@ -39,7 +48,7 @@ function IsTakibiContent() {
   const [user, setUser] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   useEffect(() => {
-    fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); }).catch(() => {});
+    fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); else router.replace("/login"); }).catch(() => { router.replace("/login"); });
   }, []);
   useEffect(() => {
     fetch("/api/users?simple=1").then(r => r.json()).then(d => { if (d.ok) setUsers(d.data); }).catch(() => {});
@@ -50,6 +59,9 @@ function IsTakibiContent() {
   const [todosLoading, setTodosLoading] = useState(false);
   const [todoFilter, setTodoFilter] = useState("");
   const [todoSearch, setTodoSearch] = useState("");
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [todoViewMode, setTodoViewMode] = useState<"liste" | "takvim">("liste");
+  const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [showTodoCreate, setShowTodoCreate] = useState(false);
   const [todoCreating, setTodoCreating] = useState(false);
   const [todoForm, setTodoForm] = useState({ title: "", description: "", priority_code: "med", due_date: "", assigned_to: "" });
@@ -62,6 +74,7 @@ function IsTakibiContent() {
   const [showTicketCreate, setShowTicketCreate] = useState(false);
   const [ticketCreating, setTicketCreating] = useState(false);
   const [ticketForm, setTicketForm] = useState({ title: "", description: "", priority_code: "med", assigned_to: "" });
+  useEscapeKey(() => { setShowTodoCreate(false); setShowTicketCreate(false); }, showTodoCreate || showTicketCreate);
 
   // ── Rapor state ──
   const today = new Date().toISOString().split("T")[0];
@@ -159,10 +172,12 @@ function IsTakibiContent() {
     loadTickets();
   }
 
-  const isManager = user && ["yetkili", "yonetici", "admin"].includes(user.role);
-  const isAdmin = user && ["yonetici", "admin"].includes(user.role);
+  const isManager = !!user && isAtLeast(user.role, "yetkili");
+  const isAdmin = !!user && isAtLeast(user.role, "yonetici");
 
-  const filteredTodos = todos.filter(t => !todoSearch || t.title.toLowerCase().includes(todoSearch.toLowerCase()));
+  const filteredTodos = todos
+    .filter(t => !todoSearch || t.title.toLowerCase().includes(todoSearch.toLowerCase()))
+    .filter(t => !onlyMine || t.assigned_to === user?.id || t.created_by === user?.id);
   const filteredTickets = tickets.filter(t => !ticketSearch || t.title.toLowerCase().includes(ticketSearch.toLowerCase()));
 
   function setTab(t: string) { router.push(`/gorevler?tab=${t}`); }
@@ -252,6 +267,21 @@ function IsTakibiContent() {
                 onChange={e => setTodoSearch(e.target.value)}
                 className="bg-zinc-900 border border-zinc-800 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-600 w-44 placeholder-zinc-600"
               />
+              <div className="flex gap-1 rounded-lg border border-zinc-800 overflow-hidden">
+                {(["liste", "takvim"] as const).map(v => (
+                  <button key={v} onClick={() => setTodoViewMode(v)} className={`text-xs font-medium px-3 py-2 transition-colors ${todoViewMode === v ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-white"}`}>
+                    {v === "liste" ? "Liste" : "📅 Takvim"}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setOnlyMine(v => !v)}
+                className={`text-xs font-medium px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 ${
+                  onlyMine ? "bg-blue-600 text-white" : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white"
+                }`}
+              >
+                <span>{onlyMine ? "✓" : ""}</span> Sadece Benimkiler
+              </button>
               <div className="flex gap-1 flex-wrap">
                 {[{ value: "", label: "Tümü" }, ...TODO_STATUSES.map(s => ({ value: s.code, label: s.label }))].map(o => (
                   <button
@@ -273,6 +303,84 @@ function IsTakibiContent() {
               <div className="flex items-center justify-center py-24">
                 <div className="text-zinc-600 text-sm">Yükleniyor...</div>
               </div>
+            ) : todoViewMode === "takvim" ? (
+              /* CALENDAR VIEW */
+              (() => {
+                const year = calMonth.getFullYear();
+                const month = calMonth.getMonth();
+                const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const startOffset = (firstDay + 6) % 7; // Mon=0
+                const todayStr = new Date().toISOString().slice(0, 10);
+
+                // Group todos by due_date
+                const byDate: Record<string, any[]> = {};
+                for (const t of filteredTodos) {
+                  if (!t.due_date) continue;
+                  const d = t.due_date.slice(0, 10);
+                  if (!byDate[d]) byDate[d] = [];
+                  byDate[d].push(t);
+                }
+
+                const monthStr = calMonth.toLocaleDateString("tr-TR", { month: "long", year: "numeric" });
+                const prevMonth = new Date(year, month - 1, 1);
+                const nextMonth = new Date(year, month + 1, 1);
+
+                const cells: (number | null)[] = [...Array(startOffset).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+                while (cells.length % 7 !== 0) cells.push(null);
+
+                return (
+                  <div>
+                    {/* Month navigation */}
+                    <div className="flex items-center justify-between mb-3">
+                      <button onClick={() => setCalMonth(prevMonth)} className="text-zinc-400 hover:text-white px-3 py-1.5 rounded-lg border border-zinc-800 hover:border-zinc-600 text-sm transition-colors">←</button>
+                      <span className="text-white font-semibold capitalize">{monthStr}</span>
+                      <button onClick={() => setCalMonth(nextMonth)} className="text-zinc-400 hover:text-white px-3 py-1.5 rounded-lg border border-zinc-800 hover:border-zinc-600 text-sm transition-colors">→</button>
+                    </div>
+                    {/* Day headers */}
+                    <div className="grid grid-cols-7 mb-1">
+                      {["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"].map(d => (
+                        <div key={d} className="text-center text-xs font-semibold text-zinc-600 py-1">{d}</div>
+                      ))}
+                    </div>
+                    {/* Grid */}
+                    <div className="grid grid-cols-7 border border-zinc-800 rounded-xl overflow-hidden">
+                      {cells.map((day, i) => {
+                        const dateStr = day ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
+                        const dayTodos = day ? (byDate[dateStr] || []) : [];
+                        const isToday = dateStr === todayStr;
+                        return (
+                          <div key={i} className={`min-h-[80px] p-1.5 border-b border-r border-zinc-800 ${!day ? "bg-zinc-900/30" : "bg-zinc-900 hover:bg-zinc-800/40 transition-colors"} ${i % 7 === 6 ? "border-r-0" : ""}`}>
+                            {day && (
+                              <>
+                                <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full ${isToday ? "bg-blue-600 text-white" : "text-zinc-500"}`}>{day}</div>
+                                <div className="space-y-0.5">
+                                  {dayTodos.slice(0, 3).map((t: any) => (
+                                    <Link key={t.id} href={`/gorevler/${t.id}`} className={`block text-[10px] leading-tight px-1 py-0.5 rounded truncate ${
+                                      t.status_code === "done" ? "text-emerald-400 bg-emerald-950/60" :
+                                      t.status_code === "doing" ? "text-blue-400 bg-blue-950/60" :
+                                      t.status_code === "blocked" ? "text-red-400 bg-red-950/60" :
+                                      "text-zinc-400 bg-zinc-800"
+                                    }`}>{t.title}</Link>
+                                  ))}
+                                  {dayTodos.length > 3 && <div className="text-[10px] text-zinc-600 px-1">+{dayTodos.length - 3} daha</div>}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Legend */}
+                    <div className="flex gap-4 mt-3 text-xs text-zinc-600">
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-zinc-500 inline-block" /> Yapılacak</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Yapılıyor</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Engellendi</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Tamamlandı</span>
+                    </div>
+                  </div>
+                );
+              })()
             ) : (
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
                 {filteredTodos.length === 0 ? (
@@ -284,7 +392,7 @@ function IsTakibiContent() {
                   >
                     <Badge status={todo.status_code} showLabel />
                     <Link href={`/gorevler/${todo.id}`} className="text-white text-sm hover:text-zinc-300 transition-colors flex-1 font-medium truncate">
-                      {todo.title}
+                      {smartCase(todo.title)}
                     </Link>
                     {todo.priority_code && <Badge status={todo.priority_code} showLabel />}
                     {todo.due_date && (

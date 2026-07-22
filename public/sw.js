@@ -1,22 +1,40 @@
-const CACHE_NAME = 'aycan-ops-v1';
+const CACHE_NAME = 'aycan-ops-v20260427-2';
 const OFFLINE_URL = '/offline';
 
 const STATIC_ASSETS = [
-  '/',
   '/offline',
-  '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
 ];
+
+function isSameOrigin(url) {
+  return url.origin === self.location.origin;
+}
+
+function isManifestRequest(url) {
+  return url.pathname === '/manifest.webmanifest' || url.pathname === '/manifest.json';
+}
+
+function isNextAsset(url) {
+  return url.pathname.startsWith('/_next/static/');
+}
+
+function isScriptOrStyle(request) {
+  return request.destination === 'script' || request.destination === 'style';
+}
 
 // Install
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+      return cache.addAll(STATIC_ASSETS).catch(() => undefined);
     })
   );
   self.skipWaiting();
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'skipWaiting') self.skipWaiting();
 });
 
 // Activate — clean old caches
@@ -33,12 +51,33 @@ self.addEventListener('activate', (event) => {
 
 // Fetch
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+
+  // Keep manifests and Next build chunks fresh. Stale cached HTML/JS caused
+  // PWA manifest parse errors and map pages to need Ctrl+Shift+R after deploys.
+  if ((isSameOrigin(url) && isManifestRequest(url)) || isNextAsset(url) || isScriptOrStyle(event.request)) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-cache' })
+        .then((response) => {
+          if (response && response.status === 200 && isSameOrigin(url)) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   // API: Network-first, fallback to cache
-  if (event.request.url.includes('/api/')) {
+  if (isSameOrigin(url) && url.pathname.startsWith('/api/')) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          if (event.request.method === 'GET') {
+          if (response && response.status === 200) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
           }
@@ -56,6 +95,8 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
+
+  if (!isSameOrigin(url)) return;
 
   // Static assets: Cache-first
   event.respondWith(

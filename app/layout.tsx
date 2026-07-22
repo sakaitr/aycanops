@@ -1,7 +1,26 @@
 import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import "leaflet/dist/leaflet.css";
 import OfflineBanner from "@/components/OfflineBanner";
 import PWARegister from "@/components/PWARegister";
+import ThemeProvider from "@/components/ThemeProvider";
+import Toaster from "@/components/Toaster";
+import { CompanyProvider } from "@/contexts/CompanyContext";
+
+const ibmPlexSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-sans",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-mono",
+});
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -9,7 +28,7 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   viewportFit: "cover",
-  themeColor: "#09090b",
+  themeColor: "#0f172a",
 };
 
 export const metadata: Metadata = {
@@ -60,10 +79,14 @@ export default function RootLayout({
         <link rel="apple-touch-startup-image" href="/splash/apple-splash-1125-2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" />
         <link rel="apple-touch-startup-image" href="/splash/apple-splash-750-1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" />
       </head>
-      <body suppressHydrationWarning className="antialiased" style={{ background: '#09090b', color: '#fafafa', minHeight: '100vh' }}>
-        {children}
+      <body suppressHydrationWarning className={`antialiased ${ibmPlexSans.variable} ${jetbrainsMono.variable}`} style={{ minHeight: '100vh', fontFamily: "var(--font-sans, 'IBM Plex Sans', sans-serif)" }}>
+        <ThemeProvider />
+        <CompanyProvider>
+          {children}
+        </CompanyProvider>
         <OfflineBanner />
         <PWARegister />
+        <Toaster />
       </body>
     </html>
   );

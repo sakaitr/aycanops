@@ -2,7 +2,7 @@
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { isAtLeast } from "@/lib/permissions";
-import { todayIstanbul } from "@/lib/time";
+import { todayIstanbul, istanbulHourMinute } from "@/lib/time";
 
 export async function GET(_request: NextRequest) {
   try {
@@ -44,7 +44,7 @@ export async function GET(_request: NextRequest) {
         case "draft":     draft++;     break;
       }
       if (w.summary?.trim()) issueCount++;
-      if (w.submitted_at && new Date(w.submitted_at).getHours() >= 22) lateCount++;
+      if (w.submitted_at && istanbulHourMinute(new Date(w.submitted_at)).hour >= 22) lateCount++;
     });
 
     return NextResponse.json({

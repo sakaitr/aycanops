@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import Badge from "@/components/Badge";
+import { isAtLeast } from "@/lib/permissions";
 
 const STATUS_OPTIONS = [
   { value: "", label: "Tümü" },
@@ -19,6 +21,17 @@ const MONTHS_TR = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Ey
 function todayStr() { return new Date().toISOString().split("T")[0]; }
 function nDaysAgo(n: number) {
   const d = new Date(); d.setDate(d.getDate() - n);
+  return d.toISOString().split("T")[0];
+}
+function getMonday(dateStr?: string) {
+  const d = dateStr ? new Date(dateStr + "T00:00:00") : new Date();
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().split("T")[0];
+}
+function addDays(dateStr: string, n: number) {
+  const d = new Date(dateStr + "T00:00:00"); d.setDate(d.getDate() + n);
   return d.toISOString().split("T")[0];
 }
 function formatDate(s: string) {
@@ -45,6 +58,7 @@ function buildEvaluation(data: any) {
 }
 
 export default function GunlukListPage() {
+  const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [worklogs, setWorklogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,13 +71,15 @@ export default function GunlukListPage() {
   const [summary, setSummary] = useState<any>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [showNotSubmitted, setShowNotSubmitted] = useState(false);
+  const [tab, setTab] = useState<"liste" | "takvim">("liste");
+  const [calWeek, setCalWeek] = useState(getMonday());
 
   const today = todayStr();
-  const isManager = user?.role === "yonetici" || user?.role === "admin";
-  const isAtLeastYetkili = user && ["yetkili", "yonetici", "admin"].includes(user.role);
+  const isManager = !!user && isAtLeast(user.role, "yonetici");
+  const isAtLeastYetkili = !!user && isAtLeast(user.role, "yetkili");
 
   useEffect(() => {
-    fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); }).catch(() => {});
+    fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); else router.replace("/login"); }).catch(() => { router.replace("/login"); });
   }, []);
 
   const loadData = useCallback(async () => {
@@ -162,7 +178,20 @@ export default function GunlukListPage() {
             <h1 className="text-2xl font-bold text-white">Günlük İşler</h1>
             <p className="text-zinc-500 text-sm mt-0.5">{worklogs.length} kayıt</p>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
+            {/* Tab switcher */}
+            <div className="flex gap-1 bg-zinc-900 p-1 rounded-lg border border-zinc-800">
+              <button onClick={() => setTab("liste")}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === "liste" ? "bg-white text-zinc-950" : "text-zinc-400 hover:text-white"}`}>
+                Liste
+              </button>
+              {isManager && (
+                <button onClick={() => { setTab("takvim"); setDateFrom(calWeek); setDateTo(addDays(calWeek, 6)); }}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === "takvim" ? "bg-white text-zinc-950" : "text-zinc-400 hover:text-white"}`}>
+                  Takvim
+                </button>
+              )}
+            </div>
             {isManager && pendingCount > 0 && (
               <button
                 onClick={bulkApprove}
@@ -247,6 +276,9 @@ export default function GunlukListPage() {
             )}
           </div>
         )}
+
+        {/* Filters + List — only in Liste tab */}
+        {tab === "liste" && (<>
 
         {/* Filters */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-5">
@@ -384,6 +416,91 @@ export default function GunlukListPage() {
             })}
           </div>
         )}
+        </>)}
+
+        {/* Calendar tab */}
+        {tab === "takvim" && isManager && (() => {
+          const weekDates = Array.from({ length: 7 }, (_, i) => addDays(calWeek, i));
+          const worklogMap = new Map<string, any>();
+          worklogs.forEach(w => worklogMap.set(`${w.user_id}_${w.work_date}`, w));
+          const users = dropdownUsers.length > 0 ? dropdownUsers : Array.from(new Map(worklogs.map(w => [w.user_id, { id: w.user_id, full_name: w.user_name }])).values());
+          const DAY_LABELS = ["Pzt", "Sal", "Çrş", "Per", "Cum", "Cmt", "Paz"];
+          function cellColor(s: string | undefined) {
+            if (!s) return "bg-zinc-800/40 text-zinc-700";
+            if (s === "approved") return "bg-emerald-950 text-emerald-400 border border-emerald-900";
+            if (s === "submitted") return "bg-blue-950 text-blue-400 border border-blue-900";
+            if (s === "returned") return "bg-orange-950 text-orange-400 border border-orange-900";
+            return "bg-zinc-800 text-zinc-500 border border-zinc-700";
+          }
+          function cellLabel(s: string | undefined) {
+            if (!s) return "—";
+            if (s === "approved") return "✓";
+            if (s === "submitted") return "Bekl.";
+            if (s === "returned") return "İade";
+            return "Taslak";
+          }
+          return (
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <button onClick={() => { const prev = addDays(calWeek, -7); setCalWeek(prev); setDateFrom(prev); setDateTo(addDays(prev, 6)); }}
+                  className="text-zinc-500 hover:text-white text-lg px-2 py-1 rounded hover:bg-zinc-800 transition-colors">←</button>
+                <span className="text-sm text-zinc-300 font-medium">
+                  {new Date(calWeek + "T00:00:00").toLocaleDateString("tr-TR", { day: "numeric", month: "long" })}
+                  {" — "}
+                  {new Date(addDays(calWeek, 6) + "T00:00:00").toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}
+                </span>
+                <button onClick={() => { const next = addDays(calWeek, 7); setCalWeek(next); setDateFrom(next); setDateTo(addDays(next, 6)); }}
+                  className="text-zinc-500 hover:text-white text-lg px-2 py-1 rounded hover:bg-zinc-800 transition-colors">→</button>
+                <button onClick={() => { const m = getMonday(); setCalWeek(m); setDateFrom(m); setDateTo(addDays(m, 6)); }}
+                  className="ml-2 text-xs text-zinc-600 hover:text-white px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors">
+                  Bu Hafta
+                </button>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-x-auto">
+                <table className="w-full text-sm border-collapse min-w-[600px]">
+                  <thead>
+                    <tr>
+                      <th className="text-left px-4 py-3 text-zinc-500 text-xs font-semibold uppercase tracking-wider border-b border-zinc-800 w-36">Personel</th>
+                      {weekDates.map((d, i) => (
+                        <th key={d} className={`px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider border-b border-zinc-800 ${d === today ? "text-blue-400" : "text-zinc-500"}`}>
+                          <p>{DAY_LABELS[i]}</p>
+                          <p className="font-normal normal-case mt-0.5">{new Date(d + "T00:00:00").getDate()}</p>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u: any, ri: number) => (
+                      <tr key={u.id} className={ri < users.length - 1 ? "border-b border-zinc-800/50" : ""}>
+                        <td className="px-4 py-3 text-zinc-300 text-xs font-medium truncate max-w-[9rem]">{u.full_name}</td>
+                        {weekDates.map(d => {
+                          const w = worklogMap.get(`${u.id}_${d}`);
+                          const href = `/gunluk/${d}?userId=${u.id}`;
+                          return (
+                            <td key={d} className={`px-2 py-2 text-center ${d === today ? "bg-blue-950/10" : ""}`}>
+                              {w ? (
+                                <Link href={href}
+                                  className={`inline-block text-xs px-2 py-1 rounded-lg font-medium transition-opacity hover:opacity-80 ${cellColor(w.status_code)}`}>
+                                  {cellLabel(w.status_code)}
+                                </Link>
+                              ) : (
+                                <span className="text-zinc-700 text-xs">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                    {users.length === 0 && (
+                      <tr><td colSpan={8} className="px-4 py-12 text-center text-zinc-600 text-sm">Bu haftaya ait veri yok</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
+
       </main>
     </div>
   );

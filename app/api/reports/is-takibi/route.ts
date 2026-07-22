@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { isAtLeast } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ ok: false, error: "Yetkisiz erişim" }, { status: 401 });
     }
-    if (!isAtLeast(user.role, "yetkili")) {
+    if (!hasPermission(user, "reports:read")) {
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
     }
 
