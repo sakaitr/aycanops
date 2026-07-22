@@ -9,6 +9,7 @@ import path from "node:path";
 import { getReport } from "@/lib/reports/catalog";
 import { runReport } from "@/lib/reports/queries";
 import { buildXlsx, buildPdf } from "@/lib/reports/engine";
+import { buildInspectionPdf } from "@/lib/reports/inspection-pdf";
 
 type ReportRow = Record<string, unknown>;
 
@@ -234,6 +235,20 @@ export async function GET(request: NextRequest) {
       }
 
       if (format === "pdf") {
+        // Araç Denetim Raporu'nun PDF çıktısı, jenerik tablo yerine her
+        // denetim için 1 sayfa (checklist + fotoğraflar) gösteren zengin
+        // bir belge — XLSX çıktısı hâlâ jenerik tablo (yukarıdaki akış).
+        if (def.slug === "arac-denetim") {
+          const pdfBuffer = await buildInspectionPdf(companyIds, dateFrom, dateTo);
+          return new NextResponse(pdfBuffer as unknown as BodyInit, {
+            status: 200,
+            headers: {
+              "Content-Type": "application/pdf",
+              "Content-Disposition": `attachment; filename="${safeSlug}_${fileDate}.pdf"`,
+            },
+          });
+        }
+
         const pdfBytes = await buildPdf(def.name, result, logoPath);
         return new NextResponse(Buffer.from(pdfBytes), {
           status: 200,

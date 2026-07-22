@@ -74,6 +74,8 @@ export default function DenetimlerPage() {
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [expandedPhotos, setExpandedPhotos] = useState<Record<string, any[]>>({});
+  // Soru bazlı fotoğraflar: checklist index -> seçilen dosya
+  const [questionPhotos, setQuestionPhotos] = useState<Record<number, File>>({});
   // Fotoğraf yükleme başarısız olup kullanıcı "Kaydet"e tekrar bastığında
   // aynı denetim kaydını yeniden oluşturmamak için, ilk başarılı POST
   // /api/inspections'ın döndürdüğü id burada tutulur.
@@ -164,6 +166,7 @@ export default function DenetimlerPage() {
     setResultOverride(null);
     setSaveError(null);
     setPhotoFiles([]);
+    setQuestionPhotos({});
     setCreatedInspectionId(null);
     setWizardStep("setup");
     setCurrentCriterionIdx(0);
@@ -181,8 +184,18 @@ export default function DenetimlerPage() {
   }
 
   function setCheckOk(idx: number, ok: boolean) {
-    setChecklist(cl => cl.map((c, i) => i === idx ? { ...c, ok, note: ok ? "" : c.note } : c));
+    // Not: "evet" seçilse de kullanıcının yazdığı not silinmez — cevap ne
+    // olursa olsun not eklenebilir/kalabilir kalmalı.
+    setChecklist(cl => cl.map((c, i) => i === idx ? { ...c, ok } : c));
     if (ok) setResultOverride(null);
+  }
+
+  function setQuestionPhoto(idx: number, file: File | null) {
+    setQuestionPhotos(prev => {
+      const next = { ...prev };
+      if (file) next[idx] = file; else delete next[idx];
+      return next;
+    });
   }
 
   function setCheckNote(idx: number, note: string) {
@@ -251,11 +264,23 @@ export default function DenetimlerPage() {
         setCreatedInspectionId(inspectionId);
       }
 
-      if (photoFiles.length > 0) {
+      // Genel (özet adımında seçilen) + soru bazlı fotoğraflar tek istekte
+      // gönderilir. Her dosyanın hangi soruya ait olduğu (varsa) paralel
+      // criterion_index_N alanlarıyla belirtilir; genel fotoğraflarda bu
+      // alan boş string olarak gönderilir (NULL = genel).
+      const allPhotos: { file: File; criterionIndex: number | null }[] = [
+        ...photoFiles.map(f => ({ file: f, criterionIndex: null as number | null })),
+        ...Object.entries(questionPhotos).map(([idx, f]) => ({ file: f, criterionIndex: Number(idx) })),
+      ];
+
+      if (allPhotos.length > 0) {
         setUploadingPhotos(true);
         try {
           const photoForm = new FormData();
-          for (const f of photoFiles) photoForm.append("photos", f);
+          allPhotos.forEach(({ file, criterionIndex }, i) => {
+            photoForm.append("photos", file);
+            photoForm.append(`criterion_index_${i}`, criterionIndex === null ? "" : String(criterionIndex));
+          });
           const photoRes = await fetch(`/api/inspections/${inspectionId}/photos`, { method: "POST", body: photoForm });
           const photoD = await photoRes.json();
           if (!photoD.ok) {
@@ -272,6 +297,7 @@ export default function DenetimlerPage() {
       }
 
       setPhotoFiles([]);
+      setQuestionPhotos({});
       setCreatedInspectionId(null);
       setShowForm(false);
       load();
@@ -596,22 +622,50 @@ export default function DenetimlerPage() {
                   </button>
                 </div>
 
-                {/* Açıklama (red verilince zorunlu) */}
-                {currentItem.ok === false && (
+                {/* Açıklama — red verilince zorunlu, onayda da opsiyonel not eklenebilir */}
+                {currentItem.ok !== null && (
                   <div className="mb-4">
-                    <label className="block text-xs font-semibold text-red-400 uppercase tracking-wider mb-1">
-                      Açıklama (zorunlu) *
+                    <label className={`block text-xs font-semibold uppercase tracking-wider mb-1 ${currentItem.ok === false ? "text-red-400" : "text-zinc-500"}`}>
+                      {currentItem.ok === false ? "Açıklama (zorunlu) *" : "Not (opsiyonel)"}
                     </label>
                     <textarea
                       value={currentItem.note}
                       onChange={e => setCheckNote(currentCriterionIdx, e.target.value)}
-                      placeholder="Red nedeni açıklayın..."
-                      rows={3}
-                      autoFocus
-                      className="w-full bg-zinc-800 border border-red-800 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-red-600 resize-none"
+                      placeholder={currentItem.ok === false ? "Red nedeni açıklayın..." : "İsterseniz bir not ekleyin..."}
+                      rows={currentItem.ok === false ? 3 : 2}
+                      autoFocus={currentItem.ok === false}
+                      className={`w-full bg-zinc-800 border text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none resize-none ${
+                        currentItem.ok === false ? "border-red-800 focus:border-red-600" : "border-zinc-700 focus:border-zinc-500"
+                      }`}
                     />
                   </div>
                 )}
+
+                {/* Bu soruya özel fotoğraf */}
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">
+                    Bu Soruya Fotoğraf (opsiyonel)
+                  </label>
+                  {questionPhotos[currentCriterionIdx] ? (
+                    <div className="flex items-center gap-2 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2">
+                      <span className="text-zinc-300 text-xs truncate flex-1">{questionPhotos[currentCriterionIdx].name}</span>
+                      <button onClick={() => setQuestionPhoto(currentCriterionIdx, null)} className="text-red-400 hover:text-red-300 text-xs font-semibold shrink-0">
+                        Kaldır
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex items-center justify-center gap-2 bg-zinc-800 border border-dashed border-zinc-700 rounded-lg px-3 py-2.5 text-zinc-500 text-xs cursor-pointer hover:border-zinc-500 hover:text-zinc-300 transition-colors">
+                      📷 Fotoğraf Ekle
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) setQuestionPhoto(currentCriterionIdx, f); }}
+                      />
+                    </label>
+                  )}
+                </div>
 
                 {/* İleri / Geri */}
                 <div className="flex gap-3">

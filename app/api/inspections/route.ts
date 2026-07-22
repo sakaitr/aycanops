@@ -77,13 +77,17 @@ export async function POST(req: NextRequest) {
     let resolvedVehicleId = vehicle_id || null;
     let resolvedCompVehicleId = company_vehicle_id || null;
     let compVehiclePlate: string | null = company_vehicle_plate?.trim().toUpperCase() || null;
-    // company_id for free-text plate mode (stored on company_vehicle_plate column, no FK)
-    const resolvedCompanyId = company_id || null;
+    // company_id: serbest plaka modunda doğrudan payload'dan gelir; firma
+    // aracı modunda company_vehicles'tan çözülür (aşağıda doldurulur) —
+    // her iki modda da firma bazlı raporların bu kaydı görebilmesi için
+    // inspections.company_id kolonuna yazılır (bkz. migration 079).
+    let resolvedCompanyId: string | null = company_id || null;
 
     if (company_vehicle_id && !vehicle_id) {
-      const cv = await db.prepare("SELECT * FROM company_vehicles WHERE id = ?").get(company_vehicle_id) as { plate: string } | undefined;
+      const cv = await db.prepare("SELECT * FROM company_vehicles WHERE id = ?").get(company_vehicle_id) as { plate: string; company_id: string } | undefined;
       if (!cv) return NextResponse.json({ ok: false, error: "Firma aracı bulunamadı" }, { status: 404 });
       compVehiclePlate = cv.plate;
+      resolvedCompanyId = cv.company_id;
 
       // Find or create in vehicles table so FK is satisfied
       try {
@@ -111,9 +115,9 @@ export async function POST(req: NextRequest) {
     }
 
     await db.prepare(
-      `INSERT INTO inspections (id, vehicle_id, company_vehicle_id, company_vehicle_plate, inspection_date, inspector_id, type, result, checklist_json, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, resolvedVehicleId, resolvedCompVehicleId, compVehiclePlate,
+      `INSERT INTO inspections (id, vehicle_id, company_vehicle_id, company_vehicle_plate, company_id, inspection_date, inspector_id, type, result, checklist_json, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, resolvedVehicleId, resolvedCompVehicleId, compVehiclePlate, resolvedCompanyId,
       inspection_date, user.id, type || "routine", autoResult,
       checklist ? JSON.stringify(checklist) : null, notes || null, now, now);
 

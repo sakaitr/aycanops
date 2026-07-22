@@ -48,6 +48,8 @@ const nextConfig: NextConfig = {
     "@puppeteer/browsers",
     "qrcode",
     "firebase-admin",
+    "playwright",
+    "sharp",
   ],
   env: {
     NEXT_PUBLIC_APP_URL: appUrl,

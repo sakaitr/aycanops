@@ -292,13 +292,18 @@ export async function r07_girisUyum(companyIds: string[], dateFrom?: string, dat
 
 // ─── Report 8: Araç Denetim Raporu ───────────────────────────────────────────
 export async function r08_aracDenetim(companyIds: string[], dateFrom?: string, dateTo?: string, vehiclePlates?: string[]): Promise<ReportResult> {
-  const c = whereCompanies(companyIds, "cv.company_id");
+  // inspections.company_id her iki modda da (firma aracı VEYA serbest
+  // plaka) doldurulur (bkz. migration 079) — company_vehicles üzerinden
+  // INNER JOIN yerine doğrudan bu kolonu kullanmak, serbest plaka modunda
+  // oluşturulan denetimlerin (gerçek kullanımın büyük kısmı) rapordan
+  // hiç görünmemesi sorununu çözer.
+  const c = whereCompanies(companyIds, "i.company_id");
   const d = whereDates(dateFrom, dateTo, "i.inspection_date");
-  const p = wherePlates(vehiclePlates ?? [], "i.company_vehicle_plate");
+  const p = wherePlates(vehiclePlates ?? [], "COALESCE(i.company_vehicle_plate, cv.plate)");
   const rows = await db().prepare(`
     SELECT
-      co.name                   AS "Firma",
-      i.company_vehicle_plate   AS "Plaka",
+      COALESCE(co.name, '—')                              AS "Firma",
+      COALESCE(i.company_vehicle_plate, cv.plate, '—')     AS "Plaka",
       i.inspection_date         AS "Denetim Tarihi",
       i.type                    AS "Tür",
       CASE i.result
@@ -309,8 +314,8 @@ export async function r08_aracDenetim(companyIds: string[], dateFrom?: string, d
       END                       AS "Sonuç",
       COALESCE(i.notes,'')      AS "Notlar"
     FROM inspections i
-    JOIN company_vehicles cv ON cv.id = i.company_vehicle_id
-    JOIN companies co         ON co.id = cv.company_id
+    LEFT JOIN company_vehicles cv ON cv.id = i.company_vehicle_id
+    LEFT JOIN companies co        ON co.id = i.company_id
     WHERE 1=1 ${c.sql} ${d.sql} ${p.sql}
     ORDER BY i.inspection_date DESC
     LIMIT 1000

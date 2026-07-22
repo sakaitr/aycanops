@@ -25,7 +25,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const db = getDb();
     const data = await db.prepare(
-      "SELECT id, filename, created_at FROM inspection_photos WHERE inspection_id = ? ORDER BY created_at ASC"
+      "SELECT id, filename, criterion_index, created_at FROM inspection_photos WHERE inspection_id = ? ORDER BY created_at ASC"
     ).all(id);
     return NextResponse.json({ ok: true, data });
   } catch (e) { return apiError(e); }
@@ -62,7 +62,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const now = nowIso();
     const created: { id: string; filename: string }[] = [];
 
-    for (const file of files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       if (!isAllowedImageType(file.type)) {
         return NextResponse.json({ ok: false, error: `Desteklenmeyen dosya türü: ${file.type}` }, { status: 400 });
       }
@@ -70,14 +71,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return NextResponse.json({ ok: false, error: "Fotoğraf 8MB'ı geçemez" }, { status: 400 });
       }
 
+      // Her dosyanın hangi checklist sorusuna ait olduğu (varsa) paralel
+      // criterion_index_N alanıyla belirtilir — boş/eksikse genel fotoğraf
+      // (NULL) sayılır.
+      const criterionRaw = formData.get(`criterion_index_${i}`);
+      const criterionIndex = typeof criterionRaw === "string" && criterionRaw.trim() !== ""
+        ? Number(criterionRaw)
+        : null;
+
       const filename = `${uuidv4()}.${extForMime(file.type)}`;
       const buffer = Buffer.from(await file.arrayBuffer());
       await saveInspectionPhoto(filename, buffer);
 
       const photoId = uuidv4();
       await db.prepare(
-        "INSERT INTO inspection_photos (id, inspection_id, filename, created_by, created_at) VALUES (?, ?, ?, ?, ?)"
-      ).run(photoId, id, filename, user.id, now);
+        "INSERT INTO inspection_photos (id, inspection_id, criterion_index, filename, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(photoId, id, criterionIndex, filename, user.id, now);
       created.push({ id: photoId, filename });
     }
 
