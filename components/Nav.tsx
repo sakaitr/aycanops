@@ -142,6 +142,7 @@ const DEFAULT_NAV_CONFIG: NavConfigType = {
         { id: "teknik-8", href: "/admin/audit-log", label: "Aktivite Günlüğü", icon: "IconHistory", permission: "audit:read", isActive: true, sortOrder: 7, isCustom: false },
         { id: "teknik-9", href: "/admin/roller", label: "Roller ve Yetkiler", icon: "IconKey", permission: "users:permissions", isActive: true, sortOrder: 8, isCustom: false },
         { id: "teknik-10", href: "/admin", label: "Yönetim Paneli", icon: "IconSettings", permission: "users:read", isActive: true, sortOrder: 9, isCustom: false },
+        { id: "teknik-11", href: "/admin/nav-yapisi", label: "Nav Yapısı", icon: "IconMenu", permission: "nav_config:update", isActive: true, sortOrder: 10, isCustom: false },
       ],
     },
   ],
