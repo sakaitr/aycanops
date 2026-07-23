@@ -312,6 +312,16 @@ export const inspectionCreateSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
 });
 
+// Sadece kayıt bilgilerini (firma, plaka, tarih, tür, not) sonradan düzenlemek
+// için — checklist ve fotoğraflar bu uçtan değiştirilmez.
+export const inspectionUpdateSchema = z.object({
+  company_id: z.string().optional().nullable(),
+  company_vehicle_plate: z.string().max(20).optional().nullable(),
+  inspection_date: z.string().min(1).optional(),
+  type: z.string().max(50).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
 // ─── Driver Evaluations ───────────────────────────────────────────────
 const scoreField = z.number().min(1, "Min 1").max(5, "Max 5");
 

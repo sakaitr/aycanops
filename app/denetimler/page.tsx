@@ -91,6 +91,17 @@ export default function DenetimlerPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Düzenleme modalı — sadece firma/plaka/tarih/tür/not (checklist ve
+  // fotoğraflar burada değiştirilmez).
+  const [editingInspection, setEditingInspection] = useState<any | null>(null);
+  const [editCompanyId, setEditCompanyId] = useState("");
+  const [editPlate, setEditPlate] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editType, setEditType] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
   useEffect(() => { load(); }, [filterVehicleId, filterCompanyId]);
   useEffect(() => {
     fetch("/api/vehicles?limit=9999").then(r => r.json()).then(d => { if (d.ok) setVehicles(d.data); });
@@ -135,6 +146,39 @@ export default function DenetimlerPage() {
     } else {
       alert(d.error || "Silinemedi");
     }
+  }
+
+  function openEditModal(ins: any) {
+    setEditingInspection(ins);
+    setEditCompanyId(ins.company_id || "");
+    setEditPlate(ins.company_vehicle_plate || "");
+    setEditDate(ins.inspection_date);
+    setEditType(ins.type || "");
+    setEditNotes(ins.notes || "");
+    setEditError(null);
+  }
+
+  async function saveEdit() {
+    if (!editingInspection) return;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/inspections/${editingInspection.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_id: editCompanyId || null,
+          company_vehicle_plate: editPlate || null,
+          inspection_date: editDate,
+          type: editType,
+          notes: editNotes,
+        }),
+      });
+      const d = await res.json();
+      if (!d.ok) { setEditError(d.error || "Güncellenemedi"); return; }
+      setEditingInspection(null);
+      load();
+    } finally { setEditSaving(false); }
   }
 
   async function loadCriteriaForType(typeId: string) {
@@ -467,8 +511,16 @@ export default function DenetimlerPage() {
                           ))}
                         </div>
                       )}
-                      {((ins.result === "fail" || ins.result === "conditional") || hasPermission(user, "inspections:delete")) && (
+                      {((ins.result === "fail" || ins.result === "conditional") || hasPermission(user, "inspections:delete") || hasPermission(user, "inspections:update")) && (
                         <div className="mt-3 flex justify-end gap-2">
+                          {hasPermission(user, "inspections:update") && (
+                            <button
+                              onClick={e => { e.stopPropagation(); openEditModal(ins); }}
+                              className="text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              Düzenle
+                            </button>
+                          )}
                           {hasPermission(user, "inspections:delete") && (
                             <button
                               onClick={e => { e.stopPropagation(); deleteInspection(ins.id); }}
@@ -874,6 +926,76 @@ export default function DenetimlerPage() {
                 <button onClick={saveGorev} disabled={gorevSaving || !gorevPersonel}
                   className="flex-1 bg-white text-zinc-950 text-sm font-semibold py-2.5 rounded-lg hover:bg-zinc-200 disabled:bg-zinc-700 disabled:text-zinc-500 transition-colors">
                   {gorevSaving ? "Oluşturuluyor..." : "Oluştur ve Bildir"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DÜZENLEME MODALI ── */}
+      {editingInspection && (
+        <div className="fixed inset-0 bg-black/80 flex items-start justify-center z-50 px-4 overflow-y-auto py-8">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg my-auto">
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-zinc-800">
+              <h2 className="text-lg font-bold text-white">Denetimi Düzenle</h2>
+              <button onClick={() => setEditingInspection(null)} className="text-zinc-600 hover:text-white text-xl leading-none">×</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Firma</label>
+                <AppSelect
+                  value={editCompanyId}
+                  onChange={setEditCompanyId}
+                  options={[
+                    { value: "", label: "— Firma seçin (opsiyonel) —" },
+                    ...uniqueCompanies.map(cv => ({ value: cv.company_id, label: cv.company_name })),
+                  ]}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Plaka</label>
+                <input
+                  type="text"
+                  value={editPlate}
+                  onChange={e => setEditPlate(e.target.value.toUpperCase())}
+                  placeholder="34 ABC 123"
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 font-mono uppercase tracking-widest"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Tarih</label>
+                <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 [color-scheme:dark]" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Tür</label>
+                <AppSelect
+                  value={editType}
+                  onChange={setEditType}
+                  options={inspectionTypes.map(t => ({ value: t.code, label: t.label }))}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Not</label>
+                <textarea
+                  value={editNotes}
+                  onChange={e => setEditNotes(e.target.value)}
+                  rows={3}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 resize-none"
+                />
+              </div>
+              {editError && (
+                <p className="text-red-400 text-sm bg-red-950 border border-red-800 rounded-lg px-3 py-2">{editError}</p>
+              )}
+              <div className="flex gap-3 pt-1">
+                <button onClick={() => setEditingInspection(null)}
+                  className="flex-1 bg-zinc-800 text-zinc-300 text-sm font-medium py-2.5 rounded-lg hover:bg-zinc-700 transition-colors">
+                  İptal
+                </button>
+                <button onClick={saveEdit} disabled={editSaving}
+                  className="flex-1 bg-white text-zinc-950 text-sm font-semibold py-2.5 rounded-lg hover:bg-zinc-200 disabled:bg-zinc-700 disabled:text-zinc-500 transition-colors">
+                  {editSaving ? "Kaydediliyor..." : "Kaydet"}
                 </button>
               </div>
             </div>
