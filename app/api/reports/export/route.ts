@@ -25,10 +25,36 @@ function safeText(s: string): string {
     .replace(/[^\x00-\xFF]/g, "?");
 }
 
+// Uzun serbest metin taşıyan kolonlar (güzergah adı, not, açıklama vb.) diğer
+// kolonlarla eşit genişlik alınca kesiliyordu — bunlara orantılı olarak daha
+// fazla yer ayrılır, kısa/sabit-format kolonlar (tarih, saat, plaka) daralır.
+const WIDE_COLUMNS = ["güzergah", "not", "notlar", "açıklama", "aciklama", "summary", "title", "özet", "ozet"];
+const NARROW_COLUMNS = ["tarih", "saat", "giriş saati", "plaka", "no", "ticket_no", "status_code", "priority_code"];
+
+function columnWeight(name: string): number {
+  const n = name.toLowerCase();
+  if (WIDE_COLUMNS.some(w => n.includes(w))) return 1.7;
+  if (NARROW_COLUMNS.some(w => n.includes(w))) return 0.85;
+  return 1;
+}
+
+/** Metni verilen genişliğe (pt) sığana kadar keser, gerekirse "..." ekler. */
+function truncateToWidth(text: string, font: any, size: number, maxWidth: number): string {
+  if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
+  let lo = 0, hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    const candidate = `${text.slice(0, mid)}...`;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) lo = mid; else hi = mid - 1;
+  }
+  return lo <= 0 ? text.slice(0, 1) : `${text.slice(0, lo)}...`;
+}
+
 async function buildPdfReport(
   title: string,
   rows: ReportRow[],
-  logoPath: string
+  logoPath: string,
+  orientation: "portrait" | "landscape" = "portrait"
 ): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
@@ -43,10 +69,13 @@ async function buildPdfReport(
   }
 
   const columns = rows.length > 0 ? Object.keys(rows[0]) : ["Kayit"];
+  const weights = columns.map(columnWeight);
+  const weightSum = weights.reduce((a, b) => a + b, 0);
+  const pageSize: [number, number] = orientation === "landscape" ? [841.89, 595.28] : [595.28, 841.89];
   const pageMargin = 36;
   const rowHeight = 18;
-  const headerTop = 805;
-  const tableStartY = 730;
+  const headerTop = pageSize[1] - 37;
+  const tableStartY = headerTop - 75;
 
   function drawPageHeader(page: any) {
     const { width, height } = page.getSize();
@@ -104,7 +133,9 @@ async function buildPdfReport(
   function drawTableHeader(page: any, y: number) {
     const { width } = page.getSize();
     const tableWidth = width - pageMargin * 2;
-    const colWidth = tableWidth / columns.length;
+    const colWidths = weights.map(w => (w / weightSum) * tableWidth);
+    const colX: number[] = [];
+    colWidths.reduce((acc, w, i) => { colX[i] = acc; return acc + w; }, pageMargin);
 
     page.drawRectangle({
       x: pageMargin,
@@ -115,9 +146,9 @@ async function buildPdfReport(
     });
 
     columns.forEach((col, i) => {
-      const label = safeText(String(col));
-      page.drawText(label.length > 20 ? `${label.slice(0, 19)}...` : label, {
-        x: pageMargin + i * colWidth + 4,
+      const label = truncateToWidth(safeText(String(col)), fontBold, 8, colWidths[i] - 8);
+      page.drawText(label, {
+        x: colX[i] + 4,
         y: y - 12,
         size: 8,
         font: fontBold,
@@ -125,11 +156,11 @@ async function buildPdfReport(
       });
     });
 
-    return { colWidth, tableWidth };
+    return { colWidths, colX, tableWidth };
   }
 
   if (rows.length === 0) {
-    const page = pdf.addPage();
+    const page = pdf.addPage(pageSize);
     drawPageHeader(page);
     page.drawText("Veri bulunamadi", {
       x: pageMargin,
@@ -141,18 +172,18 @@ async function buildPdfReport(
     return pdf.save();
   }
 
-  let page = pdf.addPage();
+  let page = pdf.addPage(pageSize);
   drawPageHeader(page);
   let currentY = tableStartY;
-  let { colWidth } = drawTableHeader(page, currentY);
+  let { colWidths, colX, tableWidth } = drawTableHeader(page, currentY);
   currentY -= rowHeight;
 
   for (let index = 0; index < rows.length; index++) {
     if (currentY < 62) {
-      page = pdf.addPage();
+      page = pdf.addPage(pageSize);
       drawPageHeader(page);
       currentY = tableStartY;
-      ({ colWidth } = drawTableHeader(page, currentY));
+      ({ colWidths, colX, tableWidth } = drawTableHeader(page, currentY));
       currentY -= rowHeight;
     }
 
@@ -161,7 +192,7 @@ async function buildPdfReport(
       page.drawRectangle({
         x: pageMargin,
         y: currentY - rowHeight + 2,
-        width: colWidth * columns.length,
+        width: tableWidth,
         height: rowHeight,
         color: rgb(0.98, 0.99, 1),
       });
@@ -170,9 +201,9 @@ async function buildPdfReport(
     columns.forEach((col, i) => {
       const raw = row[col];
       const text = raw == null || raw === "" ? "-" : String(raw);
-      const cell = safeText(text.length > 24 ? `${text.slice(0, 23)}...` : text);
+      const cell = truncateToWidth(safeText(text), fontRegular, 7, colWidths[i] - 8);
       page.drawText(cell, {
-        x: pageMargin + i * colWidth + 4,
+        x: colX[i] + 4,
         y: currentY - 12,
         size: 7,
         font: fontRegular,
@@ -405,7 +436,8 @@ export async function GET(request: NextRequest) {
     }
 
     if (format === "pdf") {
-      const pdfBytes = await buildPdfReport(sheetTitle, rows, logoPath);
+      const orientation = type === "giris-kontrol" ? "landscape" : "portrait";
+      const pdfBytes = await buildPdfReport(sheetTitle, rows, logoPath, orientation);
 
       return new NextResponse(Buffer.from(pdfBytes), {
         status: 200,
