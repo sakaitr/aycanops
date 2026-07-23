@@ -12,7 +12,7 @@ import {
   IconClipboard2, IconBarChart, IconBuilding, IconZap, IconAlertTriangle,
   IconSettings, IconLogOut, IconBell, IconChevronLeft, IconChevronRight,
   IconX, IconMenu, IconCar, IconUsers, IconShield, IconActivity, IconWrench,
-  IconCoin, IconKey, IconDocument, IconCalendar, IconHistory,
+  IconCoin, IconKey, IconDocument, IconCalendar, IconHistory, IconMessageCircle,
 } from "./Icons";
 import { hasPermission, isAtLeast, type PermissionKey, type UserRole } from "@/lib/permissions";
 
@@ -91,6 +91,7 @@ const GOREVLER_LINKS = [
 const YONETIM_LINKS = [
   { href: "/toplu-islem", label: "Toplu İşlem", Icon: IconClipboard2 },
   { href: "/admin/musteriler", label: "Müşteri Portalı", Icon: IconUsers },
+  { href: "/musteri-destek", label: "Müşteri Destek", Icon: IconMessageCircle },
   { href: "/admin/hizli-gorev", label: "Hızlı Görev", Icon: IconZap },
   { href: "/admin/uyarilar", label: "Uyarılar", Icon: IconAlertTriangle },
   { href: "/admin/izin-onaylayicilar", label: "İzin Onaylayıcıları", Icon: IconShield },
@@ -180,6 +181,7 @@ const NAV_PERMISSION_BY_HREF: Record<string, PermissionKey> = {
   "/surucu-sicil": "driver_records:read",
   "/toplu-islem": "bulk_actions:preview",
   "/admin/musteriler": "portal_requests:read",
+  "/musteri-destek": "musteri_destek:read",
   "/admin/uyarilar": "warnings:read",
   "/admin/izin-onaylayicilar": "users:read",
   "/admin/api-keys": "integrations:update",

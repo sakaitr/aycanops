@@ -19,6 +19,10 @@ function fmtDate(iso: string) {
   return `${dd}.${m}.${y}`;
 }
 
+function fmtTime(isoStr: string) {
+  return new Date(isoStr).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" });
+}
+
 export default function PortalGirisKontrolPage() {
   const router = useRouter();
   const [weekStart, setWeekStart] = useState(() =>
@@ -164,7 +168,7 @@ export default function PortalGirisKontrolPage() {
                                     </div>
                                     {a.arrived_at && (
                                       <div className="text-[9px] opacity-75 mt-0.5">
-                                        {a.arrived_at.length > 10 ? a.arrived_at.slice(11, 16) : a.arrived_at.slice(0, 5)}
+                                        {fmtTime(a.arrived_at)}
                                       </div>
                                     )}
                                     {a.shift && a.shift !== "sabah" && (

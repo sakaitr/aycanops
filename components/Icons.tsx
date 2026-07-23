@@ -63,3 +63,4 @@ export const IconPlus = i(<><path d="M5 12h14"/><path d="M12 5v14"/></>);
 export const IconCheck = i(<><path d="M20 6 9 17l-5-5"/></>);
 export const IconChevronDown = i(<><path d="m6 9 6 6 6-6"/></>);
 export const IconChevronUp = i(<><path d="m18 15-6-6-6 6"/></>);
+export const IconMessageCircle = i(<><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></>);
