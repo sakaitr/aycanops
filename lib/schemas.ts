@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { PERMISSIONS } from "@/lib/permissions";
+import { NAV_ICON_NAMES } from "@/lib/nav-icons";
 
 // ─── Shared primitives ────────────────────────────────────────────────
 const optStr = z.string().max(5000).optional().nullable();
@@ -636,3 +638,45 @@ export const finansBankaHareketiSchema = z.object({
   tutar: z.number(),
   yon: z.enum(["gelen", "giden"]),
 });
+
+// ─── Nav Config ──────────────────────────────────────────────────────────
+const NAV_PERMISSION_STRINGS = new Set(
+  Object.entries(PERMISSIONS).flatMap(([resource, actions]) =>
+    actions.map((a) => `${resource}:${a}`)
+  )
+);
+const NAV_ICON_NAME_SET = new Set(NAV_ICON_NAMES);
+const navMinRoleSchema = z.enum(["yetkili", "admin"]).nullable();
+
+export const navConfigItemSchema = z.object({
+  id: z.string().min(1),
+  href: z.string().min(1).max(200),
+  label: z.string().min(1).max(100),
+  icon: z.string().refine((v) => NAV_ICON_NAME_SET.has(v), {
+    message: "Geçersiz ikon adı",
+  }),
+  permission: z.string().refine((v) => NAV_PERMISSION_STRINGS.has(v), {
+    message: "Geçersiz izin anahtarı",
+  }),
+  isActive: z.boolean(),
+  sortOrder: z.number(),
+  isCustom: z.boolean(),
+  minRole: navMinRoleSchema.optional(),
+});
+
+export const navGroupSchema = z.object({
+  key: z.string().min(1).max(50),
+  label: z.string().min(1).max(100),
+  sortOrder: z.number(),
+  isActive: z.boolean(),
+  minRole: navMinRoleSchema,
+  items: z.array(navConfigItemSchema),
+});
+
+export const navConfigSchema = z.object({
+  groups: z.array(navGroupSchema),
+});
+
+export type NavConfigItemType = z.infer<typeof navConfigItemSchema>;
+export type NavGroupType = z.infer<typeof navGroupSchema>;
+export type NavConfigType = z.infer<typeof navConfigSchema>;

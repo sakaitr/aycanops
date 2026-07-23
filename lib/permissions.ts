@@ -74,6 +74,7 @@ export const PERMISSIONS = {
   finans_belge: ["read", "create", "delete"],
   finans_odeme: ["read", "create", "delete"],
   finans_banka_hareketi: ["read", "create", "update"],
+  nav_config: ["update"],
 } as const;
 
 type PermissionResource = keyof typeof PERMISSIONS;
