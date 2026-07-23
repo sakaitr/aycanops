@@ -24,6 +24,48 @@ const ONCELIK_LABEL: Record<string, string> = {
   kritik: "Kritik",
 };
 
+function AttachmentLink({ a }: { a: any }) {
+  const isImage = a.mime_type?.startsWith("image/");
+  const href = `/api/uploads/destek/${a.filename}`;
+  if (isImage) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="block w-20 h-20 rounded-lg overflow-hidden bg-black/20 shrink-0">
+        <img src={href} alt={a.original_name} className="w-full h-full object-cover" />
+      </a>
+    );
+  }
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer"
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/20 text-[13px] hover:bg-black/30 shrink-0">
+      📎 {a.original_name}
+    </a>
+  );
+}
+
+function MessageThread({ messages }: { messages: any[] }) {
+  return (
+    <div className="space-y-3">
+      {messages.map(m => {
+        const isMe = m.sender_type === "customer";
+        const senderName = m.sender_type === "staff" ? (m.staff_name || "Aycan Turizm") : (m.customer_name || "Siz");
+        return (
+          <div key={m.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[85%] rounded-xl px-3 py-2 ${isMe ? "bg-[var(--t-accent)] text-white" : "bg-[var(--t-900)] text-[var(--foreground)]"}`}>
+              <p className="text-[11px] opacity-70 mb-0.5">{senderName} · {new Date(m.created_at).toLocaleString("tr-TR")}</p>
+              {m.body && <p className="text-sm whitespace-pre-wrap">{m.body}</p>}
+              {m.attachments?.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {m.attachments.map((a: any) => <AttachmentLink key={a.id} a={a} />)}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function PortalDestekPage() {
   const router = useRouter();
   const [tickets, setTickets] = useState<any[]>([]);
@@ -32,6 +74,54 @@ export default function PortalDestekPage() {
   const [form, setForm] = useState({ konu: "", icerik: "", oncelik: "normal" });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Record<string, any[]>>({});
+  const [messagesLoading, setMessagesLoading] = useState<string | null>(null);
+  const [replyBody, setReplyBody] = useState<Record<string, string>>({});
+  const [replyFiles, setReplyFiles] = useState<Record<string, File[]>>({});
+  const [sending, setSending] = useState<string | null>(null);
+
+  async function loadMessages(ticketId: string) {
+    setMessagesLoading(ticketId);
+    try {
+      const r = await fetch(`/api/portal/destek/${ticketId}/messages`);
+      const d = await r.json();
+      if (d.ok) setMessages(prev => ({ ...prev, [ticketId]: d.data }));
+    } finally {
+      setMessagesLoading(null);
+    }
+  }
+
+  function toggleExpand(ticketId: string) {
+    const next = expanded === ticketId ? null : ticketId;
+    setExpanded(next);
+    if (next && !messages[next]) loadMessages(next);
+  }
+
+  async function sendReply(ticketId: string) {
+    const body = (replyBody[ticketId] || "").trim();
+    const files = replyFiles[ticketId] || [];
+    if (!body && files.length === 0) return;
+    setSending(ticketId);
+    try {
+      const fd = new FormData();
+      if (body) fd.append("body", body);
+      files.forEach(f => fd.append("files", f));
+      const r = await fetch(`/api/portal/destek/${ticketId}/messages`, { method: "POST", body: fd });
+      const d = await r.json();
+      if (d.ok) {
+        setReplyBody(prev => ({ ...prev, [ticketId]: "" }));
+        setReplyFiles(prev => ({ ...prev, [ticketId]: [] }));
+        loadMessages(ticketId);
+        load();
+      } else {
+        alert(d.error || "Gönderilemedi");
+      }
+    } finally {
+      setSending(null);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -186,35 +276,95 @@ export default function PortalDestekPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {tickets.map(t => (
-              <motion.div
-                key={t.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-[var(--t-800)] border border-[var(--t-border-800)] rounded-xl p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[var(--foreground)] truncate">{t.konu}</p>
-                    <p className="text-xs text-[var(--t-text-500)] mt-0.5 line-clamp-2">{t.icerik}</p>
+            {tickets.map(t => {
+              const isExpanded = expanded === t.id;
+              return (
+                <motion.div
+                  key={t.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-[var(--t-800)] border border-[var(--t-border-800)] rounded-xl overflow-hidden"
+                >
+                  <div className="p-4 cursor-pointer" onClick={() => toggleExpand(t.id)}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-[var(--foreground)] truncate">{t.konu}</p>
+                        {!isExpanded && <p className="text-xs text-[var(--t-text-500)] mt-0.5 line-clamp-2">{t.icerik}</p>}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${DURUM_COLOR[t.durum] ?? ""}`}>
+                          {DURUM_LABEL[t.durum] ?? t.durum}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="text-[11px] text-[var(--t-text-600)]">
+                        {new Date(t.created_at).toLocaleDateString("tr-TR")}
+                      </span>
+                      <span className="text-[11px] text-[var(--t-text-600)]">•</span>
+                      <span className="text-[11px] text-[var(--t-text-600)]">
+                        Öncelik: {ONCELIK_LABEL[t.oncelik] ?? t.oncelik}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${DURUM_COLOR[t.durum] ?? ""}`}>
-                      {DURUM_LABEL[t.durum] ?? t.durum}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 mt-2">
-                  <span className="text-[11px] text-[var(--t-text-600)]">
-                    {new Date(t.created_at).toLocaleDateString("tr-TR")}
-                  </span>
-                  <span className="text-[11px] text-[var(--t-text-600)]">•</span>
-                  <span className="text-[11px] text-[var(--t-text-600)]">
-                    Öncelik: {ONCELIK_LABEL[t.oncelik] ?? t.oncelik}
-                  </span>
-                </div>
-              </motion.div>
-            ))}
+
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t border-[var(--t-border-800)] pt-3" onClick={e => e.stopPropagation()}>
+                      {messagesLoading === t.id ? (
+                        <p className="text-[var(--t-text-600)] text-sm py-4 text-center">Yükleniyor...</p>
+                      ) : (
+                        <MessageThread messages={messages[t.id] || []} />
+                      )}
+
+                      {t.durum !== "kapandi" && (
+                        <div className="mt-3 space-y-2">
+                          <textarea
+                            value={replyBody[t.id] || ""}
+                            onChange={e => setReplyBody(prev => ({ ...prev, [t.id]: e.target.value }))}
+                            placeholder="Yanıt yaz..."
+                            rows={2}
+                            className="w-full bg-[var(--t-900)] border border-[var(--t-border-800)] text-[16px] text-[var(--foreground)] px-3 py-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--t-accent)] resize-none"
+                          />
+                          {(replyFiles[t.id]?.length ?? 0) > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {replyFiles[t.id].map((f, i) => (
+                                <span key={i} className="text-xs bg-[var(--t-900)] text-[var(--t-text-500)] px-2 py-1 rounded-lg">
+                                  {f.name}
+                                  <button onClick={() => setReplyFiles(prev => ({ ...prev, [t.id]: prev[t.id].filter((_, j) => j !== i) }))} className="ml-1.5 text-[var(--t-text-600)] hover:text-red-400">×</button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="text-xs text-[var(--t-text-500)] hover:text-[var(--foreground)] cursor-pointer px-2 py-1.5 rounded-lg bg-[var(--t-900)]">
+                              📎 Dosya/Görsel Ekle
+                              <input
+                                type="file"
+                                multiple
+                                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                                className="hidden"
+                                onChange={e => {
+                                  const files = Array.from(e.target.files || []);
+                                  setReplyFiles(prev => ({ ...prev, [t.id]: [...(prev[t.id] || []), ...files] }));
+                                  e.target.value = "";
+                                }}
+                              />
+                            </label>
+                            <button
+                              onClick={() => sendReply(t.id)}
+                              disabled={sending === t.id || (!replyBody[t.id]?.trim() && !(replyFiles[t.id]?.length))}
+                              className="bg-[var(--t-accent)] hover:opacity-90 disabled:opacity-40 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all"
+                            >
+                              {sending === t.id ? "Gönderiliyor..." : "Gönder"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </div>
