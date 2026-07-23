@@ -22,17 +22,16 @@ export async function GET(req: NextRequest) {
     let sql = `SELECT i.*, v.plate as vehicle_plate, v.brand, v.model,
                       u.full_name as inspector_name,
                       i.company_vehicle_plate,
-                      cv.company_id,
                       c.name as company_name
                FROM inspections i
                LEFT JOIN vehicles v ON v.id = i.vehicle_id
                LEFT JOIN company_vehicles cv ON cv.id = i.company_vehicle_id
-               LEFT JOIN companies c ON c.id = cv.company_id
+               LEFT JOIN companies c ON c.id = i.company_id
                LEFT JOIN users u ON u.id = i.inspector_id
                WHERE 1=1`;
     const args: unknown[] = [];
     if (vehicle_id) { sql += " AND i.vehicle_id = ?"; args.push(vehicle_id); }
-    if (company_id) { sql += " AND cv.company_id = ?"; args.push(company_id); }
+    if (company_id) { sql += " AND i.company_id = ?"; args.push(company_id); }
     sql += " ORDER BY i.inspection_date DESC, i.created_at DESC";
     const data = await db.prepare(sql).all(...args);
     return NextResponse.json({ ok: true, data });
