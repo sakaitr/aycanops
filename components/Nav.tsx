@@ -7,14 +7,12 @@ import ThemeSwitcher from "./ThemeSwitcher";
 import GlobalSearch from "./GlobalSearch";
 import GlobalCompanySelector from "./GlobalCompanySelector";
 import {
-  IconHome, IconClipboard, IconCheckSquare, IconClock, IconTrafficCone,
-  IconStar, IconFileText, IconLightbulb, IconTruck, IconMap, IconSearch,
-  IconClipboard2, IconBarChart, IconBuilding, IconZap, IconAlertTriangle,
-  IconSettings, IconLogOut, IconBell, IconChevronLeft, IconChevronRight,
-  IconX, IconMenu, IconCar, IconUsers, IconShield, IconActivity, IconWrench,
-  IconCoin, IconKey, IconDocument, IconCalendar, IconHistory, IconMessageCircle,
+  IconHome, IconTrafficCone, IconClock, IconCheckSquare,
+  IconLogOut, IconBell, IconChevronLeft, IconChevronRight, IconX, IconMenu,
 } from "./Icons";
-import { hasPermission, isAtLeast, type PermissionKey, type UserRole } from "@/lib/permissions";
+import { ICON_REGISTRY, DEFAULT_NAV_ICON } from "@/lib/nav-icons";
+import { hasPermission, isAtLeast, type UserRole } from "@/lib/permissions";
+import type { NavConfigType, NavGroupType, NavConfigItemType } from "@/lib/schemas";
 
 type NavUser = {
   full_name: string;
@@ -22,100 +20,7 @@ type NavUser = {
   allowed_pages?: string | null;
 };
 
-// ── Link grupları ──────────────────────────────────────────────────────────────
-
-const BUGUN_LINKS = [
-  { href: "/", label: "Panel", Icon: IconHome },
-  { href: "/gunluk", label: "Günlük", Icon: IconClipboard },
-  { href: "/giris-kontrol", label: "Giriş Kontrol", Icon: IconTrafficCone },
-  { href: "/transferler", label: "Transfer", Icon: IconClock },
-  { href: "/cetele", label: "Çetele", Icon: IconClipboard2 },
-];
-
-const ARACLAR_LINKS = [
-  { href: "/araclar", label: "Araçlar", Icon: IconCar },
-  { href: "/bakim", label: "Araç Bakım", Icon: IconWrench },
-  { href: "/belgeler", label: "Belgeler", Icon: IconDocument },
-  { href: "/denetimler", label: "Denetimler", Icon: IconSearch },
-  { href: "/filo/kazalar", label: "Kazalar", Icon: IconAlertTriangle },
-  { href: "/filo/cezalar", label: "Cezalar", Icon: IconAlertTriangle },
-  { href: "/filo/arizalar", label: "Arızalar", Icon: IconWrench },
-  { href: "/filo/sigortalar", label: "Sigortalar", Icon: IconDocument },
-  { href: "/filo/lastikler", label: "Lastikler", Icon: IconCar },
-  { href: "/admin/gps-cihazlari", label: "GPS Cihazları", Icon: IconMap },
-  { href: "/yakit-kartlari", label: "Yakıt Kartları", Icon: IconZap },
-  { href: "/admin/hgs-ogs", label: "HGS/OGS", Icon: IconCoin },
-];
-
-const INSAN_LINKS = [
-  { href: "/suruculer", label: "Sürücüler", Icon: IconUsers },
-  { href: "/yolcular", label: "Yolcular", Icon: IconUsers },
-  { href: "/izin-talepleri", label: "İzin Talepleri", Icon: IconCalendar },
-  { href: "/sofor-degerlendirme", label: "Sürücü Değerlendirme", Icon: IconStar },
-  { href: "/rehberler", label: "Rehberler", Icon: IconUsers },
-];
-
-const ROTA_LINKS = [
-  { href: "/guzergahlar", label: "Güzergahlar", Icon: IconMap },
-  { href: "/acik-guzergahlar", label: "Açık Güzergahlar", Icon: IconAlertTriangle },
-  { href: "/rota-planlama", label: "Rota Planlama", Icon: IconCalendar },
-  { href: "/operasyon-haritasi", label: "Operasyon Haritası", Icon: IconMap },
-  { href: "/guzergah-fiyatlari", label: "Güzergah Fiyatları", Icon: IconCoin },
-];
-
-const FINANS_LINKS = [
-  { href: "/isletenler", label: "İşletenler (Araç Tedarikçileri)", Icon: IconBuilding },
-  { href: "/hakedis", label: "Hakediş", Icon: IconCoin },
-  { href: "/mutabakat", label: "Firma Mutabakat", Icon: IconCoin },
-  { href: "/kar-zarar", label: "Kâr-Zarar", Icon: IconBarChart },
-  { href: "/butce", label: "Bütçe & Maliyet", Icon: IconCoin },
-  { href: "/firmalar", label: "Firmalar (Müşteriler)", Icon: IconBuilding },
-  { href: "/raporlar", label: "Raporlar", Icon: IconBarChart },
-  { href: "/finans/gelir-gider", label: "Gelir-Gider", Icon: IconCoin },
-  { href: "/finans/masraf-talebi", label: "Masraf Talebi", Icon: IconClipboard2 },
-  { href: "/finans/faturalar", label: "Faturalar", Icon: IconDocument },
-  { href: "/finans/fisler", label: "Fişler", Icon: IconClipboard2 },
-  { href: "/finans/belgeler", label: "Finans Belgeleri", Icon: IconDocument },
-  { href: "/finans/odemeler", label: "Ödemeler", Icon: IconCoin },
-  { href: "/finans/banka-hareketleri", label: "Banka Hareketleri", Icon: IconActivity },
-];
-
-const GOREVLER_LINKS = [
-  { href: "/gorevler", label: "İş Takibi", Icon: IconCheckSquare },
-  { href: "/oneriler", label: "Öneri/Talep", Icon: IconLightbulb },
-  { href: "/notlar", label: "Notlar", Icon: IconFileText },
-  { href: "/surucu-sicil", label: "Sürücü Sicil", Icon: IconClipboard2 },
-];
-
-// Günlük kullanılan yönetim araçları — işletme sahibinin sık ihtiyaç duyduğu
-const YONETIM_LINKS = [
-  { href: "/toplu-islem", label: "Toplu İşlem", Icon: IconClipboard2 },
-  { href: "/admin/musteriler", label: "Müşteri Portalı", Icon: IconUsers },
-  { href: "/musteri-destek", label: "Müşteri Destek", Icon: IconMessageCircle },
-  { href: "/admin/hizli-gorev", label: "Hızlı Görev", Icon: IconZap },
-  { href: "/admin/uyarilar", label: "Uyarılar", Icon: IconAlertTriangle },
-  { href: "/admin/izin-onaylayicilar", label: "İzin Onaylayıcıları", Icon: IconShield },
-  { href: "/admin/kara-liste", label: "Kara Liste", Icon: IconAlertTriangle },
-  { href: "/admin/duyurular", label: "Duyurular", Icon: IconBell },
-  { href: "/admin/anketler", label: "Anketler", Icon: IconClipboard },
-  { href: "/admin/dogum-gunleri", label: "Doğum Günleri", Icon: IconStar },
-];
-
-// Teknik/sistem yönetimi — geliştirici veya sistem yöneticisi seviyesi
-const YONETIM_TEKNIK_LINKS = [
-  { href: "/admin/yakit-fiyatlari", label: "Yakıt Fiyatları", Icon: IconCoin },
-  { href: "/admin/otoyol-fiyatlari", label: "Otoyol/Köprü Fiyatları", Icon: IconCoin },
-  { href: "/admin/arac-gruplari", label: "Araç Grupları", Icon: IconCar },
-  { href: "/admin/sigorta-sirketleri", label: "Sigorta Şirketleri", Icon: IconDocument },
-  { href: "/admin/banka-tanimlari", label: "Banka Tanımları", Icon: IconBuilding },
-  { href: "/admin/donem-tanimlari", label: "Dönem Tanımları", Icon: IconCalendar },
-  { href: "/admin/api-keys", label: "API Anahtarları", Icon: IconKey },
-  { href: "/admin/audit-log", label: "Aktivite Günlüğü", Icon: IconHistory },
-  { href: "/admin/roller", label: "Roller ve Yetkiler", Icon: IconKey },
-  { href: "/admin", label: "Yönetim Paneli", Icon: IconSettings },
-];
-
-// Mobil bottom nav — en sık kullanılan 4 link
+// Mobil bottom nav — en sık kullanılan 4 link (kapsam dışı — bkz. plan)
 const BOTTOM_NAV = [
   { href: "/", label: "Panel", Icon: IconHome },
   { href: "/giris-kontrol", label: "Giriş Takip", Icon: IconTrafficCone },
@@ -123,71 +28,123 @@ const BOTTOM_NAV = [
   { href: "/gorevler", label: "İş Takibi", Icon: IconCheckSquare },
 ];
 
-const NAV_PERMISSION_BY_HREF: Record<string, PermissionKey> = {
+const NAV_PERMISSION_BY_HREF_FOR_BOTTOM_NAV: Record<string, string> = {
   "/": "dashboard:read",
-  "/gunluk": "dashboard:read",
   "/giris-kontrol": "arrivals:read",
   "/transferler": "transfers:read",
-  "/araclar": "vehicles:read",
-  "/bakim": "maintenance:read",
-  "/belgeler": "documents:read",
-  "/denetimler": "vehicles:read",
-  "/filo/kazalar": "fleet_accidents:read",
-  "/filo/cezalar": "fleet_penalties:read",
-  "/filo/arizalar": "fleet_breakdowns:read",
-  "/filo/sigortalar": "fleet_insurances:read",
-  "/filo/lastikler": "fleet_tires:read",
-  "/admin/gps-cihazlari": "gps_devices:read",
-  "/yakit-kartlari": "fuel_cards:read",
-  "/admin/hgs-ogs": "hgs_ogs:read",
-  "/admin/yakit-fiyatlari": "yakit_fiyatlari:read",
-  "/admin/otoyol-fiyatlari": "otoyol_fiyatlari:read",
-  "/admin/arac-gruplari": "arac_gruplari:read",
-  "/admin/sigorta-sirketleri": "sigorta_sirketleri:read",
-  "/admin/banka-tanimlari": "banka_tanimlari:read",
-  "/admin/donem-tanimlari": "donem_tanimlari:read",
-  "/admin/duyurular": "duyurular:read",
-  "/admin/anketler": "anketler:read",
-  "/admin/dogum-gunleri": "drivers:read",
-  "/suruculer": "drivers:read",
-  "/yolcular": "passengers:read",
-  "/izin-talepleri": "leave_requests:read",
-  "/sofor-degerlendirme": "drivers:read",
-  "/guzergahlar": "routes:read",
-  "/acik-guzergahlar": "routes:read",
-  "/rota-planlama": "routes:optimize",
-  "/operasyon-haritasi": "map:read",
-  "/cetele": "cetele:read",
-  "/isletenler": "isleten:read",
-  "/hakedis": "hakedis:read",
-  "/mutabakat": "firma_mutabakat:read",
-  "/kar-zarar": "reports:read",
-  "/rehberler": "rehberler:read",
-  "/admin/kara-liste": "kara_liste:read",
-  "/guzergah-fiyatlari": "route_prices:read",
-  "/butce": "budget:read",
-  "/firmalar": "companies:read",
-  "/raporlar": "reports:read",
-  "/finans/gelir-gider": "finans_gelir_gider:read",
-  "/finans/masraf-talebi": "finans_masraf_talebi:read",
-  "/finans/faturalar": "finans_fatura:read",
-  "/finans/fisler": "finans_fis:read",
-  "/finans/belgeler": "finans_belge:read",
-  "/finans/odemeler": "finans_odeme:read",
-  "/finans/banka-hareketleri": "finans_banka_hareketi:read",
   "/gorevler": "dashboard:read",
-  "/oneriler": "suggestions:read",
-  "/notlar": "dashboard:read",
-  "/surucu-sicil": "driver_records:read",
-  "/toplu-islem": "bulk_actions:preview",
-  "/admin/musteriler": "portal_requests:read",
-  "/musteri-destek": "musteri_destek:read",
-  "/admin/uyarilar": "warnings:read",
-  "/admin/izin-onaylayicilar": "users:read",
-  "/admin/api-keys": "integrations:update",
-  "/admin/audit-log": "audit:read",
-  "/admin/roller": "users:permissions",
-  "/admin": "users:read",
+};
+
+// ── Nav config (DB'den fetch edilir, bu sabit sadece fetch başarısız
+// olursa fallback olarak kullanılır — nav hiçbir durumda boş kalmaz) ──
+const DEFAULT_NAV_CONFIG: NavConfigType = {
+  groups: [
+    {
+      key: "bugun", label: "Bugün", sortOrder: 0, isActive: true, minRole: null,
+      items: [
+        { id: "bugun-1", href: "/", label: "Panel", icon: "IconHome", permission: "dashboard:read", isActive: true, sortOrder: 0, isCustom: false },
+        { id: "bugun-2", href: "/gunluk", label: "Günlük", icon: "IconClipboard", permission: "dashboard:read", isActive: true, sortOrder: 1, isCustom: false },
+        { id: "bugun-3", href: "/giris-kontrol", label: "Giriş Kontrol", icon: "IconTrafficCone", permission: "arrivals:read", isActive: true, sortOrder: 2, isCustom: false },
+        { id: "bugun-4", href: "/transferler", label: "Transfer", icon: "IconClock", permission: "transfers:read", isActive: true, sortOrder: 3, isCustom: false },
+        { id: "bugun-5", href: "/cetele", label: "Çetele", icon: "IconClipboard2", permission: "cetele:read", isActive: true, sortOrder: 4, isCustom: false },
+      ],
+    },
+    {
+      key: "araclar", label: "Araçlar", sortOrder: 1, isActive: true, minRole: "yetkili",
+      items: [
+        { id: "araclar-1", href: "/araclar", label: "Araçlar", icon: "IconCar", permission: "vehicles:read", isActive: true, sortOrder: 0, isCustom: false },
+        { id: "araclar-2", href: "/bakim", label: "Araç Bakım", icon: "IconWrench", permission: "maintenance:read", isActive: true, sortOrder: 1, isCustom: false },
+        { id: "araclar-3", href: "/belgeler", label: "Belgeler", icon: "IconDocument", permission: "documents:read", isActive: true, sortOrder: 2, isCustom: false },
+        { id: "araclar-4", href: "/denetimler", label: "Denetimler", icon: "IconSearch", permission: "vehicles:read", isActive: true, sortOrder: 3, isCustom: false },
+        { id: "araclar-5", href: "/filo/kazalar", label: "Kazalar", icon: "IconAlertTriangle", permission: "fleet_accidents:read", isActive: true, sortOrder: 4, isCustom: false },
+        { id: "araclar-6", href: "/filo/cezalar", label: "Cezalar", icon: "IconAlertTriangle", permission: "fleet_penalties:read", isActive: true, sortOrder: 5, isCustom: false },
+        { id: "araclar-7", href: "/filo/arizalar", label: "Arızalar", icon: "IconWrench", permission: "fleet_breakdowns:read", isActive: true, sortOrder: 6, isCustom: false },
+        { id: "araclar-8", href: "/filo/sigortalar", label: "Sigortalar", icon: "IconDocument", permission: "fleet_insurances:read", isActive: true, sortOrder: 7, isCustom: false },
+        { id: "araclar-9", href: "/filo/lastikler", label: "Lastikler", icon: "IconCar", permission: "fleet_tires:read", isActive: true, sortOrder: 8, isCustom: false },
+        { id: "araclar-10", href: "/admin/gps-cihazlari", label: "GPS Cihazları", icon: "IconMap", permission: "gps_devices:read", isActive: true, sortOrder: 9, isCustom: false },
+        { id: "araclar-11", href: "/yakit-kartlari", label: "Yakıt Kartları", icon: "IconZap", permission: "fuel_cards:read", isActive: true, sortOrder: 10, isCustom: false },
+        { id: "araclar-12", href: "/admin/hgs-ogs", label: "HGS/OGS", icon: "IconCoin", permission: "hgs_ogs:read", isActive: true, sortOrder: 11, isCustom: false },
+      ],
+    },
+    {
+      key: "insan", label: "İnsan", sortOrder: 2, isActive: true, minRole: "yetkili",
+      items: [
+        { id: "insan-1", href: "/suruculer", label: "Sürücüler", icon: "IconUsers", permission: "drivers:read", isActive: true, sortOrder: 0, isCustom: false },
+        { id: "insan-2", href: "/yolcular", label: "Yolcular", icon: "IconUsers", permission: "passengers:read", isActive: true, sortOrder: 1, isCustom: false },
+        { id: "insan-3", href: "/izin-talepleri", label: "İzin Talepleri", icon: "IconCalendar", permission: "leave_requests:read", isActive: true, sortOrder: 2, isCustom: false },
+        { id: "insan-4", href: "/sofor-degerlendirme", label: "Sürücü Değerlendirme", icon: "IconStar", permission: "drivers:read", isActive: true, sortOrder: 3, isCustom: false },
+        { id: "insan-5", href: "/rehberler", label: "Rehberler", icon: "IconUsers", permission: "rehberler:read", isActive: true, sortOrder: 4, isCustom: false },
+      ],
+    },
+    {
+      key: "rota", label: "Rota", sortOrder: 3, isActive: true, minRole: "yetkili",
+      items: [
+        { id: "rota-1", href: "/guzergahlar", label: "Güzergahlar", icon: "IconMap", permission: "routes:read", isActive: true, sortOrder: 0, isCustom: false },
+        { id: "rota-2", href: "/acik-guzergahlar", label: "Açık Güzergahlar", icon: "IconAlertTriangle", permission: "routes:read", isActive: true, sortOrder: 1, isCustom: false },
+        { id: "rota-3", href: "/rota-planlama", label: "Rota Planlama", icon: "IconCalendar", permission: "routes:optimize", isActive: true, sortOrder: 2, isCustom: false },
+        { id: "rota-4", href: "/operasyon-haritasi", label: "Operasyon Haritası", icon: "IconMap", permission: "map:read", isActive: true, sortOrder: 3, isCustom: false },
+        { id: "rota-5", href: "/guzergah-fiyatlari", label: "Güzergah Fiyatları", icon: "IconCoin", permission: "route_prices:read", isActive: true, sortOrder: 4, isCustom: false },
+      ],
+    },
+    {
+      key: "finans", label: "Finans", sortOrder: 4, isActive: true, minRole: null,
+      items: [
+        { id: "finans-1", href: "/isletenler", label: "İşletenler (Araç Tedarikçileri)", icon: "IconBuilding", permission: "isleten:read", isActive: true, sortOrder: 0, isCustom: false },
+        { id: "finans-2", href: "/hakedis", label: "Hakediş", icon: "IconCoin", permission: "hakedis:read", isActive: true, sortOrder: 1, isCustom: false },
+        { id: "finans-3", href: "/mutabakat", label: "Firma Mutabakat", icon: "IconCoin", permission: "firma_mutabakat:read", isActive: true, sortOrder: 2, isCustom: false },
+        { id: "finans-4", href: "/kar-zarar", label: "Kâr-Zarar", icon: "IconBarChart", permission: "reports:read", isActive: true, sortOrder: 3, isCustom: false },
+        { id: "finans-5", href: "/butce", label: "Bütçe & Maliyet", icon: "IconCoin", permission: "budget:read", isActive: true, sortOrder: 4, isCustom: false },
+        { id: "finans-6", href: "/firmalar", label: "Firmalar (Müşteriler)", icon: "IconBuilding", permission: "companies:read", isActive: true, sortOrder: 5, isCustom: false },
+        { id: "finans-7", href: "/raporlar", label: "Raporlar", icon: "IconBarChart", permission: "reports:read", isActive: true, sortOrder: 6, isCustom: false },
+        { id: "finans-8", href: "/finans/gelir-gider", label: "Gelir-Gider", icon: "IconCoin", permission: "finans_gelir_gider:read", isActive: true, sortOrder: 7, isCustom: false },
+        { id: "finans-9", href: "/finans/masraf-talebi", label: "Masraf Talebi", icon: "IconClipboard2", permission: "finans_masraf_talebi:read", isActive: true, sortOrder: 8, isCustom: false },
+        { id: "finans-10", href: "/finans/faturalar", label: "Faturalar", icon: "IconDocument", permission: "finans_fatura:read", isActive: true, sortOrder: 9, isCustom: false },
+        { id: "finans-11", href: "/finans/fisler", label: "Fişler", icon: "IconClipboard2", permission: "finans_fis:read", isActive: true, sortOrder: 10, isCustom: false },
+        { id: "finans-12", href: "/finans/belgeler", label: "Finans Belgeleri", icon: "IconDocument", permission: "finans_belge:read", isActive: true, sortOrder: 11, isCustom: false },
+        { id: "finans-13", href: "/finans/odemeler", label: "Ödemeler", icon: "IconCoin", permission: "finans_odeme:read", isActive: true, sortOrder: 12, isCustom: false },
+        { id: "finans-14", href: "/finans/banka-hareketleri", label: "Banka Hareketleri", icon: "IconActivity", permission: "finans_banka_hareketi:read", isActive: true, sortOrder: 13, isCustom: false },
+      ],
+    },
+    {
+      key: "gorevler", label: "Görevler", sortOrder: 5, isActive: true, minRole: null,
+      items: [
+        { id: "gorevler-1", href: "/gorevler", label: "İş Takibi", icon: "IconCheckSquare", permission: "dashboard:read", isActive: true, sortOrder: 0, isCustom: false },
+        { id: "gorevler-2", href: "/oneriler", label: "Öneri/Talep", icon: "IconLightbulb", permission: "suggestions:read", isActive: true, sortOrder: 1, isCustom: false },
+        { id: "gorevler-3", href: "/notlar", label: "Notlar", icon: "IconFileText", permission: "dashboard:read", isActive: true, sortOrder: 2, isCustom: false },
+        { id: "gorevler-4", href: "/surucu-sicil", label: "Sürücü Sicil", icon: "IconClipboard2", permission: "driver_records:read", isActive: true, sortOrder: 3, isCustom: false },
+      ],
+    },
+    {
+      key: "yonetim", label: "Yönetim", sortOrder: 6, isActive: true, minRole: null,
+      items: [
+        { id: "yonetim-1", href: "/toplu-islem", label: "Toplu İşlem", icon: "IconClipboard2", permission: "bulk_actions:preview", isActive: true, sortOrder: 0, isCustom: false, minRole: "yetkili" },
+        { id: "yonetim-2", href: "/admin/musteriler", label: "Müşteri Portalı", icon: "IconUsers", permission: "portal_requests:read", isActive: true, sortOrder: 1, isCustom: false, minRole: "admin" },
+        { id: "yonetim-10", href: "/musteri-destek", label: "Müşteri Destek", icon: "IconMessageCircle", permission: "musteri_destek:read", isActive: true, sortOrder: 2, isCustom: false, minRole: "yetkili" },
+        { id: "yonetim-3", href: "/admin/hizli-gorev", label: "Hızlı Görev", icon: "IconZap", permission: "dashboard:read", isActive: true, sortOrder: 3, isCustom: false, minRole: "admin" },
+        { id: "yonetim-4", href: "/admin/uyarilar", label: "Uyarılar", icon: "IconAlertTriangle", permission: "warnings:read", isActive: true, sortOrder: 4, isCustom: false, minRole: "admin" },
+        { id: "yonetim-5", href: "/admin/izin-onaylayicilar", label: "İzin Onaylayıcıları", icon: "IconShield", permission: "users:read", isActive: true, sortOrder: 5, isCustom: false, minRole: "admin" },
+        { id: "yonetim-6", href: "/admin/kara-liste", label: "Kara Liste", icon: "IconAlertTriangle", permission: "kara_liste:read", isActive: true, sortOrder: 6, isCustom: false, minRole: "admin" },
+        { id: "yonetim-7", href: "/admin/duyurular", label: "Duyurular", icon: "IconBell", permission: "duyurular:read", isActive: true, sortOrder: 7, isCustom: false, minRole: "admin" },
+        { id: "yonetim-8", href: "/admin/anketler", label: "Anketler", icon: "IconClipboard", permission: "anketler:read", isActive: true, sortOrder: 8, isCustom: false, minRole: "admin" },
+        { id: "yonetim-9", href: "/admin/dogum-gunleri", label: "Doğum Günleri", icon: "IconStar", permission: "drivers:read", isActive: true, sortOrder: 9, isCustom: false, minRole: "admin" },
+      ],
+    },
+    {
+      key: "yonetim-teknik", label: "Yönetim (Teknik)", sortOrder: 7, isActive: true, minRole: "admin",
+      items: [
+        { id: "teknik-1", href: "/admin/yakit-fiyatlari", label: "Yakıt Fiyatları", icon: "IconCoin", permission: "yakit_fiyatlari:read", isActive: true, sortOrder: 0, isCustom: false },
+        { id: "teknik-2", href: "/admin/otoyol-fiyatlari", label: "Otoyol/Köprü Fiyatları", icon: "IconCoin", permission: "otoyol_fiyatlari:read", isActive: true, sortOrder: 1, isCustom: false },
+        { id: "teknik-3", href: "/admin/arac-gruplari", label: "Araç Grupları", icon: "IconCar", permission: "arac_gruplari:read", isActive: true, sortOrder: 2, isCustom: false },
+        { id: "teknik-4", href: "/admin/sigorta-sirketleri", label: "Sigorta Şirketleri", icon: "IconDocument", permission: "sigorta_sirketleri:read", isActive: true, sortOrder: 3, isCustom: false },
+        { id: "teknik-5", href: "/admin/banka-tanimlari", label: "Banka Tanımları", icon: "IconBuilding", permission: "banka_tanimlari:read", isActive: true, sortOrder: 4, isCustom: false },
+        { id: "teknik-6", href: "/admin/donem-tanimlari", label: "Dönem Tanımları", icon: "IconCalendar", permission: "donem_tanimlari:read", isActive: true, sortOrder: 5, isCustom: false },
+        { id: "teknik-7", href: "/admin/api-keys", label: "API Anahtarları", icon: "IconKey", permission: "integrations:update", isActive: true, sortOrder: 6, isCustom: false },
+        { id: "teknik-8", href: "/admin/audit-log", label: "Aktivite Günlüğü", icon: "IconHistory", permission: "audit:read", isActive: true, sortOrder: 7, isCustom: false },
+        { id: "teknik-9", href: "/admin/roller", label: "Roller ve Yetkiler", icon: "IconKey", permission: "users:permissions", isActive: true, sortOrder: 8, isCustom: false },
+        { id: "teknik-10", href: "/admin", label: "Yönetim Paneli", icon: "IconSettings", permission: "users:read", isActive: true, sortOrder: 9, isCustom: false },
+      ],
+    },
+  ],
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -239,6 +196,7 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [navConfig, setNavConfig] = useState<NavConfigType>(DEFAULT_NAV_CONFIG);
   // Sidebar grup açık/kapalı durumu
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     bugun: true,
@@ -248,6 +206,7 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
     finans: false,
     gorevler: false,
     yonetim: false,
+    "yonetim-teknik": false,
   });
   const notifPanelRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -261,31 +220,31 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
       .catch(() => {});
   }, [userProp]);
 
+  // Nav yapısını DB'den çek — başarısız olursa DEFAULT_NAV_CONFIG (yukarıda
+  // tanımlı, bugünkü sabit yapının birebir aynısı) kullanılmaya devam eder,
+  // sidebar hiçbir zaman boş kalmaz.
+  useEffect(() => {
+    fetch("/api/admin/nav-config")
+      .then((r) => { if (!r.ok) throw new Error("nav-config fetch failed"); return r.json(); })
+      .then((d) => { if (d.ok && d.data) setNavConfig(d.data); })
+      .catch(() => {});
+  }, []);
+
   const role = user?.role || "personel";
   const isManager = isAtLeast(role, "yetkili");
-  const isAdmin = role === "admin";
 
   // Mevcut sayfanın hangi gruba ait olduğunu bul ve o grubu aç
   useEffect(() => {
-    const allGroups: Record<string, { href: string }[]> = {
-      bugun: BUGUN_LINKS,
-      araclar: ARACLAR_LINKS,
-      insan: INSAN_LINKS,
-      rota: ROTA_LINKS,
-      finans: FINANS_LINKS,
-      gorevler: GOREVLER_LINKS,
-      yonetim: YONETIM_LINKS,
-    };
     const updates: Record<string, boolean> = {};
-    for (const [key, links] of Object.entries(allGroups)) {
-      if (links.some(l => l.href === "/" ? pathname === "/" : pathname.startsWith(l.href))) {
-        updates[key] = true;
+    for (const group of navConfig.groups) {
+      if (group.items.some((it) => (it.href === "/" ? pathname === "/" : pathname.startsWith(it.href)))) {
+        updates[group.key] = true;
       }
     }
     if (Object.keys(updates).length > 0) {
-      setOpenGroups(prev => ({ ...prev, ...updates }));
+      setOpenGroups((prev) => ({ ...prev, ...updates }));
     }
-  }, [pathname]);
+  }, [pathname, navConfig]);
 
   useEffect(() => {
     if (!isManager) return;
@@ -373,15 +332,30 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
     try { allowedPages = JSON.parse((user as any).allowed_pages); } catch {}
   }
 
-  const canShowLink = (href: string) => {
-    if (allowedPages !== null && !allowedPages.includes(href)) return false;
-    const permission = NAV_PERMISSION_BY_HREF[href];
-    if (!permission) return role !== "personel";
-    return hasPermission({ role: role as UserRole, permissions: (user as any)?.permissions }, permission);
+  const canShowItem = (item: NavConfigItemType, group: NavGroupType) => {
+    if (!item.isActive || !group.isActive) return false;
+    if (allowedPages !== null && !allowedPages.includes(item.href)) return false;
+    const requiredMinRole = item.minRole ?? group.minRole;
+    if (requiredMinRole === "admin" && role !== "admin") return false;
+    if (requiredMinRole === "yetkili" && !isAtLeast(role as UserRole, "yetkili")) return false;
+    return hasPermission({ role: role as UserRole, permissions: (user as any)?.permissions }, item.permission as any);
+  };
+
+  const getGroupItems = (key: string) => {
+    const group = navConfig.groups.find((g) => g.key === key);
+    if (!group || !group.isActive) return [];
+    return [...group.items]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .filter((it) => canShowItem(it, group))
+      .map((it) => ({ href: it.href, label: it.label, Icon: ICON_REGISTRY[it.icon] ?? DEFAULT_NAV_ICON }));
   };
 
   const filterByAllowed = <T extends { href: string }>(ls: T[]) =>
-    ls.filter(l => canShowLink(l.href));
+    ls.filter((l) => {
+      const permission = NAV_PERMISSION_BY_HREF_FOR_BOTTOM_NAV[l.href];
+      if (!permission) return role !== "personel";
+      return hasPermission({ role: role as UserRole, permissions: (user as any)?.permissions }, permission);
+    });
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -539,21 +513,15 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
   // ── Collapsed sidebar — sadece ikonlar, tooltip ile ───────────────────────
   const CollapsedDivider = () => <div className="h-3 border-t border-zinc-800/40 mx-2 mt-2 mb-1" />;
 
-  // Veri hazırlığı
-  const bugunLinks = filterByAllowed(BUGUN_LINKS);
-  const araclarLinks = isManager ? filterByAllowed(ARACLAR_LINKS) : [];
-  const insanLinks = isManager ? filterByAllowed(INSAN_LINKS) : [];
-  const rotaLinks = isManager ? filterByAllowed(ROTA_LINKS) : [];
-  // isManager ön-kapısı yok — canShowLink zaten her linki kendi iznine göre
-  // filtreliyor (finans_masraf_talebi:read personel'de de var, diğer finans
-  // linkleri personel için varsayılan olarak kapalı kalıyor).
-  const finansLinks = filterByAllowed(FINANS_LINKS);
-  const gorevlerLinks = filterByAllowed(GOREVLER_LINKS);
-  const yonetimLinks = [
-    ...(isManager ? filterByAllowed([{ href: "/toplu-islem", label: "Toplu İşlem", Icon: IconClipboard2 }]) : []),
-    ...(isAdmin ? filterByAllowed(YONETIM_LINKS.filter(l => l.href !== "/toplu-islem")) : []),
-  ];
-  const yonetimTeknikLinks = isAdmin ? filterByAllowed(YONETIM_TEKNIK_LINKS) : [];
+  // Veri hazırlığı — artık DB'den gelen navConfig'ten türetiliyor
+  const bugunLinks = getGroupItems("bugun");
+  const araclarLinks = getGroupItems("araclar");
+  const insanLinks = getGroupItems("insan");
+  const rotaLinks = getGroupItems("rota");
+  const finansLinks = getGroupItems("finans");
+  const gorevlerLinks = getGroupItems("gorevler");
+  const yonetimLinks = getGroupItems("yonetim");
+  const yonetimTeknikLinks = getGroupItems("yonetim-teknik");
 
   const bottomNavLinks = filterByAllowed(BOTTOM_NAV);
 
@@ -655,81 +623,25 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
           className="flex-1 overflow-y-auto py-3 px-2 scrollbar-thin"
         >
 
-          {/* BUGÜN */}
-          {bugunLinks.length > 0 && (
-            <>
-              <GroupHeader label="Bugün" groupKey="bugun" show={!collapsed} />
-              {(collapsed || openGroups.bugun) &&
-                bugunLinks.map(link => <NavLink key={link.href} link={link} showLabel={!collapsed} />)
+          {([
+            { key: "bugun", label: "Bugün", links: bugunLinks },
+            { key: "araclar", label: "Araçlar", links: araclarLinks },
+            { key: "insan", label: "İnsan", links: insanLinks },
+            { key: "rota", label: "Rota", links: rotaLinks },
+            { key: "finans", label: "Finans", links: finansLinks },
+            { key: "gorevler", label: "Görevler", links: gorevlerLinks },
+            { key: "yonetim", label: "Yönetim", links: yonetimLinks },
+            { key: "yonetim-teknik", label: "Yönetim (Teknik)", links: yonetimTeknikLinks },
+          ] as const).map((g, idx) => g.links.length > 0 && (
+            <div key={g.key}>
+              {idx === 0
+                ? <GroupHeader label={g.label} groupKey={g.key} show={!collapsed} />
+                : (collapsed ? <CollapsedDivider /> : <GroupHeader label={g.label} groupKey={g.key} show />)}
+              {(collapsed || openGroups[g.key]) &&
+                g.links.map((link) => <NavLink key={link.href} link={link} showLabel={!collapsed} />)
               }
-            </>
-          )}
-
-          {/* ARAÇLAR */}
-          {araclarLinks.length > 0 && (
-            <>
-              {collapsed ? <CollapsedDivider /> : <GroupHeader label="Araçlar" groupKey="araclar" show />}
-              {(collapsed || openGroups.araclar) &&
-                araclarLinks.map(link => <NavLink key={link.href} link={link} showLabel={!collapsed} />)
-              }
-            </>
-          )}
-
-          {/* İNSAN */}
-          {insanLinks.length > 0 && (
-            <>
-              {collapsed ? <CollapsedDivider /> : <GroupHeader label="İnsan" groupKey="insan" show />}
-              {(collapsed || openGroups.insan) &&
-                insanLinks.map(link => <NavLink key={link.href} link={link} showLabel={!collapsed} />)
-              }
-            </>
-          )}
-
-          {/* ROTA */}
-          {rotaLinks.length > 0 && (
-            <>
-              {collapsed ? <CollapsedDivider /> : <GroupHeader label="Rota" groupKey="rota" show />}
-              {(collapsed || openGroups.rota) &&
-                rotaLinks.map(link => <NavLink key={link.href} link={link} showLabel={!collapsed} />)
-              }
-            </>
-          )}
-
-          {/* FİNANS */}
-          {finansLinks.length > 0 && (
-            <>
-              {collapsed ? <CollapsedDivider /> : <GroupHeader label="Finans" groupKey="finans" show />}
-              {(collapsed || openGroups.finans) &&
-                finansLinks.map(link => <NavLink key={link.href} link={link} showLabel={!collapsed} />)
-              }
-            </>
-          )}
-
-          {/* GÖREVLER */}
-          {gorevlerLinks.length > 0 && (
-            <>
-              {collapsed ? <CollapsedDivider /> : <GroupHeader label="Görevler" groupKey="gorevler" show />}
-              {(collapsed || openGroups.gorevler) &&
-                gorevlerLinks.map(link => <NavLink key={link.href} link={link} showLabel={!collapsed} />)
-              }
-            </>
-          )}
-
-          {/* YÖNETİM */}
-          {yonetimLinks.length > 0 && (
-            <>
-              {collapsed ? <CollapsedDivider /> : <GroupHeader label="Yönetim" groupKey="yonetim" show />}
-              {(collapsed || openGroups.yonetim) && (
-                <>
-                  {yonetimLinks.map(link => <NavLink key={link.href} link={link} showLabel={!collapsed} />)}
-                  {yonetimTeknikLinks.length > 0 && !collapsed && (
-                    <p className="text-[9px] font-semibold text-zinc-700 uppercase tracking-widest px-2.5 pt-2 pb-1">Teknik</p>
-                  )}
-                  {yonetimTeknikLinks.map(link => <NavLink key={link.href} link={link} showLabel={!collapsed} />)}
-                </>
-              )}
-            </>
-          )}
+            </div>
+          ))}
         </nav>
 
         {/* Daralt butonu */}
@@ -828,81 +740,23 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
             {/* Drawer içeriği */}
             <div className="px-3 py-2">
 
-              {/* Bugün — bottom nav'da olmayan linkler */}
-              {drawerBugunLinks.length > 0 && (
-                <>
-                  <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-2.5 pt-3 pb-1.5">Bugün</p>
-                  {drawerBugunLinks.map(link => (
+              {([
+                { key: "bugun", label: "Bugün", links: drawerBugunLinks },
+                { key: "araclar", label: "Araçlar", links: araclarLinks },
+                { key: "insan", label: "İnsan", links: insanLinks },
+                { key: "rota", label: "Rota", links: rotaLinks },
+                { key: "finans", label: "Finans", links: finansLinks },
+                { key: "gorevler", label: "Görevler", links: gorevlerLinks },
+                { key: "yonetim", label: "Yönetim", links: yonetimLinks },
+                { key: "yonetim-teknik", label: "Yönetim (Teknik)", links: yonetimTeknikLinks },
+              ] as const).map((g) => g.links.length > 0 && (
+                <div key={g.key}>
+                  <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-2.5 pt-4 pb-1.5">{g.label}</p>
+                  {g.links.map((link) => (
                     <NavLink key={link.href} link={link} showLabel onClick={() => setMobileOpen(false)} />
                   ))}
-                </>
-              )}
-
-              {/* Araçlar */}
-              {araclarLinks.length > 0 && (
-                <>
-                  <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-2.5 pt-4 pb-1.5">Araçlar</p>
-                  {araclarLinks.map(link => (
-                    <NavLink key={link.href} link={link} showLabel onClick={() => setMobileOpen(false)} />
-                  ))}
-                </>
-              )}
-
-              {/* İnsan */}
-              {insanLinks.length > 0 && (
-                <>
-                  <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-2.5 pt-4 pb-1.5">İnsan</p>
-                  {insanLinks.map(link => (
-                    <NavLink key={link.href} link={link} showLabel onClick={() => setMobileOpen(false)} />
-                  ))}
-                </>
-              )}
-
-              {/* Rota */}
-              {rotaLinks.length > 0 && (
-                <>
-                  <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-2.5 pt-4 pb-1.5">Rota</p>
-                  {rotaLinks.map(link => (
-                    <NavLink key={link.href} link={link} showLabel onClick={() => setMobileOpen(false)} />
-                  ))}
-                </>
-              )}
-
-              {/* Finans */}
-              {finansLinks.length > 0 && (
-                <>
-                  <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-2.5 pt-4 pb-1.5">Finans</p>
-                  {finansLinks.map(link => (
-                    <NavLink key={link.href} link={link} showLabel onClick={() => setMobileOpen(false)} />
-                  ))}
-                </>
-              )}
-
-              {/* Görevler */}
-              {gorevlerLinks.length > 0 && (
-                <>
-                  <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-2.5 pt-4 pb-1.5">Görevler</p>
-                  {gorevlerLinks.map(link => (
-                    <NavLink key={link.href} link={link} showLabel onClick={() => setMobileOpen(false)} />
-                  ))}
-                </>
-              )}
-
-              {/* Yönetim */}
-              {yonetimLinks.length > 0 && (
-                <>
-                  <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-2.5 pt-4 pb-1.5">Yönetim</p>
-                  {yonetimLinks.map(link => (
-                    <NavLink key={link.href} link={link} showLabel onClick={() => setMobileOpen(false)} />
-                  ))}
-                  {yonetimTeknikLinks.length > 0 && (
-                    <p className="text-[9px] font-semibold text-zinc-700 uppercase tracking-widest px-2.5 pt-2 pb-1">Teknik</p>
-                  )}
-                  {yonetimTeknikLinks.map(link => (
-                    <NavLink key={link.href} link={link} showLabel onClick={() => setMobileOpen(false)} />
-                  ))}
-                </>
-              )}
+                </div>
+              ))}
 
               {/* Çıkış */}
               <div className="mt-4 pt-4 border-t border-zinc-800/60">
