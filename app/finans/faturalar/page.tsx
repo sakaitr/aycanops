@@ -200,6 +200,51 @@ export default function FaturalarPage() {
     }));
   }
 
+  // Masraf merkezi/proje/departman listeleri genelde neredeyse boş oluyor —
+  // fatura formundan ayrılmadan hızlıca yeni bir tane eklenebilir olsun diye
+  // her select'in altına "+ Yeni Ekle" seçeneği eklendi.
+  async function quickAddMasrafMerkezi(idx: number) {
+    const ad = window.prompt("Yeni masraf merkezi adı:");
+    if (!ad?.trim()) return;
+    const r = await fetch("/api/finans/masraf-merkezi", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ad: ad.trim() }),
+    });
+    const d = await r.json();
+    if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Eklenemedi"); return; }
+    const listRes = await fetch("/api/finans/masraf-merkezi?is_active=1");
+    const listData = await listRes.json();
+    if (listData.ok) setMasrafMerkezleri(listData.data);
+    updateKalem(idx, "masraf_merkezi_id", d.data.id);
+  }
+
+  async function quickAddProje(idx: number) {
+    const ad = window.prompt("Yeni proje adı:");
+    if (!ad?.trim()) return;
+    const r = await fetch("/api/finans/proje", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ad: ad.trim() }),
+    });
+    const d = await r.json();
+    if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Eklenemedi"); return; }
+    const listRes = await fetch("/api/finans/proje?is_active=1");
+    const listData = await listRes.json();
+    if (listData.ok) setProjeler(listData.data);
+    updateKalem(idx, "proje_id", d.data.id);
+  }
+
+  async function quickAddDepartman(idx: number) {
+    const name = window.prompt("Yeni departman adı:");
+    if (!name?.trim()) return;
+    const r = await fetch("/api/departments", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }),
+    });
+    const d = await r.json();
+    if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Eklenemedi"); return; }
+    const listRes = await fetch("/api/departments");
+    const listData = await listRes.json();
+    if (listData.ok) setDepartmanlar(listData.data);
+    updateKalem(idx, "department_id", d.data.id);
+  }
+
   function kalemTutar(k: any) {
     return (Number(k.miktar) || 0) * (Number(k.birim_fiyat) || 0);
   }
@@ -526,20 +571,26 @@ export default function FaturalarPage() {
                         </select>
                       </div>
                       <div className="grid grid-cols-3 gap-2">
-                        <select value={k.masraf_merkezi_id} onChange={e => updateKalem(idx, "masraf_merkezi_id", e.target.value)}
+                        <select value={k.masraf_merkezi_id}
+                          onChange={e => e.target.value === "__new__" ? quickAddMasrafMerkezi(idx) : updateKalem(idx, "masraf_merkezi_id", e.target.value)}
                           className="bg-zinc-900 border border-zinc-700 text-zinc-400 text-xs px-2 py-1.5 rounded-lg focus:outline-none">
                           <option value="">Masraf Merkezi</option>
                           {masrafMerkezleri.map(m => <option key={m.id} value={m.id}>{m.ad}</option>)}
+                          <option value="__new__">+ Yeni Ekle</option>
                         </select>
-                        <select value={k.proje_id} onChange={e => updateKalem(idx, "proje_id", e.target.value)}
+                        <select value={k.proje_id}
+                          onChange={e => e.target.value === "__new__" ? quickAddProje(idx) : updateKalem(idx, "proje_id", e.target.value)}
                           className="bg-zinc-900 border border-zinc-700 text-zinc-400 text-xs px-2 py-1.5 rounded-lg focus:outline-none">
                           <option value="">Proje</option>
                           {projeler.map(p => <option key={p.id} value={p.id}>{p.ad}</option>)}
+                          <option value="__new__">+ Yeni Ekle</option>
                         </select>
-                        <select value={k.department_id} onChange={e => updateKalem(idx, "department_id", e.target.value)}
+                        <select value={k.department_id}
+                          onChange={e => e.target.value === "__new__" ? quickAddDepartman(idx) : updateKalem(idx, "department_id", e.target.value)}
                           className="bg-zinc-900 border border-zinc-700 text-zinc-400 text-xs px-2 py-1.5 rounded-lg focus:outline-none">
                           <option value="">Departman</option>
                           {departmanlar.map(dep => <option key={dep.id} value={dep.id}>{dep.name}</option>)}
+                          <option value="__new__">+ Yeni Ekle</option>
                         </select>
                       </div>
                       <p className="text-right text-zinc-500 text-xs">
