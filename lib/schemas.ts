@@ -587,8 +587,12 @@ export const finansFaturaKalemiSchema = z.object({
   department_id: z.string().optional().nullable(),
 });
 
+const finansOdemeTuruSchema = z.enum(["pesin", "vade", "cek", "kart", "nakit"]).optional().nullable();
+
 export const finansFaturaSchema = z.object({
   tur: z.enum(["satis", "alis"]),
+  fatura_no: z.string().max(50).optional().nullable(),
+  odeme_turu: finansOdemeTuruSchema,
   belge_turu_id: z.string().optional().nullable(),
   cari_tip: z.enum(["musteri", "tedarikci"]),
   cari_id: shortStr(36),
@@ -607,6 +611,8 @@ export const finansFisSchema = z.object({
     "gider_fisi", "tahsilat_makbuzu", "tediye_makbuzu", "kasa_giris", "kasa_cikis",
     "banka_islem", "virman", "mahsup", "acilis_kapanis", "personel_masraf",
   ]),
+  fis_no: z.string().max(50).optional().nullable(),
+  odeme_turu: finansOdemeTuruSchema,
   tarih: z.string().min(1),
   tutar: z.number(),
   kasa_banka_hesabi_id: z.string().optional().nullable(),

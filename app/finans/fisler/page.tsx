@@ -19,8 +19,18 @@ const TIP_LABELS: Record<string, string> = {
   personel_masraf: "Personel Masraf Formu",
 };
 
+const ODEME_TURU_LABELS: Record<string, string> = {
+  pesin: "Peşin",
+  vade: "Vade",
+  cek: "Çek",
+  kart: "Kart",
+  nakit: "Nakit",
+};
+
 const EMPTY_FORM = {
   tip: "gider_fisi",
+  fis_no: "",
+  odeme_turu: "",
   tarih: todayIstanbul(),
   tutar: "",
   kasa_banka_hesabi_id: "",
@@ -60,6 +70,10 @@ export default function FislerPage() {
   const [kasaBankaHesaplari, setKasaBankaHesaplari] = useState<any[]>([]);
   const [tipFilter, setTipFilter] = useState("");
 
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploadingAttach, setUploadingAttach] = useState(false);
+
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
       if (d.ok) setUser(d.data); else router.replace("/login");
@@ -79,18 +93,64 @@ export default function FislerPage() {
     } finally { setLoading(false); }
   }
 
-  function openCreate() { setEditing(null); setForm({ ...EMPTY_FORM }); setSaveError(null); setShowForm(true); }
+  function openCreate() {
+    setEditing(null);
+    setForm({ ...EMPTY_FORM });
+    setAttachments([]);
+    setPendingFile(null);
+    setSaveError(null);
+    setShowForm(true);
+  }
   function openEdit(row: any) {
     setEditing(row);
     setForm({
       tip: row.tip,
+      fis_no: row.fis_no || "",
+      odeme_turu: row.odeme_turu || "",
       tarih: toDateInputValue(row.tarih),
       tutar: row.tutar != null ? String(row.tutar) : "",
       kasa_banka_hesabi_id: row.kasa_banka_hesabi_id || "",
       karsi_hesap_id: row.karsi_hesap_id || "",
       aciklama: row.aciklama || "",
     });
+    setPendingFile(null);
     setSaveError(null); setShowForm(true);
+    loadAttachments(row.id);
+  }
+
+  async function loadAttachments(fisId: string) {
+    const r = await fetch(`/api/finans/belge?iliskili_tip=fis&iliskili_id=${fisId}`);
+    const d = await r.json();
+    if (d.ok) setAttachments(d.data);
+  }
+
+  // finans_fis.belge_id tekli bir FK (fatura'daki gibi çoklu ilişki değil) —
+  // yeni dosya yüklenince hem finans_belge'de genel ilişki kurulur hem de
+  // fiş kaydının belge_id'si en son yüklenene güncellenir.
+  async function attachToFis(fisId: string, file: File, baseRow: any) {
+    setUploadingAttach(true);
+    try {
+      const fd = new FormData();
+      fd.append("dosya", file);
+      fd.append("iliskili_tip", "fis");
+      fd.append("iliskili_id", fisId);
+      const r = await fetch("/api/finans/belge", { method: "POST", body: fd });
+      const d = await r.json();
+      if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Dosya yüklenemedi"); return; }
+      const belgeId = d.data.id;
+      await fetch(`/api/finans/fis/${fisId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tip: baseRow.tip, fis_no: baseRow.fis_no || null, odeme_turu: baseRow.odeme_turu || null,
+          tarih: baseRow.tarih, tutar: Number(baseRow.tutar),
+          kasa_banka_hesabi_id: baseRow.kasa_banka_hesabi_id || null,
+          karsi_hesap_id: baseRow.karsi_hesap_id || null,
+          belge_id: belgeId, aciklama: baseRow.aciklama || null,
+        }),
+      });
+      loadAttachments(fisId);
+    } finally { setUploadingAttach(false); }
   }
 
   async function save() {
@@ -101,10 +161,15 @@ export default function FislerPage() {
     try {
       const payload = {
         tip: form.tip,
+        fis_no: form.fis_no.trim() || null,
+        odeme_turu: form.odeme_turu || null,
         tarih: form.tarih,
         tutar,
         kasa_banka_hesabi_id: form.kasa_banka_hesabi_id || null,
         karsi_hesap_id: form.tip === "virman" ? (form.karsi_hesap_id || null) : null,
+        // Normal başlık güncellemesi mevcut dosya ilişkisini silmesin diye
+        // (finansFisSchema'da belge_id ayrı bir akışla — attachToFis — yönetilir).
+        belge_id: editing ? (editing.belge_id ?? null) : null,
         aciklama: form.aciklama || null,
       };
       const url = editing ? `/api/finans/fis/${editing.id}` : "/api/finans/fis";
@@ -112,6 +177,8 @@ export default function FislerPage() {
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const d = await res.json();
       if (!d.ok) { setSaveError(typeof d.error === "string" ? d.error : "Kayıt hatası"); return; }
+      const fisId = editing ? editing.id : d.data.id;
+      if (pendingFile) await attachToFis(fisId, pendingFile, { ...payload, id: fisId });
       toast.success(editing ? "Fiş güncellendi" : "Fiş oluşturuldu");
       setShowForm(false);
       load();
@@ -159,14 +226,16 @@ export default function FislerPage() {
                     <span className="text-xs px-2 py-0.5 rounded-md font-medium bg-zinc-800 text-zinc-300">
                       {TIP_LABELS[row.tip] || row.tip}
                     </span>
+                    {row.fis_no && <span className="text-white text-sm font-semibold">{row.fis_no}</span>}
                     <span className="text-zinc-500 text-xs">{toDateInputValue(row.tarih)}</span>
                     <span className="text-zinc-400 text-sm ml-auto">
                       {row.kasa_banka_hesabi_ad || "—"}
                       {row.tip === "virman" && row.karsi_hesap_ad ? ` → ${row.karsi_hesap_ad}` : ""}
                     </span>
                   </div>
-                  <div className="mt-1.5">
+                  <div className="mt-1.5 flex items-center gap-2">
                     <p className="text-zinc-200 text-sm font-medium">{formatTutar(row.tutar)}</p>
+                    {row.odeme_turu && <span className="text-xs px-2 py-0.5 rounded-md bg-zinc-800/60 text-zinc-500">{ODEME_TURU_LABELS[row.odeme_turu]}</span>}
                   </div>
                 </div>
               ))}
@@ -193,6 +262,23 @@ export default function FislerPage() {
                   {Object.entries(TIP_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-zinc-400 text-xs font-medium mb-1 block">Fiş No</span>
+                  <input type="text" value={form.fis_no} onChange={e => setForm(f => ({ ...f, fis_no: e.target.value }))}
+                    placeholder="örn. F2026000045"
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500" />
+                </label>
+                <label className="block">
+                  <span className="text-zinc-400 text-xs font-medium mb-1 block">Ödeme Türü</span>
+                  <select value={form.odeme_turu} onChange={e => setForm(f => ({ ...f, odeme_turu: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
+                    <option value="">— Seçilmedi —</option>
+                    {Object.entries(ODEME_TURU_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </label>
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
@@ -233,6 +319,34 @@ export default function FislerPage() {
                 <textarea value={form.aciklama} onChange={e => setForm(f => ({ ...f, aciklama: e.target.value }))} rows={3}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 resize-none" />
               </label>
+
+              <div>
+                <span className="text-zinc-400 text-xs font-medium mb-1 block">Dosya Eki (fiş görseli veya PDF)</span>
+                {attachments.length > 0 && (
+                  <div className="space-y-1 mb-2">
+                    {attachments.map(a => (
+                      <a key={a.id} href={`/api/uploads/finans-belge/${a.dosya_yolu}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800">
+                        📎 <span className="truncate">{a.dosya_adi}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {editing ? (
+                  <label className="flex items-center gap-2 text-xs text-zinc-400 hover:text-white cursor-pointer px-3 py-2 rounded-lg bg-zinc-800/60 border border-zinc-700 border-dashed">
+                    {uploadingAttach ? "Yükleniyor..." : "+ Dosya Ekle"}
+                    <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,application/xml,text/xml" className="hidden"
+                      disabled={uploadingAttach}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) attachToFis(editing.id, f, { ...editing, fis_no: form.fis_no, odeme_turu: form.odeme_turu }); e.target.value = ""; }} />
+                  </label>
+                ) : (
+                  <label className="flex items-center gap-2 text-xs text-zinc-400 hover:text-white cursor-pointer px-3 py-2 rounded-lg bg-zinc-800/60 border border-zinc-700 border-dashed">
+                    {pendingFile ? pendingFile.name : "+ Dosya Seç"}
+                    <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,application/xml,text/xml" className="hidden"
+                      onChange={e => setPendingFile(e.target.files?.[0] || null)} />
+                  </label>
+                )}
+              </div>
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex gap-3 shrink-0">
               <button onClick={() => setShowForm(false)} className="flex-1 bg-zinc-800 text-zinc-300 font-medium text-sm py-2.5 rounded-xl hover:bg-zinc-700 transition-colors">İptal</button>

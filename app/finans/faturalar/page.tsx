@@ -33,6 +33,13 @@ const ODEME_DURUMU_BADGE_CLASS: Record<string, string> = {
   odendi: "bg-emerald-950 text-emerald-400",
   fazla_odendi: "bg-sky-950 text-sky-400",
 };
+const ODEME_TURU_LABELS: Record<string, string> = {
+  pesin: "Peşin",
+  vade: "Vade",
+  cek: "Çek",
+  kart: "Kart",
+  nakit: "Nakit",
+};
 
 // MySQL DATE sütunları mysql2 tarafından JS Date nesnesi olarak döner ve bu nesne
 // JSON.stringify sırasında UTC'ye çevrilir. new Date(...) ile ayrıştırıp tarayıcının
@@ -65,6 +72,8 @@ const EMPTY_KALEM = {
 function emptyForm(tur: string) {
   return {
     tur,
+    fatura_no: "",
+    odeme_turu: "",
     belge_turu_id: "",
     cari_id: "",
     tarih: todayIstanbul(),
@@ -97,6 +106,10 @@ export default function FaturalarPage() {
   const [projeler, setProjeler] = useState<any[]>([]);
   const [departmanlar, setDepartmanlar] = useState<any[]>([]);
 
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploadingAttach, setUploadingAttach] = useState(false);
+
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
       if (d.ok) setUser(d.data); else router.replace("/login");
@@ -124,6 +137,8 @@ export default function FaturalarPage() {
   function openCreate() {
     setEditing(null);
     setForm(emptyForm(activeTab));
+    setAttachments([]);
+    setPendingFile(null);
     setSaveError(null);
     setShowForm(true);
   }
@@ -132,6 +147,8 @@ export default function FaturalarPage() {
     setEditing(row);
     setForm({
       tur: row.tur,
+      fatura_no: row.fatura_no || "",
+      odeme_turu: row.odeme_turu || "",
       belge_turu_id: row.belge_turu_id || "",
       cari_id: row.cari_id || "",
       tarih: toDateInputValue(row.tarih),
@@ -141,8 +158,30 @@ export default function FaturalarPage() {
       aciklama: row.aciklama || "",
       kalemler: [{ ...EMPTY_KALEM }], // bu fazda düzenlenmiyor; sadece başlık gösterilir
     });
+    setPendingFile(null);
     setSaveError(null);
     setShowForm(true);
+    loadAttachments(row.id);
+  }
+
+  async function loadAttachments(faturaId: string) {
+    const r = await fetch(`/api/finans/belge?iliskili_tip=fatura&iliskili_id=${faturaId}`);
+    const d = await r.json();
+    if (d.ok) setAttachments(d.data);
+  }
+
+  async function uploadAttachment(faturaId: string, file: File) {
+    setUploadingAttach(true);
+    try {
+      const fd = new FormData();
+      fd.append("dosya", file);
+      fd.append("iliskili_tip", "fatura");
+      fd.append("iliskili_id", faturaId);
+      const r = await fetch("/api/finans/belge", { method: "POST", body: fd });
+      const d = await r.json();
+      if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Dosya yüklenemedi"); return; }
+      loadAttachments(faturaId);
+    } finally { setUploadingAttach(false); }
   }
 
   function addKalem() {
@@ -192,6 +231,8 @@ export default function FaturalarPage() {
     if (editing) {
       payload = {
         tur: form.tur,
+        fatura_no: form.fatura_no.trim() || null,
+        odeme_turu: form.odeme_turu || null,
         belge_turu_id: form.belge_turu_id || null,
         cari_tip: cariTip,
         cari_id: form.cari_id,
@@ -216,6 +257,8 @@ export default function FaturalarPage() {
       if (gecerliKalemler.length === 0) { setSaveError("En az bir kalem gereklidir"); return; }
       payload = {
         tur: form.tur,
+        fatura_no: form.fatura_no.trim() || null,
+        odeme_turu: form.odeme_turu || null,
         belge_turu_id: form.belge_turu_id || null,
         cari_tip: cariTip,
         cari_id: form.cari_id,
@@ -234,6 +277,8 @@ export default function FaturalarPage() {
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const d = await res.json();
       if (!d.ok) { setSaveError(typeof d.error === "string" ? d.error : "Kayıt hatası"); return; }
+      const faturaId = editing ? editing.id : d.data.id;
+      if (pendingFile) await uploadAttachment(faturaId, pendingFile);
       toast.success(editing ? "Fatura güncellendi" : "Fatura oluşturuldu");
       setShowForm(false);
       load();
@@ -316,6 +361,7 @@ export default function FaturalarPage() {
                         <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${ODEME_DURUMU_BADGE_CLASS[row.odeme_durumu] || "bg-zinc-800 text-zinc-400"}`}>
                           {ODEME_DURUMU_LABELS[row.odeme_durumu] || row.odeme_durumu}
                         </span>
+                        {row.odeme_turu && <span className="text-xs px-2 py-0.5 rounded-md bg-zinc-800/60 text-zinc-500">{ODEME_TURU_LABELS[row.odeme_turu]}</span>}
                       </div>
                       {showActions && (
                         <div className="flex gap-2 shrink-0" onClick={e => e.stopPropagation()}>
@@ -365,6 +411,23 @@ export default function FaturalarPage() {
                   {cariOptions.map((c: any) => <option key={c.id} value={c.id}>{cariLabel(c)}</option>)}
                 </select>
               </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-zinc-400 text-xs font-medium mb-1 block">Fatura No</span>
+                  <input type="text" value={form.fatura_no} onChange={e => setForm((f: any) => ({ ...f, fatura_no: e.target.value }))}
+                    placeholder="örn. A2026000123"
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500" />
+                </label>
+                <label className="block">
+                  <span className="text-zinc-400 text-xs font-medium mb-1 block">Ödeme Türü</span>
+                  <select value={form.odeme_turu} onChange={e => setForm((f: any) => ({ ...f, odeme_turu: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
+                    <option value="">— Seçilmedi —</option>
+                    {Object.entries(ODEME_TURU_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </label>
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
@@ -501,6 +564,34 @@ export default function FaturalarPage() {
                 <textarea value={form.aciklama} onChange={e => setForm((f: any) => ({ ...f, aciklama: e.target.value }))} rows={3}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 resize-none" />
               </label>
+
+              <div>
+                <span className="text-zinc-400 text-xs font-medium mb-1 block">Dosya Eki (fatura/fiş görseli veya PDF)</span>
+                {attachments.length > 0 && (
+                  <div className="space-y-1 mb-2">
+                    {attachments.map(a => (
+                      <a key={a.id} href={`/api/uploads/finans-belge/${a.dosya_yolu}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800">
+                        📎 <span className="truncate">{a.dosya_adi}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {editing ? (
+                  <label className="flex items-center gap-2 text-xs text-zinc-400 hover:text-white cursor-pointer px-3 py-2 rounded-lg bg-zinc-800/60 border border-zinc-700 border-dashed">
+                    {uploadingAttach ? "Yükleniyor..." : "+ Dosya Ekle"}
+                    <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,application/xml,text/xml" className="hidden"
+                      disabled={uploadingAttach}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) uploadAttachment(editing.id, f); e.target.value = ""; }} />
+                  </label>
+                ) : (
+                  <label className="flex items-center gap-2 text-xs text-zinc-400 hover:text-white cursor-pointer px-3 py-2 rounded-lg bg-zinc-800/60 border border-zinc-700 border-dashed">
+                    {pendingFile ? pendingFile.name : "+ Dosya Seç"}
+                    <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,application/xml,text/xml" className="hidden"
+                      onChange={e => setPendingFile(e.target.files?.[0] || null)} />
+                  </label>
+                )}
+              </div>
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex gap-3 shrink-0">
               <button onClick={() => setShowForm(false)} className="flex-1 bg-zinc-800 text-zinc-300 font-medium text-sm py-2.5 rounded-xl hover:bg-zinc-700 transition-colors">İptal</button>

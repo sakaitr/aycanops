@@ -26,10 +26,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     await db.prepare(
       `UPDATE finans_fis SET
-         tip = ?, tarih = ?, tutar = ?, kasa_banka_hesabi_id = ?, karsi_hesap_id = ?, belge_id = ?, aciklama = ?, updated_at = ?
+         tip = ?, fis_no = ?, odeme_turu = ?, tarih = ?, tutar = ?, kasa_banka_hesabi_id = ?, karsi_hesap_id = ?, belge_id = ?, aciklama = ?, updated_at = ?
        WHERE id = ?`
     ).run(
-      d.tip, d.tarih, d.tutar,
+      d.tip, d.fis_no || null, d.odeme_turu || null, d.tarih, d.tutar,
       d.kasa_banka_hesabi_id || null, d.karsi_hesap_id || null, d.belge_id || null,
       d.aciklama || null, nowIso(), id
     );

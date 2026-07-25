@@ -50,10 +50,10 @@ export async function POST(req: NextRequest) {
     const now = nowIso();
     await db.prepare(
       `INSERT INTO finans_fis
-         (id, tip, tarih, tutar, kasa_banka_hesabi_id, karsi_hesap_id, belge_id, aciklama, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, tip, fis_no, odeme_turu, tarih, tutar, kasa_banka_hesabi_id, karsi_hesap_id, belge_id, aciklama, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
-      id, d.tip, d.tarih, d.tutar,
+      id, d.tip, d.fis_no || null, d.odeme_turu || null, d.tarih, d.tutar,
       d.kasa_banka_hesabi_id || null, d.karsi_hesap_id || null, d.belge_id || null,
       d.aciklama || null, user.id, now, now
     );
