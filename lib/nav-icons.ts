@@ -6,6 +6,7 @@ import {
   IconX, IconMenu, IconCar, IconUsers, IconShield, IconActivity, IconWrench,
   IconCoin, IconKey, IconDocument, IconCalendar, IconHistory, IconArrowUpRight,
   IconCopy, IconPlus, IconCheck, IconChevronDown, IconChevronUp, IconMessageCircle,
+  IconArrowDownRight, IconWallet,
 } from "@/components/Icons";
 
 // Nav config'te bir link'in ikonu string isim olarak saklanır (örn.
@@ -19,6 +20,7 @@ export const ICON_REGISTRY: Record<string, React.ComponentType<{ size?: number; 
   IconX, IconMenu, IconCar, IconUsers, IconShield, IconActivity, IconWrench,
   IconCoin, IconKey, IconDocument, IconCalendar, IconHistory, IconArrowUpRight,
   IconCopy, IconPlus, IconCheck, IconChevronDown, IconChevronUp, IconMessageCircle,
+  IconArrowDownRight, IconWallet,
 };
 
 // Şema doğrulaması (lib/schemas.ts) sadece bu isim listesine ihtiyaç duyar,
