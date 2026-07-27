@@ -3,6 +3,7 @@ import { nowIso } from "@/lib/time";
 import { v4 as uuidv4 } from "uuid";
 import {
   setRoleCache,
+  isRoleCacheLoaded,
   DEFAULT_ROLE_ORDER,
   DEFAULT_ROLE_PERMISSIONS,
 } from "@/lib/permissions";
@@ -44,4 +45,23 @@ export async function loadPermissionsCache(): Promise<void> {
   }
 
   setRoleCache({ hierarchy, permissions });
+}
+
+// instrumentation.ts'teki açılış çağrısı, Next.js'in API route'ları ayrı
+// webpack chunk'larına derlemesi yüzünden route handler'ların kullandığı
+// lib/permissions.ts kopyasına ulaşmayabiliyor (her chunk kendi modül-seviyeli
+// roleCache'ine sahip) — bu da restart sonrası özel rollerin (örn. İdari İşler)
+// bir admin herhangi bir rolün izinlerini kaydedene kadar boş görünmesine yol
+// açıyordu. requireUser() içinden çağrılan bu fonksiyon, o anki route'un kendi
+// modül kopyasında cache'i tembel biçimde ve tek seferlik doldurur.
+let cacheLoadPromise: Promise<void> | null = null;
+export function ensureRoleCache(): Promise<void> {
+  if (isRoleCacheLoaded()) return Promise.resolve();
+  if (!cacheLoadPromise) {
+    cacheLoadPromise = loadPermissionsCache().catch((e) => {
+      cacheLoadPromise = null;
+      throw e;
+    });
+  }
+  return cacheLoadPromise;
 }

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import { addHours, nowIso } from "./time";
 import { getDb } from "./db";
+import { ensureRoleCache } from "./permissions-loader";
 
 export type SafeUser = {
   id: string;
@@ -137,6 +138,7 @@ export async function clearRoleCookie() {
 }
 
 export async function requireUser() {
+  try { await ensureRoleCache(); } catch { /* önbellek yüklenemezse hasPermission statik varsayılanlara düşer */ }
   const sessionId = await getSessionFromCookies();
   if (!sessionId) {
     return null;
