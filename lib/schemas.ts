@@ -123,7 +123,10 @@ export const departmentSchema = z.object({
 });
 
 // ─── Users ────────────────────────────────────────────────────────────
-const roleEnum = z.enum(["personel", "yetkili", "yonetici", "admin"]);
+// Roller artık sabit değil (bkz. lib/permissions.ts) - DB'de admin panelinden
+// oluşturulan özel roller de geçerli olmalı, bu yüzden sabit enum yerine
+// herhangi bir dolu string kabul edilir.
+const roleEnum = z.string().min(1, "Rol seçimi zorunlu");
 
 export const userCreateSchema = z.object({
   username: z.string().min(3, "En az 3 karakter").max(50),
