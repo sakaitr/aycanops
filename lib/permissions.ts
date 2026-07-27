@@ -75,6 +75,7 @@ export const PERMISSIONS = {
   finans_odeme: ["read", "create", "delete"],
   finans_banka_hareketi: ["read", "create", "update"],
   nav_config: ["update"],
+  ziyaretci_kaydi: ["read", "create", "update"],
 } as const;
 
 type PermissionResource = keyof typeof PERMISSIONS;
@@ -135,6 +136,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly PermissionKey[]> 
     "dashboard:read",
     "arrivals:read",
     "arrivals:create",
+    "ziyaretci_kaydi:read",
+    "ziyaretci_kaydi:create",
+    "ziyaretci_kaydi:update",
     "departments:read",
     "notifications:read",
     "suggestions:read",
@@ -155,6 +159,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly PermissionKey[]> 
     "dashboard:read",
     "arrivals:read",
     "arrivals:create",
+    "ziyaretci_kaydi:read",
+    "ziyaretci_kaydi:create",
+    "ziyaretci_kaydi:update",
     "arrivals:update",
     "arrivals:export",
     "vehicles:read",
@@ -268,6 +275,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly PermissionKey[]> 
     "dashboard:read",
     "arrivals:read",
     "arrivals:create",
+    "ziyaretci_kaydi:read",
+    "ziyaretci_kaydi:create",
+    "ziyaretci_kaydi:update",
     "arrivals:update",
     "arrivals:delete",
     "arrivals:bulk",

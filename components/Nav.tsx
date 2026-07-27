@@ -47,6 +47,7 @@ const DEFAULT_NAV_CONFIG: NavConfigType = {
         { id: "bugun-3", href: "/giris-kontrol", label: "Giriş Kontrol", icon: "IconTrafficCone", permission: "arrivals:read", isActive: true, sortOrder: 2, isCustom: false },
         { id: "bugun-4", href: "/transferler", label: "Transfer", icon: "IconClock", permission: "transfers:read", isActive: true, sortOrder: 3, isCustom: false },
         { id: "bugun-5", href: "/cetele", label: "Çetele", icon: "IconClipboard2", permission: "cetele:read", isActive: true, sortOrder: 4, isCustom: false },
+        { id: "bugun-6", href: "/ziyaretci-kayit", label: "Ziyaretçi Kayıt", icon: "IconBadge", permission: "ziyaretci_kaydi:read", isActive: true, sortOrder: 5, isCustom: false },
       ],
     },
     {

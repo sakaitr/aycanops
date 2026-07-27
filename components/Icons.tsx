@@ -66,3 +66,4 @@ export const IconChevronUp = i(<><path d="m18 15-6-6-6 6"/></>);
 export const IconMessageCircle = i(<><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></>);
 export const IconArrowDownRight = i(<><path d="M7 7l10 10"/><path d="M17 7v10H7"/></>);
 export const IconWallet = i(<><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></>);
+export const IconBadge = i(<><rect width="16" height="20" x="4" y="2" rx="2"/><circle cx="12" cy="9" r="2.5"/><path d="M8.5 16h7"/><path d="M9 19h6"/><path d="M9 5h6"/></>);

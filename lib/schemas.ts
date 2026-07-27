@@ -686,3 +686,10 @@ export const navConfigSchema = z.object({
 export type NavConfigItemType = z.infer<typeof navConfigItemSchema>;
 export type NavGroupType = z.infer<typeof navGroupSchema>;
 export type NavConfigType = z.infer<typeof navConfigSchema>;
+
+// ─── Ziyaretçi Kayıt ──────────────────────────────────────────────────────
+export const ziyaretciKayitSchema = z.object({
+  ziyaretci_adi: shortStr(200),
+  sebep: z.string().min(1).max(500),
+  kime_geldi: shortStr(200),
+});
