@@ -11,7 +11,12 @@ const ROLE_LABELS: Record<string, { label: string; cls: string }> = {
 };
 const CUSTOM_ROLE_CLS = "text-amber-300 bg-amber-950 border-amber-800";
 
-const ALL_PAGES = [
+// Sayfa kısıtlaması listesi artık canlı nav_config'ten (aşağıdaki useEffect)
+// dolduruluyor — bu sabit sadece nav-config fetch'i başarısız olursa (veya
+// henüz yüklenmeden form açılırsa) devreye giren yedek listedir. Finans,
+// ziyaretçi kayıt gibi sonradan eklenen sayfalar burada eksik olsa da canlı
+// fetch başarılı olduğu sürece sorun olmaz.
+const FALLBACK_ALL_PAGES = [
   { href: "/", label: "Panel" },
   { href: "/gunluk", label: "Günlük" },
   { href: "/gorevler", label: "İş Takibi" },
@@ -25,12 +30,12 @@ const ALL_PAGES = [
   { href: "/raporlar", label: "Raporlar" },
 ];
 
-// Rol bazlı varsayılan sayfa izinleri (kısıtlama açıldığında ön seçili gelir)
+// Rol bazlı varsayılan sayfa izinleri (kısıtlama açıldığında ön seçili gelir).
+// Sadece 4 sistem rolü için anlamlı bir varsayılan var; özel roller (örn.
+// idrislr) için boş başlar, admin sayfaları elle seçer.
 const ROLE_PAGE_DEFAULTS: Record<string, string[]> = {
   personel: ["/", "/gorevler", "/seferler", "/giris-kontrol"],
   yetkili:  ["/", "/gunluk", "/gorevler", "/seferler", "/giris-kontrol", "/sofor-degerlendirme", "/araclar", "/guzergahlar", "/denetimler", "/surucu-sicil"],
-  yonetici: ALL_PAGES.map(p => p.href),
-  admin:    ALL_PAGES.map(p => p.href),
 };
 
 const EMPTY_FORM = {
@@ -63,6 +68,7 @@ export default function KullanicilarPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
   const [roles, setRoles] = useState<{ name: string; label: string }[]>([]);
+  const [allPages, setAllPages] = useState<{ href: string; label: string }[]>(FALLBACK_ALL_PAGES);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("");
@@ -90,6 +96,19 @@ export default function KullanicilarPage() {
     fetch("/api/departments").then(r => r.json()).then(d => { if (d.ok) setDepartments(d.data); });
     fetch("/api/companies").then(r => r.json()).then(d => { if (d.ok) setCompanies(d.data); });
     fetch("/api/admin/roles").then(r => r.json()).then(d => { if (d.ok) setRoles(d.data); });
+    fetch("/api/admin/nav-config").then(r => r.json()).then(d => {
+      if (!d.ok || !d.data?.groups) return;
+      const seen = new Set<string>();
+      const flat: { href: string; label: string }[] = [];
+      for (const group of d.data.groups) {
+        for (const item of group.items ?? []) {
+          if (seen.has(item.href)) continue;
+          seen.add(item.href);
+          flat.push({ href: item.href, label: item.label });
+        }
+      }
+      if (flat.length > 0) setAllPages(flat);
+    }).catch(() => {});
   }, [router]);
 
   useEffect(() => { if (user) load(); }, [user]);
@@ -133,6 +152,12 @@ export default function KullanicilarPage() {
       const d = await r.json();
       if (d.ok) setUsers(d.data);
     } finally { setLoading(false); }
+  }
+
+  function getRoleDefaultPages(role: string) {
+    if (ROLE_PAGE_DEFAULTS[role]) return ROLE_PAGE_DEFAULTS[role];
+    if (role === "yonetici" || role === "admin") return allPages.map(p => p.href);
+    return [];
   }
 
   function parsePermUser(u: any) {
@@ -507,7 +532,7 @@ export default function KullanicilarPage() {
                   {/* Page restrictions */}
                   <div>
                     <div className="flex items-center gap-3 mb-3">
-                      <button type="button" onClick={() => setForm(f => ({ ...f, restricted_pages: !f.restricted_pages, allowed_pages: !f.restricted_pages ? (ROLE_PAGE_DEFAULTS[f.role] ?? []) : [] }))}
+                      <button type="button" onClick={() => setForm(f => ({ ...f, restricted_pages: !f.restricted_pages, allowed_pages: !f.restricted_pages ? getRoleDefaultPages(f.role) : [] }))}
                         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.restricted_pages ? "bg-amber-600" : "bg-zinc-700"}`}>
                         <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${form.restricted_pages ? "translate-x-[18px]" : "translate-x-0.5"}`} />
                       </button>
@@ -518,12 +543,12 @@ export default function KullanicilarPage() {
                     </div>
                     {form.restricted_pages && (
                       <div>
-                      <button type="button" onClick={() => setForm(f => ({ ...f, allowed_pages: ROLE_PAGE_DEFAULTS[f.role] ?? [] }))}
+                      <button type="button" onClick={() => setForm(f => ({ ...f, allowed_pages: getRoleDefaultPages(f.role) }))}
                         className="mb-2 text-xs text-amber-400 hover:text-amber-300 transition-colors">
-                        ↺ Varsayılanları Yükle ({(ROLE_PAGE_DEFAULTS[form.role] ?? []).length} sayfa)
+                        ↺ Varsayılanları Yükle ({getRoleDefaultPages(form.role).length} sayfa)
                       </button>
-                      <div className="grid grid-cols-2 gap-1.5 bg-zinc-800/50 rounded-xl p-3">
-                        {ALL_PAGES.map(pg => (
+                      <div className="grid grid-cols-2 gap-1.5 bg-zinc-800/50 rounded-xl p-3 max-h-72 overflow-y-auto">
+                        {allPages.map(pg => (
                           <label key={pg.href} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${form.allowed_pages.includes(pg.href) ? "bg-amber-950 border border-amber-800/60" : "hover:bg-zinc-700/50"}`}>
                             <input type="checkbox" checked={form.allowed_pages.includes(pg.href)} onChange={() => togglePage(pg.href)}
                               className="accent-amber-500 w-4 h-4 flex-shrink-0" />
