@@ -81,6 +81,8 @@ function emptyForm(tur: string) {
     para_birimi_kod: "TRY",
     kur: "1",
     aciklama: "",
+    banka_adi: "",
+    banka_iban: "",
     kalemler: [{ ...EMPTY_KALEM }],
   };
 }
@@ -98,8 +100,8 @@ export default function FaturalarPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
 
-  const [companies, setCompanies] = useState<any[]>([]);
-  const [isletenler, setIsletenler] = useState<any[]>([]);
+  const [musteriler, setMusteriler] = useState<any[]>([]);
+  const [cariTedarikci, setCariTedarikci] = useState<any[]>([]);
   const [belgeTurleri, setBelgeTurleri] = useState<any[]>([]);
   const [vergiKodlari, setVergiKodlari] = useState<any[]>([]);
   const [masrafMerkezleri, setMasrafMerkezleri] = useState<any[]>([]);
@@ -114,8 +116,8 @@ export default function FaturalarPage() {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
       if (d.ok) setUser(d.data); else router.replace("/login");
     });
-    fetch("/api/companies").then(r => r.json()).then(d => { if (d.ok) setCompanies(d.data); });
-    fetch("/api/isletenler?active=1&limit=500").then(r => r.json()).then(d => { if (d.ok) setIsletenler(d.data); });
+    fetch("/api/musteriler?is_active=1").then(r => r.json()).then(d => { if (d.ok) setMusteriler(d.data); });
+    fetch("/api/cari-tedarikci?is_active=1").then(r => r.json()).then(d => { if (d.ok) setCariTedarikci(d.data); });
     fetch("/api/finans/belge-turu?is_active=1").then(r => r.json()).then(d => { if (d.ok) setBelgeTurleri(d.data); });
     fetch("/api/finans/vergi-kodu?is_active=1").then(r => r.json()).then(d => { if (d.ok) setVergiKodlari(d.data); });
     fetch("/api/finans/masraf-merkezi").then(r => r.json()).then(d => { if (d.ok) setMasrafMerkezleri(d.data); });
@@ -156,6 +158,8 @@ export default function FaturalarPage() {
       para_birimi_kod: row.para_birimi_kod || "TRY",
       kur: row.kur != null ? String(row.kur) : "1",
       aciklama: row.aciklama || "",
+      banka_adi: row.banka_adi || "",
+      banka_iban: row.banka_iban || "",
       kalemler: [{ ...EMPTY_KALEM }], // bu fazda düzenlenmiyor; sadece başlık gösterilir
     });
     setPendingFile(null);
@@ -205,31 +209,28 @@ export default function FaturalarPage() {
   // her select'in altına "+ Yeni Ekle" seçeneği eklendi.
   async function quickAddCari() {
     if (cariTip === "musteri") {
-      const name = window.prompt("Yeni firma (müşteri) adı:");
-      if (!name?.trim()) return;
-      const r = await fetch("/api/companies", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }),
+      const unvan = window.prompt("Yeni müşteri ünvanı:");
+      if (!unvan?.trim()) return;
+      const r = await fetch("/api/musteriler", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unvan: unvan.trim() }),
       });
       const d = await r.json();
       if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Eklenemedi"); return; }
-      const listRes = await fetch("/api/companies");
+      const listRes = await fetch("/api/musteriler?is_active=1");
       const listData = await listRes.json();
-      if (listData.ok) setCompanies(listData.data);
+      if (listData.ok) setMusteriler(listData.data);
       setForm((f: any) => ({ ...f, cari_id: d.data.id }));
     } else {
-      const unvan = window.prompt("Yeni işleten (tedarikçi) ünvanı:");
+      const unvan = window.prompt("Yeni cari (tedarikçi) ünvanı:");
       if (!unvan?.trim()) return;
-      const cep_tel = window.prompt("Cep telefonu:");
-      if (!cep_tel?.trim()) { toast.error("Cep telefonu zorunlu, işleten eklenmedi"); return; }
-      const r = await fetch("/api/isletenler", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ unvan: unvan.trim(), cep_tel: cep_tel.trim() }),
+      const r = await fetch("/api/cari-tedarikci", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unvan: unvan.trim() }),
       });
       const d = await r.json();
       if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Eklenemedi"); return; }
-      const listRes = await fetch("/api/isletenler?active=1&limit=500");
+      const listRes = await fetch("/api/cari-tedarikci?is_active=1");
       const listData = await listRes.json();
-      if (listData.ok) setIsletenler(listData.data);
+      if (listData.ok) setCariTedarikci(listData.data);
       setForm((f: any) => ({ ...f, cari_id: d.data.id }));
     }
   }
@@ -290,14 +291,20 @@ export default function FaturalarPage() {
   const genelToplamEstimate = araToplamEstimate + vergiToplamEstimate;
 
   const cariTip = form.tur === "satis" ? "musteri" : "tedarikci";
-  const cariOptions = form.tur === "satis" ? companies : isletenler;
-  function cariLabel(c: any) { return form.tur === "satis" ? c.name : c.unvan; }
+  const cariOptions = form.tur === "satis" ? musteriler : cariTedarikci;
+  function cariLabel(c: any) { return c.unvan; }
 
-  // Liste satırında cari adını, ilgili faturanın cari_tip'ine göre companies/isletenler
-  // listesinden eşleştirerek bulur.
+  // Cari seçilince banka bilgisini otomatik doldur (fatura özelinde değiştirilebilir).
+  function selectCari(cari_id: string) {
+    const c = cariOptions.find((x: any) => x.id === cari_id);
+    setForm((f: any) => ({ ...f, cari_id, banka_adi: c?.banka_adi || "", banka_iban: c?.banka_iban || "" }));
+  }
+
+  // Liste satırında cari adını, ilgili faturanın cari_tip'ine göre musteriler/
+  // cariTedarikci listesinden eşleştirerek bulur.
   function rowCariAdi(row: any): string {
-    if (row.cari_tip === "musteri") return companies.find(c => c.id === row.cari_id)?.name || "—";
-    return isletenler.find(i => i.id === row.cari_id)?.unvan || "—";
+    if (row.cari_tip === "musteri") return musteriler.find(c => c.id === row.cari_id)?.unvan || "—";
+    return cariTedarikci.find(c => c.id === row.cari_id)?.unvan || "—";
   }
 
   async function save() {
@@ -317,6 +324,8 @@ export default function FaturalarPage() {
         para_birimi_kod: form.para_birimi_kod || "TRY",
         kur: Number(form.kur) || 1,
         aciklama: form.aciklama || null,
+        banka_adi: form.banka_adi || null,
+        banka_iban: form.banka_iban || null,
       };
     } else {
       const gecerliKalemler = form.kalemler
@@ -343,6 +352,8 @@ export default function FaturalarPage() {
         para_birimi_kod: form.para_birimi_kod || "TRY",
         kur: Number(form.kur) || 1,
         aciklama: form.aciklama || null,
+        banka_adi: form.banka_adi || null,
+        banka_iban: form.banka_iban || null,
         kalemler: gecerliKalemler,
       };
     }
@@ -479,16 +490,30 @@ export default function FaturalarPage() {
 
               <label className="block">
                 <span className="text-zinc-400 text-xs font-medium mb-1 block">
-                  {form.tur === "satis" ? "Firma (Müşteri) *" : "İşleten (Tedarikçi) *"}
+                  {form.tur === "satis" ? "Müşteri *" : "Cari (Tedarikçi) *"}
                 </span>
                 <select value={form.cari_id}
-                  onChange={e => e.target.value === "__new__" ? quickAddCari() : setForm((f: any) => ({ ...f, cari_id: e.target.value }))}
+                  onChange={e => e.target.value === "__new__" ? quickAddCari() : selectCari(e.target.value)}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
                   <option value="">— Seçilmedi —</option>
                   {cariOptions.map((c: any) => <option key={c.id} value={c.id}>{cariLabel(c)}</option>)}
                   <option value="__new__">+ Yeni Ekle</option>
                 </select>
               </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-zinc-400 text-xs font-medium mb-1 block">Banka Adı</span>
+                  <input value={form.banka_adi} onChange={e => setForm((f: any) => ({ ...f, banka_adi: e.target.value }))}
+                    placeholder="Cari seçilince otomatik dolar"
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500" />
+                </label>
+                <label className="block">
+                  <span className="text-zinc-400 text-xs font-medium mb-1 block">IBAN</span>
+                  <input value={form.banka_iban} onChange={e => setForm((f: any) => ({ ...f, banka_iban: e.target.value.toUpperCase() }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 uppercase font-mono" />
+                </label>
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">

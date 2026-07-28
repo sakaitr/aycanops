@@ -76,11 +76,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     await db.prepare(
       `UPDATE finans_fatura SET
          tur = ?, fatura_no = ?, odeme_turu = ?, belge_turu_id = ?, cari_tip = ?, cari_id = ?, tarih = ?, vade_tarihi = ?,
-         para_birimi_kod = ?, kur = ?, iliskili_fatura_id = ?, aciklama = ?, updated_at = ?
+         para_birimi_kod = ?, kur = ?, iliskili_fatura_id = ?, aciklama = ?, banka_adi = ?, banka_iban = ?, updated_at = ?
        WHERE id = ?`
     ).run(
       d.tur, d.fatura_no || null, d.odeme_turu || null, d.belge_turu_id || null, d.cari_tip, d.cari_id, d.tarih, d.vade_tarihi || null,
-      d.para_birimi_kod || "TRY", d.kur ?? 1, d.iliskili_fatura_id || null, d.aciklama || null,
+      d.para_birimi_kod || "TRY", d.kur ?? 1, d.iliskili_fatura_id || null, d.aciklama || null, d.banka_adi || null, d.banka_iban || null,
       now, id
     );
     return NextResponse.json({ ok: true });

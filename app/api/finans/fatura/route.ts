@@ -106,11 +106,11 @@ export async function POST(req: NextRequest) {
         `INSERT INTO finans_fatura
            (id, tur, durum, fatura_no, odeme_turu, belge_turu_id, cari_tip, cari_id, tarih, vade_tarihi,
             para_birimi_kod, kur, ara_toplam, vergi_toplam, genel_toplam, odeme_durumu,
-            iliskili_fatura_id, aciklama, created_by, created_at, updated_at)
-         VALUES (?, ?, 'taslak', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'odenmedi', ?, ?, ?, ?, ?)`,
+            iliskili_fatura_id, aciklama, banka_adi, banka_iban, created_by, created_at, updated_at)
+         VALUES (?, ?, 'taslak', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'odenmedi', ?, ?, ?, ?, ?, ?, ?)`,
         [id, d.tur, d.fatura_no || null, d.odeme_turu || null, d.belge_turu_id || null, d.cari_tip, d.cari_id, d.tarih, d.vade_tarihi || null,
          d.para_birimi_kod || "TRY", d.kur ?? 1, araToplam, vergiToplam, genelToplam,
-         d.iliskili_fatura_id || null, d.aciklama || null, user.id, now, now]
+         d.iliskili_fatura_id || null, d.aciklama || null, d.banka_adi || null, d.banka_iban || null, user.id, now, now]
       );
 
       for (const k of d.kalemler) {

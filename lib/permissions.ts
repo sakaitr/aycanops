@@ -74,6 +74,8 @@ export const PERMISSIONS = {
   finans_belge: ["read", "create", "delete"],
   finans_odeme: ["read", "create", "delete"],
   finans_banka_hareketi: ["read", "create", "update"],
+  musteriler: ["read", "create", "update", "delete"],
+  cari_tedarikci: ["read", "create", "update", "delete"],
   nav_config: ["update"],
   ziyaretci_kaydi: ["read", "create", "update"],
 } as const;

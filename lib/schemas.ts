@@ -605,7 +605,43 @@ export const finansFaturaSchema = z.object({
   kur: z.number().optional(),
   iliskili_fatura_id: z.string().optional().nullable(),
   aciklama: z.string().max(2000).optional().nullable(),
+  banka_adi: z.string().max(100).optional().nullable(),
+  banka_iban: z.string().max(34).optional().nullable(),
   kalemler: z.array(finansFaturaKalemiSchema).min(1, "En az bir kalem gerekli"),
+});
+
+// ─── Müşteriler (satış faturası carisi) ve Cari/Tedarikçi (alış faturası
+// carisi) — "Firmalar" (Operasyon'un saha ilişkisi) ile karışmaması için ayrı.
+export const musteriCreateSchema = z.object({
+  unvan: shortStr(255),
+  vergi_no: z.string().max(20).optional().nullable(),
+  vergi_dairesi: z.string().max(100).optional().nullable(),
+  telefon: z.string().max(20).optional().nullable(),
+  email: z.string().max(150).optional().nullable(),
+  adres: z.string().max(1000).optional().nullable(),
+  banka_adi: z.string().max(100).optional().nullable(),
+  banka_iban: z.string().max(34).optional().nullable(),
+  ilgili_firma_id: z.string().optional().nullable(),
+  notlar: z.string().max(1000).optional().nullable(),
+});
+export const musteriUpdateSchema = musteriCreateSchema.partial().extend({
+  is_active: z.boolean().optional(),
+});
+
+export const cariTedarikciCreateSchema = z.object({
+  unvan: shortStr(255),
+  kategori: z.string().max(50).optional().nullable(),
+  vergi_no: z.string().max(20).optional().nullable(),
+  vergi_dairesi: z.string().max(100).optional().nullable(),
+  telefon: z.string().max(20).optional().nullable(),
+  email: z.string().max(150).optional().nullable(),
+  adres: z.string().max(1000).optional().nullable(),
+  banka_adi: z.string().max(100).optional().nullable(),
+  banka_iban: z.string().max(34).optional().nullable(),
+  notlar: z.string().max(1000).optional().nullable(),
+});
+export const cariTedarikciUpdateSchema = cariTedarikciCreateSchema.partial().extend({
+  is_active: z.boolean().optional(),
 });
 
 // ─── Finans: Fiş ─────────────────────────────────────────────────────────

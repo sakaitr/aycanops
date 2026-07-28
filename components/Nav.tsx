@@ -133,6 +133,8 @@ const DEFAULT_NAV_CONFIG: NavConfigType = {
         { id: "finans-12", href: "/finans/belgeler", label: "Finans Belgeleri", icon: "IconDocument", permission: "finans_belge:read", isActive: true, sortOrder: 4, isCustom: false },
         { id: "finans-13", href: "/finans/odemeler", label: "Ödemeler", icon: "IconCoin", permission: "finans_odeme:read", isActive: true, sortOrder: 5, isCustom: false },
         { id: "finans-14", href: "/finans/banka-hareketleri", label: "Banka Hareketleri", icon: "IconActivity", permission: "finans_banka_hareketi:read", isActive: true, sortOrder: 6, isCustom: false },
+        { id: "muhasebe-musteriler", href: "/musteriler", label: "Müşteriler", icon: "IconBuilding", permission: "musteriler:read", isActive: true, sortOrder: 7, isCustom: false },
+        { id: "muhasebe-cari", href: "/cari-tedarikci", label: "Cari / Tedarikçi", icon: "IconBuilding", permission: "cari_tedarikci:read", isActive: true, sortOrder: 8, isCustom: false },
       ],
     },
     {
