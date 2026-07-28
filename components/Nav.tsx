@@ -52,7 +52,10 @@ const DEFAULT_NAV_CONFIG: NavConfigType = {
       ],
     },
     {
-      key: "araclar", label: "Araçlar", sortOrder: 1, isActive: true, minRole: "yetkili",
+      // Eski Araçlar+İnsan+Rota grupları birleşti — operasyon/operasyon_yetkili
+      // rolleri zaten bu üçünün tamamını görüyordu, tek departman grubu olarak
+      // tek başlık altında toplamak daha az dağınık.
+      key: "operasyon", label: "Operasyon", sortOrder: 1, isActive: true, minRole: "yetkili",
       items: [
         { id: "araclar-1", href: "/araclar", label: "Araçlar", icon: "IconCar", permission: "vehicles:read", isActive: true, sortOrder: 0, isCustom: false },
         { id: "araclar-2", href: "/bakim", label: "Araç Bakım", icon: "IconWrench", permission: "maintenance:read", isActive: true, sortOrder: 1, isCustom: false },
@@ -66,30 +69,31 @@ const DEFAULT_NAV_CONFIG: NavConfigType = {
         { id: "araclar-10", href: "/admin/gps-cihazlari", label: "GPS Cihazları", icon: "IconMap", permission: "gps_devices:read", isActive: true, sortOrder: 9, isCustom: false },
         { id: "araclar-11", href: "/yakit-kartlari", label: "Yakıt Kartları", icon: "IconZap", permission: "fuel_cards:read", isActive: true, sortOrder: 10, isCustom: false },
         { id: "araclar-12", href: "/admin/hgs-ogs", label: "HGS/OGS", icon: "IconCoin", permission: "hgs_ogs:read", isActive: true, sortOrder: 11, isCustom: false },
+        { id: "insan-1", href: "/suruculer", label: "Sürücüler", icon: "IconUsers", permission: "drivers:read", isActive: true, sortOrder: 12, isCustom: false },
+        { id: "insan-2", href: "/yolcular", label: "Yolcular", icon: "IconUsers", permission: "passengers:read", isActive: true, sortOrder: 13, isCustom: false },
+        { id: "insan-4", href: "/sofor-degerlendirme", label: "Sürücü Değerlendirme", icon: "IconStar", permission: "drivers:read", isActive: true, sortOrder: 14, isCustom: false },
+        { id: "insan-5", href: "/rehberler", label: "Rehberler", icon: "IconUsers", permission: "rehberler:read", isActive: true, sortOrder: 15, isCustom: false },
+        { id: "rota-1", href: "/guzergahlar", label: "Güzergahlar", icon: "IconMap", permission: "routes:read", isActive: true, sortOrder: 16, isCustom: false },
+        { id: "rota-2", href: "/acik-guzergahlar", label: "Açık Güzergahlar", icon: "IconAlertTriangle", permission: "routes:read", isActive: true, sortOrder: 17, isCustom: false },
+        { id: "rota-3", href: "/rota-planlama", label: "Rota Planlama", icon: "IconCalendar", permission: "routes:optimize", isActive: true, sortOrder: 18, isCustom: false },
+        { id: "rota-4", href: "/operasyon-haritasi", label: "Operasyon Haritası", icon: "IconMap", permission: "map:read", isActive: true, sortOrder: 19, isCustom: false },
+        { id: "rota-5", href: "/guzergah-fiyatlari", label: "Güzergah Fiyatları", icon: "IconCoin", permission: "route_prices:read", isActive: true, sortOrder: 20, isCustom: false },
       ],
     },
     {
-      key: "insan", label: "İnsan", sortOrder: 2, isActive: true, minRole: "yetkili",
+      // İdari İşler departmanının gördüğü sayfalar — izin talebi, duyuru/anket
+      // (bunlar hâlâ minRole:admin, sadece görsel gruplama değişti), öneri/talep.
+      key: "idari_isler", label: "İdari İşler", sortOrder: 2, isActive: true, minRole: null,
       items: [
-        { id: "insan-1", href: "/suruculer", label: "Sürücüler", icon: "IconUsers", permission: "drivers:read", isActive: true, sortOrder: 0, isCustom: false },
-        { id: "insan-2", href: "/yolcular", label: "Yolcular", icon: "IconUsers", permission: "passengers:read", isActive: true, sortOrder: 1, isCustom: false },
-        { id: "insan-3", href: "/izin-talepleri", label: "İzin Talepleri", icon: "IconCalendar", permission: "leave_requests:read", isActive: true, sortOrder: 2, isCustom: false },
-        { id: "insan-4", href: "/sofor-degerlendirme", label: "Sürücü Değerlendirme", icon: "IconStar", permission: "drivers:read", isActive: true, sortOrder: 3, isCustom: false },
-        { id: "insan-5", href: "/rehberler", label: "Rehberler", icon: "IconUsers", permission: "rehberler:read", isActive: true, sortOrder: 4, isCustom: false },
+        { id: "insan-3", href: "/izin-talepleri", label: "İzin Talepleri", icon: "IconCalendar", permission: "leave_requests:read", isActive: true, sortOrder: 0, isCustom: false },
+        { id: "gorevler-2", href: "/oneriler", label: "Öneri/Talep", icon: "IconLightbulb", permission: "suggestions:read", isActive: true, sortOrder: 1, isCustom: false },
+        { id: "yonetim-7", href: "/admin/duyurular", label: "Duyurular", icon: "IconBell", permission: "duyurular:read", isActive: true, sortOrder: 2, isCustom: false, minRole: "admin" },
+        { id: "yonetim-8", href: "/admin/anketler", label: "Anketler", icon: "IconClipboard", permission: "anketler:read", isActive: true, sortOrder: 3, isCustom: false, minRole: "admin" },
       ],
     },
     {
-      key: "rota", label: "Rota", sortOrder: 3, isActive: true, minRole: "yetkili",
-      items: [
-        { id: "rota-1", href: "/guzergahlar", label: "Güzergahlar", icon: "IconMap", permission: "routes:read", isActive: true, sortOrder: 0, isCustom: false },
-        { id: "rota-2", href: "/acik-guzergahlar", label: "Açık Güzergahlar", icon: "IconAlertTriangle", permission: "routes:read", isActive: true, sortOrder: 1, isCustom: false },
-        { id: "rota-3", href: "/rota-planlama", label: "Rota Planlama", icon: "IconCalendar", permission: "routes:optimize", isActive: true, sortOrder: 2, isCustom: false },
-        { id: "rota-4", href: "/operasyon-haritasi", label: "Operasyon Haritası", icon: "IconMap", permission: "map:read", isActive: true, sortOrder: 3, isCustom: false },
-        { id: "rota-5", href: "/guzergah-fiyatlari", label: "Güzergah Fiyatları", icon: "IconCoin", permission: "route_prices:read", isActive: true, sortOrder: 4, isCustom: false },
-      ],
-    },
-    {
-      key: "finans", label: "Finans", sortOrder: 4, isActive: true, minRole: null,
+      // Finans: onay/strateji tarafı (bütçe, raporlar, kâr-zarar, mutabakat).
+      key: "finans", label: "Finans", sortOrder: 3, isActive: true, minRole: null,
       items: [
         { id: "finans-0", href: "/finans", label: "Finans Paneli", icon: "IconWallet", permission: "reports:read", isActive: true, sortOrder: 0, isCustom: false },
         { id: "finans-1", href: "/isletenler", label: "İşletenler (Araç Tedarikçileri)", icon: "IconBuilding", permission: "isleten:read", isActive: true, sortOrder: 1, isCustom: false },
@@ -99,22 +103,27 @@ const DEFAULT_NAV_CONFIG: NavConfigType = {
         { id: "finans-5", href: "/butce", label: "Bütçe & Maliyet", icon: "IconCoin", permission: "budget:read", isActive: true, sortOrder: 5, isCustom: false },
         { id: "finans-6", href: "/firmalar", label: "Firmalar (Müşteriler)", icon: "IconBuilding", permission: "companies:read", isActive: true, sortOrder: 6, isCustom: false },
         { id: "finans-7", href: "/raporlar", label: "Raporlar", icon: "IconBarChart", permission: "reports:read", isActive: true, sortOrder: 7, isCustom: false },
-        { id: "finans-8", href: "/finans/gelir-gider", label: "Gelir-Gider", icon: "IconCoin", permission: "finans_gelir_gider:read", isActive: true, sortOrder: 8, isCustom: false },
-        { id: "finans-9", href: "/finans/masraf-talebi", label: "Masraf Talebi", icon: "IconClipboard2", permission: "finans_masraf_talebi:read", isActive: true, sortOrder: 9, isCustom: false },
-        { id: "finans-10", href: "/finans/faturalar", label: "Faturalar", icon: "IconDocument", permission: "finans_fatura:read", isActive: true, sortOrder: 10, isCustom: false },
-        { id: "finans-11", href: "/finans/fisler", label: "Fişler", icon: "IconClipboard2", permission: "finans_fis:read", isActive: true, sortOrder: 11, isCustom: false },
-        { id: "finans-12", href: "/finans/belgeler", label: "Finans Belgeleri", icon: "IconDocument", permission: "finans_belge:read", isActive: true, sortOrder: 12, isCustom: false },
-        { id: "finans-13", href: "/finans/odemeler", label: "Ödemeler", icon: "IconCoin", permission: "finans_odeme:read", isActive: true, sortOrder: 13, isCustom: false },
-        { id: "finans-14", href: "/finans/banka-hareketleri", label: "Banka Hareketleri", icon: "IconActivity", permission: "finans_banka_hareketi:read", isActive: true, sortOrder: 14, isCustom: false },
+      ],
+    },
+    {
+      // Muhasebe / Ön Muhasebe: veri girişi tarafı (fatura, fiş, belge, ödeme).
+      key: "muhasebe", label: "Muhasebe", sortOrder: 4, isActive: true, minRole: null,
+      items: [
+        { id: "finans-8", href: "/finans/gelir-gider", label: "Gelir-Gider", icon: "IconCoin", permission: "finans_gelir_gider:read", isActive: true, sortOrder: 0, isCustom: false },
+        { id: "finans-9", href: "/finans/masraf-talebi", label: "Masraf Talebi", icon: "IconClipboard2", permission: "finans_masraf_talebi:read", isActive: true, sortOrder: 1, isCustom: false },
+        { id: "finans-10", href: "/finans/faturalar", label: "Faturalar", icon: "IconDocument", permission: "finans_fatura:read", isActive: true, sortOrder: 2, isCustom: false },
+        { id: "finans-11", href: "/finans/fisler", label: "Fişler", icon: "IconClipboard2", permission: "finans_fis:read", isActive: true, sortOrder: 3, isCustom: false },
+        { id: "finans-12", href: "/finans/belgeler", label: "Finans Belgeleri", icon: "IconDocument", permission: "finans_belge:read", isActive: true, sortOrder: 4, isCustom: false },
+        { id: "finans-13", href: "/finans/odemeler", label: "Ödemeler", icon: "IconCoin", permission: "finans_odeme:read", isActive: true, sortOrder: 5, isCustom: false },
+        { id: "finans-14", href: "/finans/banka-hareketleri", label: "Banka Hareketleri", icon: "IconActivity", permission: "finans_banka_hareketi:read", isActive: true, sortOrder: 6, isCustom: false },
       ],
     },
     {
       key: "gorevler", label: "Görevler", sortOrder: 5, isActive: true, minRole: null,
       items: [
         { id: "gorevler-1", href: "/gorevler", label: "İş Takibi", icon: "IconCheckSquare", permission: "dashboard:read", isActive: true, sortOrder: 0, isCustom: false },
-        { id: "gorevler-2", href: "/oneriler", label: "Öneri/Talep", icon: "IconLightbulb", permission: "suggestions:read", isActive: true, sortOrder: 1, isCustom: false },
-        { id: "gorevler-3", href: "/notlar", label: "Notlar", icon: "IconFileText", permission: "dashboard:read", isActive: true, sortOrder: 2, isCustom: false },
-        { id: "gorevler-4", href: "/surucu-sicil", label: "Sürücü Sicil", icon: "IconClipboard2", permission: "driver_records:read", isActive: true, sortOrder: 3, isCustom: false },
+        { id: "gorevler-3", href: "/notlar", label: "Notlar", icon: "IconFileText", permission: "dashboard:read", isActive: true, sortOrder: 1, isCustom: false },
+        { id: "gorevler-4", href: "/surucu-sicil", label: "Sürücü Sicil", icon: "IconClipboard2", permission: "driver_records:read", isActive: true, sortOrder: 2, isCustom: false },
       ],
     },
     {
@@ -127,13 +136,11 @@ const DEFAULT_NAV_CONFIG: NavConfigType = {
         { id: "yonetim-4", href: "/admin/uyarilar", label: "Uyarılar", icon: "IconAlertTriangle", permission: "warnings:read", isActive: true, sortOrder: 4, isCustom: false, minRole: "admin" },
         { id: "yonetim-5", href: "/admin/izin-onaylayicilar", label: "İzin Onaylayıcıları", icon: "IconShield", permission: "users:read", isActive: true, sortOrder: 5, isCustom: false, minRole: "admin" },
         { id: "yonetim-6", href: "/admin/kara-liste", label: "Kara Liste", icon: "IconAlertTriangle", permission: "kara_liste:read", isActive: true, sortOrder: 6, isCustom: false, minRole: "admin" },
-        { id: "yonetim-7", href: "/admin/duyurular", label: "Duyurular", icon: "IconBell", permission: "duyurular:read", isActive: true, sortOrder: 7, isCustom: false, minRole: "admin" },
-        { id: "yonetim-8", href: "/admin/anketler", label: "Anketler", icon: "IconClipboard", permission: "anketler:read", isActive: true, sortOrder: 8, isCustom: false, minRole: "admin" },
-        { id: "yonetim-9", href: "/admin/dogum-gunleri", label: "Doğum Günleri", icon: "IconStar", permission: "drivers:read", isActive: true, sortOrder: 9, isCustom: false, minRole: "admin" },
+        { id: "yonetim-9", href: "/admin/dogum-gunleri", label: "Doğum Günleri", icon: "IconStar", permission: "drivers:read", isActive: true, sortOrder: 7, isCustom: false, minRole: "admin" },
       ],
     },
     {
-      key: "yonetim-teknik", label: "Yönetim (Teknik)", sortOrder: 7, isActive: true, minRole: "admin",
+      key: "yonetim-teknik", label: "Sistem Ayarları", sortOrder: 7, isActive: true, minRole: "admin",
       items: [
         { id: "teknik-1", href: "/admin/yakit-fiyatlari", label: "Yakıt Fiyatları", icon: "IconCoin", permission: "yakit_fiyatlari:read", isActive: true, sortOrder: 0, isCustom: false },
         { id: "teknik-2", href: "/admin/otoyol-fiyatlari", label: "Otoyol/Köprü Fiyatları", icon: "IconCoin", permission: "otoyol_fiyatlari:read", isActive: true, sortOrder: 1, isCustom: false },
@@ -204,10 +211,10 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
   // Sidebar grup açık/kapalı durumu
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     bugun: true,
-    araclar: true,
-    insan: false,
-    rota: false,
+    operasyon: true,
+    idari_isler: false,
     finans: false,
+    muhasebe: false,
     gorevler: false,
     yonetim: false,
     "yonetim-teknik": false,
@@ -527,10 +534,10 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
 
   // Veri hazırlığı — artık DB'den gelen navConfig'ten türetiliyor
   const bugunLinks = getGroupItems("bugun");
-  const araclarLinks = getGroupItems("araclar");
-  const insanLinks = getGroupItems("insan");
-  const rotaLinks = getGroupItems("rota");
+  const operasyonLinks = getGroupItems("operasyon");
+  const idariIslerLinks = getGroupItems("idari_isler");
   const finansLinks = getGroupItems("finans");
+  const muhasebeLinks = getGroupItems("muhasebe");
   const gorevlerLinks = getGroupItems("gorevler");
   const yonetimLinks = getGroupItems("yonetim");
   const yonetimTeknikLinks = getGroupItems("yonetim-teknik");
@@ -637,13 +644,13 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
 
           {([
             { key: "bugun", label: "Bugün", links: bugunLinks },
-            { key: "araclar", label: "Araçlar", links: araclarLinks },
-            { key: "insan", label: "İnsan", links: insanLinks },
-            { key: "rota", label: "Rota", links: rotaLinks },
+            { key: "operasyon", label: "Operasyon", links: operasyonLinks },
+            { key: "idari_isler", label: "İdari İşler", links: idariIslerLinks },
             { key: "finans", label: "Finans", links: finansLinks },
+            { key: "muhasebe", label: "Muhasebe", links: muhasebeLinks },
             { key: "gorevler", label: "Görevler", links: gorevlerLinks },
             { key: "yonetim", label: "Yönetim", links: yonetimLinks },
-            { key: "yonetim-teknik", label: "Yönetim (Teknik)", links: yonetimTeknikLinks },
+            { key: "yonetim-teknik", label: "Sistem Ayarları", links: yonetimTeknikLinks },
           ] as const).map((g, idx) => g.links.length > 0 && (
             <div key={g.key}>
               {idx === 0
@@ -754,13 +761,13 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
 
               {([
                 { key: "bugun", label: "Bugün", links: drawerBugunLinks },
-                { key: "araclar", label: "Araçlar", links: araclarLinks },
-                { key: "insan", label: "İnsan", links: insanLinks },
-                { key: "rota", label: "Rota", links: rotaLinks },
+                { key: "operasyon", label: "Operasyon", links: operasyonLinks },
+                { key: "idari_isler", label: "İdari İşler", links: idariIslerLinks },
                 { key: "finans", label: "Finans", links: finansLinks },
+                { key: "muhasebe", label: "Muhasebe", links: muhasebeLinks },
                 { key: "gorevler", label: "Görevler", links: gorevlerLinks },
                 { key: "yonetim", label: "Yönetim", links: yonetimLinks },
-                { key: "yonetim-teknik", label: "Yönetim (Teknik)", links: yonetimTeknikLinks },
+                { key: "yonetim-teknik", label: "Sistem Ayarları", links: yonetimTeknikLinks },
               ] as const).map((g) => g.links.length > 0 && (
                 <div key={g.key}>
                   <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest px-2.5 pt-4 pb-1.5">{g.label}</p>
