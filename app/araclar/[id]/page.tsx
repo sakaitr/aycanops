@@ -283,9 +283,11 @@ export default function AracDetayPage() {
       <div className="min-h-screen bg-zinc-950 pt-16">
         <div className="max-w-4xl mx-auto px-4 py-6">
 
-          {/* Back */}
-          <button onClick={() => router.push("/araclar")} className="flex items-center gap-1.5 text-zinc-500 hover:text-white text-sm mb-5 transition-colors">
-            ← Araçlar
+          {/* Back — router.back() kullanılır (sabit /araclar değil) ki Firmalar
+              ekranından araç detayına girenler geldikleri yere dönsün, listeye
+              atılmasın. */}
+          <button onClick={() => router.back()} className="flex items-center gap-1.5 text-zinc-500 hover:text-white text-sm mb-5 transition-colors">
+            ← Geri
           </button>
 
           {/* Hero */}

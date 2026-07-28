@@ -3,6 +3,7 @@ import { toast } from "@/lib/toast";
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Nav from "@/components/Nav";
+import { hasPermission } from "@/lib/permissions";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -284,7 +285,11 @@ export default function FirmaDetailPage() {
     } finally { setSavingNewVehicle(false); }
   }
 
-  const canEdit = user && (user.role === "yonetici" || user.role === "admin");
+  // Eskiden sadece "yonetici"/"admin" rol adına bakıyordu — özel departman
+  // rolleri (operasyon_yetkili gibi) role adı eşleşmediği için hiç düzenleme
+  // yapamıyordu. companies:update izni olan herkes (firma + firmaya bağlı
+  // araç/güzergah) burada düzenleyebilsin.
+  const canEdit = hasPermission(user, "companies:update");
 
   if (loading) return (
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">

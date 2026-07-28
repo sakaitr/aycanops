@@ -8,6 +8,7 @@ import BulkActionBar from "@/components/BulkActionBar";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useListState } from "@/hooks/useListState";
 import { useGlobalCompany } from "@/contexts/CompanyContext";
+import { hasPermission } from "@/lib/permissions";
 
 const TYPE_LABELS: Record<string, string> = { minibus: "Minibüs", midibus: "Midibüs", otobus: "Otobüs", sedan: "Sedan" };
 const STATUS_OPTS = [{ value: "active", label: "Aktif" }, { value: "maintenance", label: "Bakımda" }, { value: "inactive", label: "Pasif" }];
@@ -237,7 +238,7 @@ export default function AraclarPage() {
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
   }
 
-  const canEdit = user?.role === "yonetici" || user?.role === "admin" || user?.role === "yetkili";
+  const canEdit = hasPermission(user, "vehicles:update");
 
   async function bulkDeactivate() {
     if (list.selectedIds.length === 0) return;

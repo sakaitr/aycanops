@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Nav from "@/components/Nav";
 import ComboboxSearch from "@/components/ComboboxSearch";
 import { useGlobalCompany } from "@/contexts/CompanyContext";
+import { hasPermission } from "@/lib/permissions";
 
 function todayStr() { return new Date().toISOString().split("T")[0]; }
 
@@ -146,10 +147,12 @@ function AracGelis({ user }: { user: any }) {
     setMultiMatches([]);
   }, [selectedCompany, date]);
 
-  const canRecordLocation = user?.role === "admin" || user?.role === "yonetici" || user?.role === "yetkili";
-  const canUndo = user?.role === "admin" || user?.role === "yonetici";
-  // Araç ekleme sadece yönetici ve admin yetkisinde
-  const canAddVehicle = user?.role === "admin" || user?.role === "yonetici";
+  // Eskiden sabit rol adına bakıyordu (yonetici/admin/yetkili) — özel
+  // departman rolleri (operasyon/operasyon_yetkili) hiç eşleşmediği için
+  // burası her zaman kapalı kalıyordu. Gerçek arrivals iznine bakılıyor artık.
+  const canRecordLocation = hasPermission(user, "arrivals:update");
+  const canUndo = hasPermission(user, "arrivals:delete");
+  const canAddVehicle = hasPermission(user, "arrivals:create");
 
   async function getCoords(): Promise<{ latitude: number; longitude: number } | null> {
     if (!canRecordLocation) return null;
@@ -831,7 +834,7 @@ function SeferKontrol({ user }: { user: any }) {
     } finally { setSaving(false); }
   }
 
-  const canManage = user?.role === "admin" || user?.role === "yonetici" || user?.role === "yetkili";
+  const canManage = hasPermission(user, "arrivals:update");
   const pendingCount = controls.filter(c => c.status_code === "pending").length;
   const delayedCount = controls.filter(c => c.status_code === "delayed").length;
 
