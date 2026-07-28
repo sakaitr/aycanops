@@ -100,7 +100,6 @@ export default function FaturalarPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
 
-  const [musteriler, setMusteriler] = useState<any[]>([]);
   const [cariTedarikci, setCariTedarikci] = useState<any[]>([]);
   const [belgeTurleri, setBelgeTurleri] = useState<any[]>([]);
   const [vergiKodlari, setVergiKodlari] = useState<any[]>([]);
@@ -116,7 +115,6 @@ export default function FaturalarPage() {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
       if (d.ok) setUser(d.data); else router.replace("/login");
     });
-    fetch("/api/musteriler?is_active=1").then(r => r.json()).then(d => { if (d.ok) setMusteriler(d.data); });
     fetch("/api/cari-tedarikci?is_active=1").then(r => r.json()).then(d => { if (d.ok) setCariTedarikci(d.data); });
     fetch("/api/finans/belge-turu?is_active=1").then(r => r.json()).then(d => { if (d.ok) setBelgeTurleri(d.data); });
     fetch("/api/finans/vergi-kodu?is_active=1").then(r => r.json()).then(d => { if (d.ok) setVergiKodlari(d.data); });
@@ -208,31 +206,17 @@ export default function FaturalarPage() {
   // fatura formundan ayrılmadan hızlıca yeni bir tane eklenebilir olsun diye
   // her select'in altına "+ Yeni Ekle" seçeneği eklendi.
   async function quickAddCari() {
-    if (cariTip === "musteri") {
-      const unvan = window.prompt("Yeni müşteri ünvanı:");
-      if (!unvan?.trim()) return;
-      const r = await fetch("/api/musteriler", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unvan: unvan.trim() }),
-      });
-      const d = await r.json();
-      if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Eklenemedi"); return; }
-      const listRes = await fetch("/api/musteriler?is_active=1");
-      const listData = await listRes.json();
-      if (listData.ok) setMusteriler(listData.data);
-      setForm((f: any) => ({ ...f, cari_id: d.data.id }));
-    } else {
-      const unvan = window.prompt("Yeni cari (tedarikçi) ünvanı:");
-      if (!unvan?.trim()) return;
-      const r = await fetch("/api/cari-tedarikci", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unvan: unvan.trim() }),
-      });
-      const d = await r.json();
-      if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Eklenemedi"); return; }
-      const listRes = await fetch("/api/cari-tedarikci?is_active=1");
-      const listData = await listRes.json();
-      if (listData.ok) setCariTedarikci(listData.data);
-      setForm((f: any) => ({ ...f, cari_id: d.data.id }));
-    }
+    const unvan = window.prompt("Yeni cari ünvanı:");
+    if (!unvan?.trim()) return;
+    const r = await fetch("/api/cari-tedarikci", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unvan: unvan.trim() }),
+    });
+    const d = await r.json();
+    if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Eklenemedi"); return; }
+    const listRes = await fetch("/api/cari-tedarikci?is_active=1");
+    const listData = await listRes.json();
+    if (listData.ok) setCariTedarikci(listData.data);
+    setForm((f: any) => ({ ...f, cari_id: d.data.id }));
   }
 
   async function quickAddMasrafMerkezi(idx: number) {
@@ -291,7 +275,9 @@ export default function FaturalarPage() {
   const genelToplamEstimate = araToplamEstimate + vergiToplamEstimate;
 
   const cariTip = form.tur === "satis" ? "musteri" : "tedarikci";
-  const cariOptions = form.tur === "satis" ? musteriler : cariTedarikci;
+  // Satış/alış farketmeksizin cari her zaman tek liste olan cari_tedarikci'den
+  // seçiliyor — cari_tip alanı sadece işlem yönünü etiketlemeye devam ediyor.
+  const cariOptions = cariTedarikci;
   function cariLabel(c: any) { return c.unvan; }
 
   // Cari seçilince banka bilgisini otomatik doldur (fatura özelinde değiştirilebilir).
@@ -300,10 +286,7 @@ export default function FaturalarPage() {
     setForm((f: any) => ({ ...f, cari_id, banka_adi: c?.banka_adi || "", banka_iban: c?.banka_iban || "" }));
   }
 
-  // Liste satırında cari adını, ilgili faturanın cari_tip'ine göre musteriler/
-  // cariTedarikci listesinden eşleştirerek bulur.
   function rowCariAdi(row: any): string {
-    if (row.cari_tip === "musteri") return musteriler.find(c => c.id === row.cari_id)?.unvan || "—";
     return cariTedarikci.find(c => c.id === row.cari_id)?.unvan || "—";
   }
 
@@ -490,7 +473,7 @@ export default function FaturalarPage() {
 
               <label className="block">
                 <span className="text-zinc-400 text-xs font-medium mb-1 block">
-                  {form.tur === "satis" ? "Müşteri *" : "Cari (Tedarikçi) *"}
+                  Cari *
                 </span>
                 <select value={form.cari_id}
                   onChange={e => e.target.value === "__new__" ? quickAddCari() : selectCari(e.target.value)}

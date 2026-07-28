@@ -5,9 +5,9 @@ import Nav from "@/components/Nav";
 import { toast } from "@/lib/toast";
 import { hasPermission } from "@/lib/permissions";
 
-const KATEGORILER = ["arac_tedarikci", "yakit", "sigorta", "ofis", "diger"];
+const KATEGORILER = ["musteri", "arac_tedarikci", "yakit", "sigorta", "ofis", "diger"];
 const KATEGORI_LABELS: Record<string, string> = {
-  arac_tedarikci: "Araç Tedarikçisi", yakit: "Yakıt", sigorta: "Sigorta", ofis: "Ofis", diger: "Diğer",
+  musteri: "Müşteri", arac_tedarikci: "Araç Tedarikçisi", yakit: "Yakıt", sigorta: "Sigorta", ofis: "Ofis", diger: "Diğer",
 };
 
 const EMPTY_FORM = {
@@ -100,7 +100,7 @@ export default function CariTedarikciPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <h1 className="text-2xl font-bold text-white">Cari / Tedarikçi</h1>
-              <p className="text-zinc-500 text-sm mt-0.5">{rows.length} cari — alış faturası carisi (bize fatura kesenler)</p>
+              <p className="text-zinc-500 text-sm mt-0.5">{rows.length} cari — satış ve alış faturalarının ortak cari listesi</p>
             </div>
             {canCreate && (
               <button onClick={openCreate}
