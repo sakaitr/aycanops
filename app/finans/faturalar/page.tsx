@@ -203,6 +203,37 @@ export default function FaturalarPage() {
   // Masraf merkezi/proje/departman listeleri genelde neredeyse boş oluyor —
   // fatura formundan ayrılmadan hızlıca yeni bir tane eklenebilir olsun diye
   // her select'in altına "+ Yeni Ekle" seçeneği eklendi.
+  async function quickAddCari() {
+    if (cariTip === "musteri") {
+      const name = window.prompt("Yeni firma (müşteri) adı:");
+      if (!name?.trim()) return;
+      const r = await fetch("/api/companies", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }),
+      });
+      const d = await r.json();
+      if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Eklenemedi"); return; }
+      const listRes = await fetch("/api/companies");
+      const listData = await listRes.json();
+      if (listData.ok) setCompanies(listData.data);
+      setForm((f: any) => ({ ...f, cari_id: d.data.id }));
+    } else {
+      const unvan = window.prompt("Yeni işleten (tedarikçi) ünvanı:");
+      if (!unvan?.trim()) return;
+      const cep_tel = window.prompt("Cep telefonu:");
+      if (!cep_tel?.trim()) { toast.error("Cep telefonu zorunlu, işleten eklenmedi"); return; }
+      const r = await fetch("/api/isletenler", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unvan: unvan.trim(), cep_tel: cep_tel.trim() }),
+      });
+      const d = await r.json();
+      if (!d.ok) { toast.error(typeof d.error === "string" ? d.error : "Eklenemedi"); return; }
+      const listRes = await fetch("/api/isletenler?active=1&limit=500");
+      const listData = await listRes.json();
+      if (listData.ok) setIsletenler(listData.data);
+      setForm((f: any) => ({ ...f, cari_id: d.data.id }));
+    }
+  }
+
   async function quickAddMasrafMerkezi(idx: number) {
     const ad = window.prompt("Yeni masraf merkezi adı:");
     if (!ad?.trim()) return;
@@ -450,10 +481,12 @@ export default function FaturalarPage() {
                 <span className="text-zinc-400 text-xs font-medium mb-1 block">
                   {form.tur === "satis" ? "Firma (Müşteri) *" : "İşleten (Tedarikçi) *"}
                 </span>
-                <select value={form.cari_id} onChange={e => setForm((f: any) => ({ ...f, cari_id: e.target.value }))}
+                <select value={form.cari_id}
+                  onChange={e => e.target.value === "__new__" ? quickAddCari() : setForm((f: any) => ({ ...f, cari_id: e.target.value }))}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
                   <option value="">— Seçilmedi —</option>
                   {cariOptions.map((c: any) => <option key={c.id} value={c.id}>{cariLabel(c)}</option>)}
+                  <option value="__new__">+ Yeni Ekle</option>
                 </select>
               </label>
 
