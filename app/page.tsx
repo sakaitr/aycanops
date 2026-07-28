@@ -4,8 +4,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { todayIstanbul } from "@/lib/time";
-import { isAtLeast } from "@/lib/permissions";
-import type { UserRole } from "@/lib/permissions";
+import { isAtLeast, getHierarchyLevel } from "@/lib/permissions";
 import Badge from "@/components/Badge";
 import Nav from "@/components/Nav";
 import Link from "next/link";
@@ -205,10 +204,10 @@ export default async function DashboardPage() {
         )}
 
         {/* Stat cards — client component (for open-routes modal interactivity) */}
-        <DashboardStats stats={statsData} role={user.role as UserRole} />
+        <DashboardStats stats={statsData} hierarchyLevel={getHierarchyLevel(user.role)} />
 
         {/* Charts */}
-        <DashboardCharts role={user.role as UserRole} />
+        <DashboardCharts hierarchyLevel={getHierarchyLevel(user.role)} />
 
         {/* Bottom grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">

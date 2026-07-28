@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { isAtLeast, type UserRole } from "@/lib/permissions";
+import { isAtLeastLevel } from "@/lib/permissions";
 
 type DashData = {
   arrivalTrend: { day: string; count: number }[];
@@ -174,7 +174,7 @@ function dayLabel(iso: string) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export default function DashboardCharts({ role }: { role: UserRole }) {
+export default function DashboardCharts({ hierarchyLevel }: { hierarchyLevel: number }) {
   const [data, setData] = useState<DashData | null>(null);
 
   useEffect(() => {
@@ -256,7 +256,7 @@ export default function DashboardCharts({ role }: { role: UserRole }) {
       {/* Denetim Sonuçları (yetkili+) or Araç Göstergesi */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.31 }}
         className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-        {isAtLeast(role, "yetkili") ? (
+        {isAtLeastLevel(hierarchyLevel, "yetkili") ? (
           <>
             <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-3">Denetim (30 Gün)</p>
             {data ? (

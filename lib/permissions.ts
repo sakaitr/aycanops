@@ -124,6 +124,25 @@ export function isRoleCacheLoaded() {
   return roleCache !== null;
 }
 
+// Sunucu tarafında (dolu roleCache ile) bir rolün gerçek hiyerarşi seviyesini
+// okur. Client bileşenleri bu değeri /api/auth/me'den veya server-fetch'li bir
+// prop'tan alıp isAtLeastLevel() ile karşılaştırmalı — kendi role adıyla
+// isAtLeast() çağırmamalı, çünkü client'ta roleCache hep boş olduğundan özel
+// roller (departman rolleri gibi) hep en düşük seviye sayılır.
+export function getHierarchyLevel(role: UserRole): number {
+  const hierarchy = roleCache?.hierarchy ?? DEFAULT_ROLE_ORDER;
+  return hierarchy[role] ?? -1;
+}
+
+// Client-safe: zaten bilinen bir sayısal seviyeyi (server'dan gelen) sabit bir
+// sistem rolünün eşiğiyle karşılaştırır. requiredRole her zaman personel/
+// yetkili/yonetici/admin'den biri olduğundan DEFAULT_ROLE_ORDER'daki eşik
+// değeri asla özelleştirilmez, bu yüzden client'ta güvenle kullanılabilir.
+export function isAtLeastLevel(userHierarchyLevel: number, requiredRole: UserRole) {
+  const requiredLevel = DEFAULT_ROLE_ORDER[requiredRole] ?? Number.POSITIVE_INFINITY;
+  return userHierarchyLevel >= requiredLevel;
+}
+
 export function isAtLeast(userRole: UserRole, requiredRole: UserRole) {
   const hierarchy = roleCache?.hierarchy ?? DEFAULT_ROLE_ORDER;
   const userLevel = hierarchy[userRole] ?? -1;

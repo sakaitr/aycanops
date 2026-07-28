@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import Badge from "@/components/Badge";
-import { isAtLeast } from "@/lib/permissions";
+import { isAtLeastLevel } from "@/lib/permissions";
 
 const STATUS_OPTIONS = [
   { value: "", label: "Tümü" },
@@ -75,8 +75,8 @@ export default function GunlukListPage() {
   const [calWeek, setCalWeek] = useState(getMonday());
 
   const today = todayStr();
-  const isManager = !!user && isAtLeast(user.role, "yonetici");
-  const isAtLeastYetkili = !!user && isAtLeast(user.role, "yetkili");
+  const isManager = !!user && isAtLeastLevel(user.hierarchyLevel ?? -1, "yonetici");
+  const isAtLeastYetkili = !!user && isAtLeastLevel(user.hierarchyLevel ?? -1, "yetkili");
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); else router.replace("/login"); }).catch(() => { router.replace("/login"); });

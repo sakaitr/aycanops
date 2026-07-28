@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
-import { isAtLeast, type UserRole } from "@/lib/permissions";
+import { isAtLeastLevel } from "@/lib/permissions";
 
 type StatsData = {
   todayArrivals: number;
@@ -496,14 +496,14 @@ function OpenRoutesModal({ onClose, canEdit }: { onClose: () => void; canEdit: b
 }
 
 // ── Main Export ────────────────────────────────────────────────────────────
-export default function DashboardStats({ stats, role }: { stats: StatsData; role: UserRole }) {
+export default function DashboardStats({ stats, hierarchyLevel }: { stats: StatsData; hierarchyLevel: number }) {
   const [showRoutesModal, setShowRoutesModal] = useState(false);
   const [showCheckedModal, setShowCheckedModal] = useState(false);
   const [showUncheckedModal, setShowUncheckedModal] = useState(false);
   const [routesCount, setRoutesCount] = useState(stats.openRoutesCount);
 
-  const canEdit = isAtLeast(role, "yetkili");
-  const isManager = isAtLeast(role, "yonetici");
+  const canEdit = isAtLeastLevel(hierarchyLevel, "yetkili");
+  const isManager = isAtLeastLevel(hierarchyLevel, "yonetici");
 
   // Refresh count after modal closes
   function handleModalClose() {

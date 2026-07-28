@@ -11,13 +11,14 @@ import {
   IconLogOut, IconBell, IconChevronLeft, IconChevronRight, IconX, IconMenu,
 } from "./Icons";
 import { ICON_REGISTRY, DEFAULT_NAV_ICON } from "@/lib/nav-icons";
-import { hasPermission, isAtLeast, type UserRole } from "@/lib/permissions";
+import { hasPermission, isAtLeastLevel, type UserRole } from "@/lib/permissions";
 import type { NavConfigType, NavGroupType, NavConfigItemType } from "@/lib/schemas";
 
 type NavUser = {
   full_name: string;
   role: string;
   allowed_pages?: string | null;
+  hierarchyLevel?: number;
 };
 
 // Mobil bottom nav — en sık kullanılan 4 link (kapsam dışı — bkz. plan)
@@ -214,14 +215,18 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
   const notifPanelRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // userProp null gelirse kendi fetch et
+  // userProp sayfa tarafından requireUser()'dan geliyor ve "permissions" alanını
+  // içermiyor (o sadece /api/auth/me'de hesaplanıyor) — özel roller (DEFAULT_
+  // ROLE_PERMISSIONS statik tablosunda olmayan) için client'taki hasPermission()
+  // izinsiz düşüp menüyü tamamen boş gösteriyordu. userProp varsa hızlı ilk
+  // render için kullanılır (useState başlangıç değeri), ama izinleri her
+  // durumda /api/auth/me'den tazelemek gerekiyor.
   useEffect(() => {
-    if (userProp) { setUser(userProp); return; }
     fetch("/api/auth/me")
       .then(r => r.json())
       .then(d => { if (d.ok) setUser(d.data); })
       .catch(() => {});
-  }, [userProp]);
+  }, []);
 
   // Nav yapısını DB'den çek — başarısız olursa DEFAULT_NAV_CONFIG (yukarıda
   // tanımlı, bugünkü sabit yapının birebir aynısı) kullanılmaya devam eder,
@@ -234,7 +239,11 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
   }, []);
 
   const role = user?.role || "personel";
-  const isManager = isAtLeast(role, "yetkili");
+  // isAtLeast(role,"yetkili") client'ta kullanılmaz — roleCache tarayıcıda hep
+  // boş olduğundan özel roller (yeni departman rolleri gibi) hep en düşük
+  // seviye sayılır. /api/auth/me'nin sunucuda dolu cache'le hesapladığı
+  // hierarchyLevel'i isAtLeastLevel() ile karşılaştırıyoruz.
+  const isManager = isAtLeastLevel(user?.hierarchyLevel ?? -1, "yetkili");
 
   // Mevcut sayfanın hangi gruba ait olduğunu bul ve o grubu aç
   useEffect(() => {
@@ -340,7 +349,7 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
     if (allowedPages !== null && !allowedPages.includes(item.href)) return false;
     const requiredMinRole = item.minRole ?? group.minRole;
     if (requiredMinRole === "admin" && role !== "admin") return false;
-    if (requiredMinRole === "yetkili" && !isAtLeast(role as UserRole, "yetkili")) return false;
+    if (requiredMinRole === "yetkili" && !isManager) return false;
     return hasPermission({ role: role as UserRole, permissions: (user as any)?.permissions }, item.permission as any);
   };
 

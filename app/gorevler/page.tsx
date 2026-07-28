@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import Badge from "@/components/Badge";
-import { isAtLeast } from "@/lib/permissions";
+import { isAtLeastLevel } from "@/lib/permissions";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 const TODO_STATUSES = [
@@ -172,8 +172,8 @@ function IsTakibiContent() {
     loadTickets();
   }
 
-  const isManager = !!user && isAtLeast(user.role, "yetkili");
-  const isAdmin = !!user && isAtLeast(user.role, "yonetici");
+  const isManager = !!user && isAtLeastLevel(user.hierarchyLevel ?? -1, "yetkili");
+  const isAdmin = !!user && isAtLeastLevel(user.hierarchyLevel ?? -1, "yonetici");
 
   const filteredTodos = todos
     .filter(t => !todoSearch || t.title.toLowerCase().includes(todoSearch.toLowerCase()))
