@@ -56,7 +56,7 @@ const DEFAULT_NAV_CONFIG: NavConfigType = {
         { id: "araclar-1", href: "/araclar", label: "Araçlar", icon: "IconCar", permission: "vehicles:read", isActive: true, sortOrder: 0, isCustom: false },
         { id: "araclar-2", href: "/bakim", label: "Araç Bakım", icon: "IconWrench", permission: "maintenance:read", isActive: true, sortOrder: 1, isCustom: false },
         { id: "araclar-3", href: "/belgeler", label: "Belgeler", icon: "IconDocument", permission: "documents:read", isActive: true, sortOrder: 2, isCustom: false },
-        { id: "araclar-4", href: "/denetimler", label: "Denetimler", icon: "IconSearch", permission: "vehicles:read", isActive: true, sortOrder: 3, isCustom: false },
+        { id: "araclar-4", href: "/denetimler", label: "Denetimler", icon: "IconSearch", permission: "inspections:read", isActive: true, sortOrder: 3, isCustom: false },
         { id: "araclar-5", href: "/filo/kazalar", label: "Kazalar", icon: "IconAlertTriangle", permission: "fleet_accidents:read", isActive: true, sortOrder: 4, isCustom: false },
         { id: "araclar-6", href: "/filo/cezalar", label: "Cezalar", icon: "IconAlertTriangle", permission: "fleet_penalties:read", isActive: true, sortOrder: 5, isCustom: false },
         { id: "araclar-7", href: "/filo/arizalar", label: "Arızalar", icon: "IconWrench", permission: "fleet_breakdowns:read", isActive: true, sortOrder: 6, isCustom: false },
