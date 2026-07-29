@@ -220,8 +220,8 @@ export default function FislerPage() {
           ) : (
             <div className="space-y-2">
               {rows.map(row => (
-                <div key={row.id} onClick={canUpdate ? () => openEdit(row) : undefined}
-                  className={`bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 transition-colors ${canUpdate ? "cursor-pointer hover:border-zinc-700" : ""}`}>
+                <div key={row.id} onClick={() => openEdit(row)}
+                  className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 transition-colors cursor-pointer hover:border-zinc-700">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs px-2 py-0.5 rounded-md font-medium bg-zinc-800 text-zinc-300">
                       {TIP_LABELS[row.tip] || row.tip}
@@ -249,11 +249,17 @@ export default function FislerPage() {
           <div className="flex-1 bg-black/60" onClick={() => setShowForm(false)} />
           <div className="w-full max-w-md bg-zinc-900 border-l border-zinc-800 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
-              <h2 className="text-white font-semibold">{editing ? "Fişi Düzenle" : "Yeni Fiş"}</h2>
+              <h2 className="text-white font-semibold">{editing ? (canUpdate ? "Fişi Düzenle" : "Fiş Detayı") : "Yeni Fiş"}</h2>
               <button onClick={() => setShowForm(false)} className="text-zinc-500 hover:text-white text-xl leading-none">×</button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {saveError && <div className="bg-red-950 border border-red-800 text-red-300 text-sm px-3 py-2 rounded-lg">{saveError}</div>}
+              {!!editing && !canUpdate && (
+                <div className="bg-zinc-800/60 border border-zinc-700 text-zinc-400 text-sm px-3 py-2 rounded-lg">
+                  Bu fişi düzenleme yetkiniz yok — sadece görüntüleniyor.
+                </div>
+              )}
+              <fieldset disabled={!!editing && !canUpdate} className="contents">
 
               <label className="block">
                 <span className="text-zinc-400 text-xs font-medium mb-1 block">Tip *</span>
@@ -319,6 +325,7 @@ export default function FislerPage() {
                 <textarea value={form.aciklama} onChange={e => setForm(f => ({ ...f, aciklama: e.target.value }))} rows={3}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 resize-none" />
               </label>
+              </fieldset>
 
               <div>
                 <span className="text-zinc-400 text-xs font-medium mb-1 block">Dosya Eki (fiş görseli veya PDF)</span>
@@ -349,11 +356,15 @@ export default function FislerPage() {
               </div>
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex gap-3 shrink-0">
-              <button onClick={() => setShowForm(false)} className="flex-1 bg-zinc-800 text-zinc-300 font-medium text-sm py-2.5 rounded-xl hover:bg-zinc-700 transition-colors">İptal</button>
-              <button onClick={save} disabled={saving || !form.tarih || !form.tutar.trim()}
-                className="flex-1 bg-white text-zinc-950 font-semibold text-sm py-2.5 rounded-xl hover:bg-zinc-200 disabled:opacity-50 transition-colors">
-                {saving ? "Kaydediliyor..." : "Kaydet"}
+              <button onClick={() => setShowForm(false)} className="flex-1 bg-zinc-800 text-zinc-300 font-medium text-sm py-2.5 rounded-xl hover:bg-zinc-700 transition-colors">
+                {!!editing && !canUpdate ? "Kapat" : "İptal"}
               </button>
+              {(!editing || canUpdate) && (
+                <button onClick={save} disabled={saving || !form.tarih || !form.tutar.trim()}
+                  className="flex-1 bg-white text-zinc-950 font-semibold text-sm py-2.5 rounded-xl hover:bg-zinc-200 disabled:opacity-50 transition-colors">
+                  {saving ? "Kaydediliyor..." : "Kaydet"}
+                </button>
+              )}
             </div>
           </div>
         </div>
