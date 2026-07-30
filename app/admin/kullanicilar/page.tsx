@@ -84,6 +84,7 @@ export default function KullanicilarPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [resetPassId, setResetPassId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [resetting, setResetting] = useState(false);
@@ -256,6 +257,20 @@ export default function KullanicilarPage() {
     } finally { setTogglingId(null); }
   }
 
+  // Kalıcı silme geri alınamaz — sadece admin görebilir/kullanabilir (bkz.
+  // API), burada da çift onay isteniyor.
+  async function hardDelete(u: any) {
+    if (u.id === user?.id) return;
+    if (!confirm(`${u.full_name} (${u.username}) KALICI olarak silinsin mi? Bu işlem geri alınamaz.`)) return;
+    if (!confirm("Emin misiniz? Kullanıcı ve oturumları veritabanından tamamen silinecek.")) return;
+    setDeletingId(u.id);
+    try {
+      const r = await fetch(`/api/users/${u.id}?hard=1`, { method: "DELETE" });
+      const d = await r.json();
+      if (d.ok) load(); else alert(d.error);
+    } finally { setDeletingId(null); }
+  }
+
   async function resetPassword() {
     if (!resetPassId || newPassword.length < 6) return;
     setResetting(true);
@@ -382,6 +397,12 @@ export default function KullanicilarPage() {
                             <button onClick={() => toggleActive(u)} disabled={togglingId === u.id}
                               className={`text-xs border px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40 ${u.is_active ? "text-zinc-600 hover:text-red-400 border-zinc-700 hover:border-red-800" : "text-zinc-500 hover:text-emerald-400 border-zinc-700 hover:border-emerald-800"}`}>
                               {togglingId === u.id ? "..." : u.is_active ? "Pasif" : "Aktif"}
+                            </button>
+                          )}
+                          {!isSelf && user?.role === "admin" && (
+                            <button onClick={() => hardDelete(u)} disabled={deletingId === u.id}
+                              className="text-xs text-red-500/70 hover:text-red-400 border border-red-900/60 hover:border-red-700 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40">
+                              {deletingId === u.id ? "..." : "Kalıcı Sil"}
                             </button>
                           )}
                         </div>

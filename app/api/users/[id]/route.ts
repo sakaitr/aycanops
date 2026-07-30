@@ -119,10 +119,43 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (id === user.id) return NextResponse.json({ ok: false, error: "Kendi hesabınızı silemezsiniz" }, { status: 400 });
 
     const db = getDb();
-    const existing = await db.prepare("SELECT id FROM users WHERE id = ?").get(id);
+    const existing = await db.prepare("SELECT id, role FROM users WHERE id = ?").get(id) as { id: string; role: string } | undefined;
     if (!existing) return NextResponse.json({ ok: false, error: "Kullanıcı bulunamadı" }, { status: 404 });
 
-    // Soft delete
+    const { searchParams } = new URL(req.url);
+    const hard = searchParams.get("hard") === "1";
+
+    // Kalıcı silme sadece superadmin'e (gerçek "admin" rolü) açık — geri
+    // alınamaz, bu yüzden ayrı ve daha sıkı bir yetki çizgisi.
+    if (hard) {
+      if (user.role !== "admin") {
+        return NextResponse.json({ ok: false, error: "Kalıcı silme yetkisi sadece admin'de" }, { status: 403 });
+      }
+      if (existing.role === "admin") {
+        const activeAdmins = await db.prepare(
+          "SELECT COUNT(*) AS c FROM users WHERE role = 'admin' AND is_active = 1"
+        ).get() as { c: number };
+        if (Number(activeAdmins.c) <= 1) {
+          return NextResponse.json({ ok: false, error: "Son aktif admin hesabı silinemez" }, { status: 400 });
+        }
+      }
+      await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
+      try {
+        await db.prepare("DELETE FROM users WHERE id = ?").run(id);
+      } catch (e: any) {
+        if (e?.message?.includes("foreign key") || e?.code === "ER_ROW_IS_REFERENCED_2") {
+          return NextResponse.json({
+            ok: false,
+            error: "Bu kullanıcı silinemez — geçmiş kayıtlarda (fatura, izin talebi, denetim vb.) hâlâ referans ediliyor. Önce pasifleştirin.",
+          }, { status: 409 });
+        }
+        throw e;
+      }
+      await logAudit({ actorUserId: user.id, action: "user_hard_delete", entityType: "user", entityId: id });
+      return NextResponse.json({ ok: true });
+    }
+
+    // Soft delete (varsayılan, geri alınabilir)
     await db.prepare("UPDATE users SET is_active = 0, updated_at = ? WHERE id = ?").run(nowIso(), id);
     // Invalidate sessions
     await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
