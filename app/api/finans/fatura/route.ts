@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
+import { syncHareket } from "@/lib/finans-hareket";
 import { finansFaturaSchema } from "@/lib/schemas";
 
 export async function GET(req: NextRequest) {
@@ -124,6 +125,24 @@ export async function POST(req: NextRequest) {
            kalemTutar, k.masraf_merkezi_id || null, k.proje_id || null, k.department_id || null]
         );
       }
+    });
+
+    // Tek deftere yaz — cari ekstre/patron paneli buradan okuyor (bkz.
+    // lib/finans-hareket.ts). Transaction dışında: defter senkron hatası
+    // faturanın kaydını geri almamalı.
+    await syncHareket("fatura", id, {
+      tur: d.tur === "satis" ? "gelir" : "gider",
+      tarih: d.tarih,
+      tutar: genelToplam,
+      net_tutar: araToplam,
+      kdv_tutari: vergiToplam,
+      para_birimi: d.para_birimi_kod || "TRY",
+      kur: d.kur ?? 1,
+      cari_id: d.cari_id,
+      odeme_durumu: "odenmedi",
+      durum: "taslak",
+      aciklama: d.aciklama ?? null,
+      created_by: user.id,
     });
 
     return NextResponse.json({ ok: true, data: { id } }, { status: 201 });

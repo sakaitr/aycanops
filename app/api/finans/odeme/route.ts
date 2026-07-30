@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
+import { updateHareketOdeme } from "@/lib/finans-hareket";
 import { finansOdemeSchema } from "@/lib/schemas";
 import type { RowDataPacket } from "mysql2/promise";
 
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
     // yarım (bazı eşleşmeleri veya durum güncellemeleri eksik) kalmaz. Bu,
     // DELETE route'undaki (app/api/finans/odeme/[id]/route.ts) aynı sınıf
     // işlemin transaction kullanımıyla tutarlıdır.
+    const etkilenenFaturalar: { faturaId: string; durum: string; odenen: number }[] = [];
     await db.transaction(async (conn) => {
       await conn.execute(
         `INSERT INTO finans_odeme
@@ -96,9 +98,17 @@ export async function POST(req: NextRequest) {
           else if (toplam === genelToplam) yeniDurum = "odendi";
           else if (toplam > 0) yeniDurum = "kismen_odendi";
           await conn.execute(`UPDATE finans_fatura SET odeme_durumu = ? WHERE id = ?`, [yeniDurum, eslesme.fatura_id]);
+          etkilenenFaturalar.push({ faturaId: eslesme.fatura_id, durum: yeniDurum, odenen: toplam });
         }
       }
     });
+
+    // Tek defteri tazele — cari bakiye/açık tutar buradan okunuyor (bkz.
+    // lib/finans-hareket.ts). Transaction dışında: defter senkronu ödemeyi
+    // geri almamalı.
+    for (const f of etkilenenFaturalar) {
+      await updateHareketOdeme("fatura", f.faturaId, f.durum, f.odenen);
+    }
 
     return NextResponse.json({ ok: true, data: { id } }, { status: 201 });
   } catch (e) { return apiError(e); }

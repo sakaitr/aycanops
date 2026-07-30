@@ -126,7 +126,10 @@ const DEFAULT_NAV_CONFIG: NavConfigType = {
       // Muhasebe / Ön Muhasebe: veri girişi tarafı (fatura, fiş, belge, ödeme).
       key: "muhasebe", label: "Muhasebe", sortOrder: 5, isActive: true, minRole: null,
       items: [
-        { id: "finans-8", href: "/finans/gelir-gider", label: "Gelir-Gider", icon: "IconCoin", permission: "finans_gelir_gider:read", isActive: true, sortOrder: 0, isCustom: false },
+        // Tek defter (bkz. migration 087) — muhasebenin giriş noktası.
+        // Gelir-Gider kaldırıldı: fatura + masraf ile birleştirildi, aynı işi
+        // yapan 4 ayrı kapı kafa karışıklığı yaratıyordu.
+        { id: "muhasebe-hareketler", href: "/finans/hareketler", label: "Hareketler", icon: "IconActivity", permission: "finans_hareket:read", isActive: true, sortOrder: 0, isCustom: false },
         { id: "finans-9", href: "/finans/masraf-talebi", label: "Masraf Talebi", icon: "IconClipboard2", permission: "finans_masraf_talebi:read", isActive: true, sortOrder: 1, isCustom: false },
         { id: "finans-10", href: "/finans/faturalar", label: "Faturalar", icon: "IconDocument", permission: "finans_fatura:read", isActive: true, sortOrder: 2, isCustom: false },
         { id: "finans-11", href: "/finans/fisler", label: "Fişler", icon: "IconClipboard2", permission: "finans_fis:read", isActive: true, sortOrder: 3, isCustom: false },

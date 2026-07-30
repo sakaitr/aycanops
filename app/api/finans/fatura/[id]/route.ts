@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
 import { finansFaturaSchema } from "@/lib/schemas";
+import { syncHareketFromFatura, updateHareketDurum, deleteHareket } from "@/lib/finans-hareket";
 
 // Kalem güncellemesi bu fazda desteklenmiyor — PUT sadece başlık alanlarını
 // (kalemler hariç) kabul eder. Kalem düzeltmek isteyen kullanıcı faturayı
@@ -48,6 +49,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       await db.prepare(
         `UPDATE finans_fatura SET durum = 'onaylandi', updated_at = ? WHERE id = ?`
       ).run(now, id);
+      await updateHareketDurum("fatura", id, "onaylandi", user.id);
       return NextResponse.json({ ok: true });
     }
 
@@ -61,6 +63,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       await db.prepare(
         `UPDATE finans_fatura SET durum = 'iptal', updated_at = ? WHERE id = ?`
       ).run(now, id);
+      await updateHareketDurum("fatura", id, "iptal", user.id);
       return NextResponse.json({ ok: true });
     }
 
@@ -83,6 +86,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       d.para_birimi_kod || "TRY", d.kur ?? 1, d.iliskili_fatura_id || null, d.aciklama || null, d.banka_adi || null, d.banka_iban || null,
       now, id
     );
+
+    // Başlık değiştiyse (tür/tarih/cari/kur) defter satırı da tazelenmeli.
+    const guncel = await db.prepare(
+      `SELECT id, tur, tarih, genel_toplam, ara_toplam, vergi_toplam, para_birimi_kod, kur,
+              cari_id, odeme_durumu, durum, aciklama, created_by
+         FROM finans_fatura WHERE id = ?`
+    ).get(id) as any;
+    if (guncel) await syncHareketFromFatura(guncel);
+
     return NextResponse.json({ ok: true });
   } catch (e) { return apiError(e); }
 }
@@ -110,6 +122,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     // finans_fatura_kalemi FK'si ON DELETE CASCADE tanımlı (migration 077) —
     // kalemler ayrıca silinmesine gerek yok.
     await db.prepare(`DELETE FROM finans_fatura WHERE id = ?`).run(id);
+    await deleteHareket("fatura", id);
     return NextResponse.json({ ok: true });
   } catch (e) { return apiError(e); }
 }

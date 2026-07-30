@@ -19,13 +19,22 @@ export async function GET(req: NextRequest) {
     const conditions: string[] = [];
     const params: unknown[] = [];
     if (isActive !== null && isActive !== "") {
-      conditions.push("is_active = ?");
+      conditions.push("k.is_active = ?");
       params.push(isActive === "1" ? 1 : 0);
     }
+    const tip = searchParams.get("tip");
+    if (tip === "gelir" || tip === "gider") { conditions.push("k.tip = ?"); params.push(tip); }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
+    // Ağaç sırasında döner: her üst kategori, hemen ardından kendi altları —
+    // UI parent_id ile ağacı kurabilsin (bkz. migration 087).
     const rows = await getDb().prepare(
-      `SELECT * FROM finans_kategori ${where} ORDER BY ad ASC`
+      `SELECT k.*, ust.ad AS ust_ad
+         FROM finans_kategori k
+         LEFT JOIN finans_kategori ust ON ust.id = k.parent_id
+         ${where}
+         ORDER BY COALESCE(ust.sort_order, k.sort_order), COALESCE(ust.ad, k.ad),
+                  k.parent_id IS NOT NULL, k.sort_order, k.ad`
     ).all(...params);
     return NextResponse.json({ ok: true, data: rows });
   } catch (e) { return apiError(e); }
