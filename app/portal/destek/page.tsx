@@ -23,6 +23,16 @@ const ONCELIK_LABEL: Record<string, string> = {
   yuksek: "Yüksek",
   kritik: "Kritik",
 };
+const EVAL_DURUM_LABEL: Record<string, string> = {
+  bekliyor: "Değerlendiriliyor",
+  sicile_islendi: "Sicile İşlendi",
+  reddedildi: "Reddedildi",
+};
+const EVAL_DURUM_COLOR: Record<string, string> = {
+  bekliyor: "text-amber-400 bg-amber-400/10",
+  sicile_islendi: "text-red-400 bg-red-400/10",
+  reddedildi: "text-zinc-400 bg-zinc-400/10",
+};
 
 function AttachmentLink({ a }: { a: any }) {
   const isImage = a.mime_type?.startsWith("image/");
@@ -71,9 +81,13 @@ export default function PortalDestekPage() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ konu: "", icerik: "", oncelik: "normal" });
+  const [form, setForm] = useState({
+    konu: "", icerik: "", oncelik: "normal",
+    kategori: "genel", driver_name: "", vehicle_id: "", incident_date: "",
+  });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+  const [vehicles, setVehicles] = useState<any[]>([]);
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, any[]>>({});
@@ -135,12 +149,19 @@ export default function PortalDestekPage() {
   }
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetch("/api/portal/araclar").then(r => r.json()).then(d => { if (d.ok) setVehicles(d.data); }).catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError("");
     if (!form.konu.trim() || !form.icerik.trim()) {
       setFormError("Konu ve içerik zorunludur");
+      return;
+    }
+    if (form.kategori === "surucu_sikayeti" && !form.driver_name.trim()) {
+      setFormError("Sürücü bilgisi zorunludur");
       return;
     }
     setSubmitting(true);
@@ -153,7 +174,7 @@ export default function PortalDestekPage() {
       const d = await res.json();
       if (d.ok) {
         setShowForm(false);
-        setForm({ konu: "", icerik: "", oncelik: "normal" });
+        setForm({ konu: "", icerik: "", oncelik: "normal", kategori: "genel", driver_name: "", vehicle_id: "", incident_date: "" });
         load();
       } else {
         setFormError(d.error || "Hata oluştu");
@@ -197,6 +218,68 @@ export default function PortalDestekPage() {
                 className="bg-[var(--t-800)] border border-[var(--t-border-700)] rounded-xl p-4 space-y-3"
               >
                 <h3 className="text-sm font-semibold text-[var(--foreground)]">Yeni Destek Talebi</h3>
+
+                <div>
+                  <label className="text-xs text-[var(--t-text-500)] mb-1 block">Talep Türü</label>
+                  <div className="flex gap-2">
+                    {[["genel", "Genel Destek"], ["surucu_sikayeti", "Sürücü Şikayeti"]].map(([val, label]) => (
+                      <button key={val} type="button"
+                        onClick={() => setForm(f => ({ ...f, kategori: val }))}
+                        className={`flex-1 text-sm font-medium rounded-xl px-3 py-2.5 min-h-[44px] border transition-all ${
+                          form.kategori === val
+                            ? "bg-[var(--t-accent)] text-white border-[var(--t-accent)]"
+                            : "bg-[var(--t-900)] text-[var(--t-text-500)] border-[var(--t-border-800)]"
+                        }`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {form.kategori === "surucu_sikayeti" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-[var(--t-text-500)] mb-1 block">Araç (opsiyonel)</label>
+                      <select
+                        value={form.vehicle_id}
+                        onChange={e => {
+                          const vid = e.target.value;
+                          const v = vehicles.find((x: any) => x.vehicle_id === vid || x.id === vid);
+                          setForm(f => ({ ...f, vehicle_id: vid, driver_name: v?.driver_name ? v.driver_name : f.driver_name }));
+                        }}
+                        className="w-full bg-[var(--t-900)] border border-[var(--t-border-800)] rounded-xl px-3 py-2.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--t-accent)]"
+                      >
+                        <option value="">— Araç seç —</option>
+                        {vehicles.map((v: any) => (
+                          <option key={v.id} value={v.vehicle_id || v.id}>{v.plate}{v.driver_name ? ` · ${v.driver_name}` : ""}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-[var(--t-text-500)] mb-1 block">Sürücü Adı *</label>
+                      <input
+                        type="text"
+                        list="portal-driver-names"
+                        value={form.driver_name}
+                        onChange={e => setForm(f => ({ ...f, driver_name: e.target.value }))}
+                        placeholder="Sürücü adını yazın veya seçin"
+                        className="w-full bg-[var(--t-900)] border border-[var(--t-border-800)] rounded-xl px-3 py-2.5 text-[16px] text-[var(--foreground)] placeholder-[var(--t-text-600)] focus:outline-none focus:ring-2 focus:ring-[var(--t-accent)]"
+                      />
+                      <datalist id="portal-driver-names">
+                        {vehicles.filter((v: any) => v.driver_name).map((v: any) => <option key={v.id} value={v.driver_name} />)}
+                      </datalist>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs text-[var(--t-text-500)] mb-1 block">Olay Tarihi</label>
+                      <input
+                        type="date"
+                        value={form.incident_date}
+                        onChange={e => setForm(f => ({ ...f, incident_date: e.target.value }))}
+                        className="w-full bg-[var(--t-900)] border border-[var(--t-border-800)] rounded-xl px-3 py-2.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--t-accent)]"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
@@ -292,12 +375,20 @@ export default function PortalDestekPage() {
                         {!isExpanded && <p className="text-xs text-[var(--t-text-500)] mt-0.5 line-clamp-2">{t.icerik}</p>}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
+                        {t.kategori === "surucu_sikayeti" && t.eval_durum && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${EVAL_DURUM_COLOR[t.eval_durum] ?? ""}`}>
+                            {EVAL_DURUM_LABEL[t.eval_durum] ?? t.eval_durum}
+                          </span>
+                        )}
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${DURUM_COLOR[t.durum] ?? ""}`}>
                           {DURUM_LABEL[t.durum] ?? t.durum}
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 mt-2">
+                    <div className="flex items-center gap-3 mt-2 flex-wrap">
+                      {t.kategori === "surucu_sikayeti" && (
+                        <span className="text-[11px] text-[var(--t-text-500)] font-medium">Sürücü: {t.driver_name}</span>
+                      )}
                       <span className="text-[11px] text-[var(--t-text-600)]">
                         {new Date(t.created_at).toLocaleDateString("tr-TR")}
                       </span>

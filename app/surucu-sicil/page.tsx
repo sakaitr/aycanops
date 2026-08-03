@@ -46,7 +46,7 @@ const EMPTY_FORM = {
 export default function SurucuSicilPage() {
   const router = useRouter();
   const [user, setUser]           = useState<any>(null);
-  const [tab, setTab]             = useState<"puanlar" | "kayitlar">("puanlar");
+  const [tab, setTab]             = useState<"puanlar" | "kayitlar" | "sikayetler">("puanlar");
   const [summary, setSummary]     = useState<any[]>([]);
   const [records, setRecords]     = useState<any[]>([]);
   const [vehicles, setVehicles]   = useState<any[]>([]);
@@ -56,6 +56,15 @@ export default function SurucuSicilPage() {
   const [form, setForm]           = useState({ ...EMPTY_FORM });
   const [saving, setSaving]       = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Complaints (şikayetler) tab
+  const [complaints, setComplaints]         = useState<any[]>([]);
+  const [complaintsLoading, setComplaintsLoading] = useState(false);
+  const [evaluatingId, setEvaluatingId]     = useState<string | null>(null);
+  const [evalSeverity, setEvalSeverity]     = useState<number>(2);
+  const [evalNote, setEvalNote]             = useState("");
+  const [evalSaving, setEvalSaving]         = useState(false);
+  const canEvaluate = hasPermission(user, "driver_complaints:evaluate");
 
   // Filters (records tab)
   const [filterDriver, setFilterDriver]   = useState("");
@@ -71,6 +80,44 @@ export default function SurucuSicilPage() {
   }, []);
 
   useEffect(() => { loadAll(); }, []);
+
+  useEffect(() => {
+    if (tab === "sikayetler" && canEvaluate) loadComplaints();
+  }, [tab, canEvaluate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadComplaints() {
+    setComplaintsLoading(true);
+    try {
+      const r = await fetch("/api/musteri-destek?kategori=surucu_sikayeti");
+      const d = await r.json();
+      if (d.ok) setComplaints(d.data);
+    } finally { setComplaintsLoading(false); }
+  }
+
+  function startEvaluate(id: string) {
+    setEvaluatingId(id);
+    setEvalSeverity(2);
+    setEvalNote("");
+  }
+
+  async function submitEvaluate(id: string, decision: "kabul" | "reddet") {
+    if (decision === "reddet" && !evalNote.trim()) return;
+    setEvalSaving(true);
+    try {
+      const res = await fetch(`/api/musteri-destek/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "evaluate", decision, severity: evalSeverity, eval_note: evalNote }),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setEvaluatingId(null);
+        loadComplaints();
+        loadAll();
+      } else {
+        alert(d.error || "İşlem başarısız");
+      }
+    } finally { setEvalSaving(false); }
+  }
 
   async function loadAll() {
     setLoading(true);
@@ -154,10 +201,15 @@ export default function SurucuSicilPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-zinc-900 p-1 rounded-lg w-fit border border-zinc-800">
-          {([["puanlar", "Şöför Puanları"], ["kayitlar", "Sicil Kayıtları"]] as const).map(([key, label]) => (
+          {([["puanlar", "Şöför Puanları"], ["kayitlar", "Sicil Kayıtları"], ...(canEvaluate ? [["sikayetler", "Şikayetler"]] as const : [])] as const).map(([key, label]) => (
             <button key={key} onClick={() => { setTab(key); setDrillDriver(null); }}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === key ? "bg-white text-zinc-950" : "text-zinc-400 hover:text-white"}`}>
               {label}
+              {key === "sikayetler" && complaints.filter((c: any) => c.eval_durum === "bekliyor").length > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                  {complaints.filter((c: any) => c.eval_durum === "bekliyor").length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -232,7 +284,7 @@ export default function SurucuSicilPage() {
               })}
             </div>
           )
-        ) : (
+        ) : tab === "kayitlar" ? (
           // ════════════════ RECORDS TAB ════════════════
           <div>
             {/* Filters */}
@@ -303,6 +355,79 @@ export default function SurucuSicilPage() {
               </div>
             )}
           </div>
+        ) : (
+          // ════════════════ COMPLAINTS TAB ════════════════
+          <div>
+            {complaintsLoading ? (
+              <div className="py-24 text-center text-zinc-600 text-sm">Yükleniyor...</div>
+            ) : complaints.length === 0 ? (
+              <div className="py-24 text-center text-zinc-600 text-sm">Bekleyen şikayet yok</div>
+            ) : (
+              <div className="space-y-3">
+                {complaints.map((c: any) => (
+                  <div key={c.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div>
+                        <p className="text-white font-semibold text-sm">{c.driver_name}</p>
+                        <p className="text-zinc-500 text-xs mt-0.5">{c.company_name} · {c.olusturan}</p>
+                      </div>
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                        c.eval_durum === "bekliyor" ? "bg-amber-950 text-amber-300 border-amber-800"
+                        : c.eval_durum === "sicile_islendi" ? "bg-red-950 text-red-300 border-red-800"
+                        : "bg-zinc-800 text-zinc-400 border-zinc-700"
+                      }`}>
+                        {c.eval_durum === "bekliyor" ? "Bekliyor" : c.eval_durum === "sicile_islendi" ? "Sicile İşlendi" : "Reddedildi"}
+                      </span>
+                    </div>
+                    {c.vehicle_plate && <p className="text-zinc-500 text-xs font-mono mb-1">{c.vehicle_plate}</p>}
+                    <p className="text-zinc-300 text-sm leading-relaxed mb-2">{c.icerik}</p>
+                    <p className="text-zinc-600 text-xs">
+                      {c.incident_date ? new Date(c.incident_date + "T00:00:00").toLocaleDateString("tr-TR") : new Date(c.created_at).toLocaleDateString("tr-TR")}
+                    </p>
+
+                    {c.eval_durum === "bekliyor" && evaluatingId !== c.id && (
+                      <button onClick={() => startEvaluate(c.id)}
+                        className="mt-3 bg-white text-zinc-950 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-zinc-200 transition-colors">
+                        Değerlendir
+                      </button>
+                    )}
+
+                    {evaluatingId === c.id && (
+                      <div className="mt-4 pt-4 border-t border-zinc-800 space-y-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Kabul edilirse ciddiyet</label>
+                          <div className="flex gap-2">
+                            {SEVERITIES.map(s => (
+                              <button key={s.value} onClick={() => setEvalSeverity(s.value)}
+                                className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                                  evalSeverity === s.value ? s.cls : "bg-zinc-800 text-zinc-500 border-zinc-700 hover:bg-zinc-700"
+                                }`}>
+                                {s.label}<br /><span className="font-normal opacity-70">-{s.deduction}pt</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Not / Gerekçe {"(Reddet için zorunlu)"}</label>
+                          <textarea value={evalNote} onChange={e => setEvalNote(e.target.value)} rows={2}
+                            placeholder="Kabul için opsiyonel not, reddet için gerekçe yazın..."
+                            className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 resize-none" />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => setEvaluatingId(null)}
+                            className="flex-1 bg-zinc-800 text-zinc-300 text-sm font-medium py-2 rounded-lg hover:bg-zinc-700 transition-colors">İptal</button>
+                          <button onClick={() => submitEvaluate(c.id, "reddet")} disabled={evalSaving || !evalNote.trim()}
+                            className="flex-1 bg-red-950 text-red-300 text-sm font-semibold py-2 rounded-lg hover:bg-red-900 disabled:opacity-50 transition-colors">Reddet</button>
+                          <button onClick={() => submitEvaluate(c.id, "kabul")} disabled={evalSaving}
+                            className="flex-1 bg-white text-zinc-950 text-sm font-semibold py-2 rounded-lg hover:bg-zinc-200 disabled:opacity-50 transition-colors">Kabul Et → Sicile İşle</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </main>
 
@@ -316,16 +441,20 @@ export default function SurucuSicilPage() {
             </div>
             <div className="space-y-4">
 
-              {/* Driver name */}
+              {/* Driver name — yazılabilir + öneri listesi, yoksa otomatik oluşturulur */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Sürücü *</label>
-                <select
+                <input
+                  type="text"
+                  list="sicil-driver-names"
                   value={form.driver_name}
                   onChange={e => setForm(f => ({ ...f, driver_name: e.target.value }))}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500">
-                  <option value="">— Sürücü seçin —</option>
-                  {drivers.map((d: any) => <option key={d.id} value={d.name}>{d.name}{d.phone ? ` · ${d.phone}` : ""}</option>)}
-                </select>
+                  placeholder="Sürücü adını yazın veya listeden seçin"
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500" />
+                <datalist id="sicil-driver-names">
+                  {drivers.map((d: any) => <option key={d.id} value={d.name} />)}
+                </datalist>
+                <p className="text-zinc-600 text-xs mt-1">Listede yoksa yazdığınız isimle yeni sürücü otomatik oluşturulur.</p>
               </div>
 
               {/* Vehicle (optional) */}

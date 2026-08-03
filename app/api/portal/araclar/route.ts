@@ -13,6 +13,7 @@ export async function GET(_req: NextRequest) {
     const data = await db
       .prepare(
         `SELECT cv.id,
+                v.id AS vehicle_id,
                 cv.plate,
                 COALESCE(v.driver_name, cv.driver_name) AS driver_name,
                 COALESCE(v.driver_phone, '') AS driver_phone,

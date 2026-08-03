@@ -2,9 +2,8 @@
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
-import { v4 as uuidv4 } from "uuid";
-import { nowIso } from "@/lib/time";
 import { driverRecordCreateSchema } from "@/lib/schemas";
+import { createDriverRecord } from "@/lib/driver-resolve";
 
 // Puan hesaplama: temel 100, her kayıt ciddiyetine göre düşer
 const SEVERITY_POINTS: Record<number, number> = { 1: 5, 2: 15, 3: 25, 4: 40 };
@@ -76,19 +75,11 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     const { driver_name, vehicle_id, vehicle_plate, incident_date, category, severity, description, action_taken } = parsed.data;
 
-    const db = getDb();
-    const now = nowIso();
-    const id = uuidv4();
-
-    await db.prepare(
-      `INSERT INTO driver_records (id, driver_name, vehicle_id, vehicle_plate, incident_date, category, severity, description, action_taken, reported_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      id, driver_name.trim(), vehicle_id || null, vehicle_plate || null,
-      incident_date, category || "diger", severity || 1,
-      description.trim(), action_taken?.trim() || null,
-      user.id, now, now
-    );
+    const id = await createDriverRecord({
+      driver_name, vehicle_id, vehicle_plate, incident_date,
+      category, severity: severity || 1, description, action_taken,
+      reported_by: user.id,
+    });
 
     return NextResponse.json({ ok: true, data: { id } });
   } catch (e) {

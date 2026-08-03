@@ -13,6 +13,7 @@ export const PERMISSIONS = {
   route_price_authorities: ["read", "update"],
   drivers: ["read", "create", "update", "deactivate", "export"],
   driver_records: ["read", "create", "delete"],
+  driver_complaints: ["evaluate"],
   routes: ["read", "create", "update", "delete", "publish", "optimize", "export"],
   transfers: ["read", "create", "update", "cancel", "delete", "export"],
   map: ["read", "live", "history", "geocode", "edit"],
