@@ -91,8 +91,7 @@ export default function DenetimlerPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Düzenleme modalı — sadece firma/plaka/tarih/tür/not (checklist ve
-  // fotoğraflar burada değiştirilmez).
+  // Düzenleme modalı — sadece firma/plaka/tarih/tür/not
   const [editingInspection, setEditingInspection] = useState<any | null>(null);
   const [editCompanyId, setEditCompanyId] = useState("");
   const [editPlate, setEditPlate] = useState("");
@@ -101,6 +100,13 @@ export default function DenetimlerPage() {
   const [editNotes, setEditNotes] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  // Genişletilmiş satırda checklist/sonuç düzenleme (yalnızca inspections:update)
+  const [checklistEdit, setChecklistEdit] = useState<CheckItem[]>([]);
+  const [resultEdit, setResultEdit] = useState<string>("pending");
+  const [checklistDirty, setChecklistDirty] = useState(false);
+  const [checklistSaving, setChecklistSaving] = useState(false);
+  const [uploadingCriterionPhoto, setUploadingCriterionPhoto] = useState<number | null>(null);
 
   useEffect(() => { load(); }, [filterVehicleId, filterCompanyId]);
   useEffect(() => {
@@ -244,6 +250,56 @@ export default function DenetimlerPage() {
 
   function setCheckNote(idx: number, note: string) {
     setChecklist(cl => cl.map((c, i) => i === idx ? { ...c, note } : c));
+  }
+
+  // ── Kayıttan sonra checklist/sonuç düzenleme (genişletilmiş satır) ──
+  function setChecklistEditOk(idx: number, ok: boolean) {
+    setChecklistEdit(cl => cl.map((c, i) => i === idx ? { ...c, ok } : c));
+    setChecklistDirty(true);
+  }
+
+  function setChecklistEditNote(idx: number, note: string) {
+    setChecklistEdit(cl => cl.map((c, i) => i === idx ? { ...c, note } : c));
+    setChecklistDirty(true);
+  }
+
+  async function saveChecklistEdit(inspectionId: string) {
+    setChecklistSaving(true);
+    try {
+      const res = await fetch(`/api/inspections/${inspectionId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checklist: checklistEdit, result: resultEdit }),
+      });
+      const d = await res.json();
+      if (d.ok) { setChecklistDirty(false); load(); }
+      else alert(d.error || "Kaydedilemedi");
+    } finally { setChecklistSaving(false); }
+  }
+
+  async function uploadCriterionPhoto(inspectionId: string, criterionIndex: number, file: File) {
+    setUploadingCriterionPhoto(criterionIndex);
+    try {
+      const fd = new FormData();
+      fd.append("photos", file);
+      fd.append("criterion_index_0", String(criterionIndex));
+      const res = await fetch(`/api/inspections/${inspectionId}/photos`, { method: "POST", body: fd });
+      const d = await res.json();
+      if (d.ok) {
+        const r = await fetch(`/api/inspections/${inspectionId}/photos`);
+        const dr = await r.json();
+        if (dr.ok) setExpandedPhotos(prev => ({ ...prev, [inspectionId]: dr.data }));
+      } else {
+        alert(d.error || "Fotoğraf yüklenemedi");
+      }
+    } finally { setUploadingCriterionPhoto(null); }
+  }
+
+  async function deleteCriterionPhoto(inspectionId: string, photoId: string) {
+    const res = await fetch(`/api/inspections/${inspectionId}/photos?photo_id=${photoId}`, { method: "DELETE" });
+    const d = await res.json();
+    if (d.ok) {
+      setExpandedPhotos(prev => ({ ...prev, [inspectionId]: (prev[inspectionId] || []).filter((p: any) => p.id !== photoId) }));
+    }
   }
 
   function canAdvance(idx: number): boolean {
@@ -461,10 +517,15 @@ export default function DenetimlerPage() {
                     onClick={() => {
                       const next = isExpanded ? null : ins.id;
                       setExpanded(next);
-                      if (next && !expandedPhotos[next]) {
-                        fetch(`/api/inspections/${next}/photos`).then(r => r.json()).then(d => {
-                          if (d.ok) setExpandedPhotos(prev => ({ ...prev, [next]: d.data }));
-                        });
+                      if (next) {
+                        setChecklistEdit(cl.map((c: any) => ({ label: c.label, ok: c.ok, note: c.note || "" })));
+                        setResultEdit(ins.result);
+                        setChecklistDirty(false);
+                        if (!expandedPhotos[next]) {
+                          fetch(`/api/inspections/${next}/photos`).then(r => r.json()).then(d => {
+                            if (d.ok) setExpandedPhotos(prev => ({ ...prev, [next]: d.data }));
+                          });
+                        }
                       }
                     }}>
                     <div className="flex-1 min-w-0">
@@ -488,29 +549,120 @@ export default function DenetimlerPage() {
                     <span className="text-zinc-600 text-xs">{isExpanded ? "▲" : "▼"}</span>
                   </div>
                   {isExpanded && (
-                    <div className="px-5 pb-4 border-t border-zinc-800/40">
-                      {cl.length > 0 && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
-                          {cl.map((c: any, idx: number) => (
-                            <div key={idx} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${c.ok === true ? "bg-emerald-950/50 text-emerald-300" : c.ok === false ? "bg-red-950/50 text-red-300" : "bg-zinc-800/50 text-zinc-400"}`}>
-                              <span className="text-base">{c.ok === true ? "✓" : c.ok === false ? "✗" : "—"}</span>
-                              <span>{c.label}</span>
-                              {c.note && <span className="text-xs opacity-60 ml-auto truncate max-w-24">{c.note}</span>}
+                    <div className="px-5 pb-4 border-t border-zinc-800/40" onClick={e => e.stopPropagation()}>
+                      {hasPermission(user, "inspections:update") ? (
+                        <>
+                          {/* Sonuç — manuel değiştirilebilir */}
+                          <div className="mt-3">
+                            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Sonuç</label>
+                            <div className="flex gap-2">
+                              {(["pass", "conditional", "fail"] as const).map(r => (
+                                <button key={r} onClick={() => { setResultEdit(r); setChecklistDirty(true); }}
+                                  className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                                    resultEdit === r
+                                      ? r === "pass" ? "bg-emerald-950 border-emerald-800 text-emerald-300"
+                                        : r === "fail" ? "bg-red-950 border-red-800 text-red-300"
+                                        : "bg-yellow-950 border-yellow-800 text-yellow-300"
+                                      : "bg-zinc-800 border-zinc-700 text-zinc-500 hover:bg-zinc-700"
+                                  }`}>
+                                  {RESULT_BADGE[r].label}
+                                </button>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+                          </div>
+
+                          {/* Checklist — düzenlenebilir */}
+                          {checklistEdit.length > 0 && (
+                            <div className="space-y-2 mt-4">
+                              {checklistEdit.map((c, idx) => {
+                                const itemPhotos = (expandedPhotos[ins.id] || []).filter((p: any) => p.criterion_index === idx);
+                                return (
+                                  <div key={idx} className="bg-zinc-800/50 rounded-lg p-3">
+                                    <div className="flex items-center justify-between gap-2 mb-2">
+                                      <span className="text-sm text-white flex-1">{c.label}</span>
+                                      <div className="flex gap-1.5 shrink-0">
+                                        <button onClick={() => setChecklistEditOk(idx, true)}
+                                          className={`w-8 h-8 rounded-lg text-sm font-bold transition-colors ${c.ok === true ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-500 hover:bg-emerald-950 hover:text-emerald-300"}`}>✓</button>
+                                        <button onClick={() => setChecklistEditOk(idx, false)}
+                                          className={`w-8 h-8 rounded-lg text-sm font-bold transition-colors ${c.ok === false ? "bg-red-700 text-white" : "bg-zinc-800 text-zinc-500 hover:bg-red-950 hover:text-red-300"}`}>✗</button>
+                                      </div>
+                                    </div>
+                                    <textarea value={c.note} onChange={e => setChecklistEditNote(idx, e.target.value)}
+                                      placeholder="Not ekle..." rows={1}
+                                      className="w-full bg-zinc-900 border border-zinc-700 text-white text-xs px-2.5 py-1.5 rounded-lg focus:outline-none focus:border-zinc-500 resize-none mb-2" />
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {itemPhotos.map((p: any) => (
+                                        <div key={p.id} className="relative w-12 h-12 rounded-md overflow-hidden bg-zinc-900 group">
+                                          <a href={`/api/uploads/denetim/${p.filename}`} target="_blank" rel="noopener noreferrer">
+                                            <img src={`/api/uploads/denetim/${p.filename}`} alt="" className="w-full h-full object-cover" />
+                                          </a>
+                                          <button onClick={() => deleteCriterionPhoto(ins.id, p.id)}
+                                            className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-red-400 text-xs font-bold transition-opacity">×</button>
+                                        </div>
+                                      ))}
+                                      <label className="w-12 h-12 flex items-center justify-center rounded-md border border-dashed border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300 cursor-pointer text-[10px] text-center transition-colors">
+                                        {uploadingCriterionPhoto === idx ? "..." : "+ Foto"}
+                                        <input type="file" accept="image/*" capture="environment" className="hidden"
+                                          disabled={uploadingCriterionPhoto === idx}
+                                          onChange={e => { const f = e.target.files?.[0]; if (f) uploadCriterionPhoto(ins.id, idx, f); e.target.value = ""; }} />
+                                      </label>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {checklistDirty && (
+                            <button onClick={() => saveChecklistEdit(ins.id)} disabled={checklistSaving}
+                              className="mt-3 w-full bg-white text-zinc-950 text-sm font-semibold py-2 rounded-lg hover:bg-zinc-200 disabled:opacity-50 transition-colors">
+                              {checklistSaving ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
+                            </button>
+                          )}
+
+                          {/* Genel (soruya bağlı olmayan) fotoğraflar */}
+                          {(expandedPhotos[ins.id] || []).some((p: any) => p.criterion_index === null) && (
+                            <div className="mt-4">
+                              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Genel Fotoğraflar</p>
+                              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                {(expandedPhotos[ins.id] || []).filter((p: any) => p.criterion_index === null).map((p: any) => (
+                                  <a key={p.id} href={`/api/uploads/denetim/${p.filename}`} target="_blank" rel="noopener noreferrer"
+                                    className="aspect-square rounded-lg overflow-hidden bg-zinc-800 block">
+                                    <img src={`/api/uploads/denetim/${p.filename}`} alt="" className="w-full h-full object-cover" />
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {cl.length > 0 && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                              {cl.map((c: any, idx: number) => (
+                                <div key={idx} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${c.ok === true ? "bg-emerald-950/50 text-emerald-300" : c.ok === false ? "bg-red-950/50 text-red-300" : "bg-zinc-800/50 text-zinc-400"}`}>
+                                  <span className="text-base">{c.ok === true ? "✓" : c.ok === false ? "✗" : "—"}</span>
+                                  <span>{c.label}</span>
+                                  {c.note && <span className="text-xs opacity-60 ml-auto truncate max-w-24">{c.note}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {expandedPhotos[ins.id] && expandedPhotos[ins.id].length > 0 && (
+                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mt-3">
+                              {expandedPhotos[ins.id].map((p: any) => (
+                                <a key={p.id} href={`/api/uploads/denetim/${p.filename}`} target="_blank" rel="noopener noreferrer"
+                                  className="aspect-square rounded-lg overflow-hidden bg-zinc-800 block">
+                                  <img src={`/api/uploads/denetim/${p.filename}`} alt="" className="w-full h-full object-cover" />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </>
                       )}
+
                       {ins.notes && <p className="text-zinc-500 text-xs mt-3 italic">{ins.notes}</p>}
-                      {expandedPhotos[ins.id] && expandedPhotos[ins.id].length > 0 && (
-                        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mt-3">
-                          {expandedPhotos[ins.id].map((p: any) => (
-                            <a key={p.id} href={`/api/uploads/denetim/${p.filename}`} target="_blank" rel="noopener noreferrer"
-                              className="aspect-square rounded-lg overflow-hidden bg-zinc-800 block">
-                              <img src={`/api/uploads/denetim/${p.filename}`} alt="" className="w-full h-full object-cover" />
-                            </a>
-                          ))}
-                        </div>
-                      )}
+
                       {((ins.result === "fail" || ins.result === "conditional") || hasPermission(user, "inspections:delete") || hasPermission(user, "inspections:update")) && (
                         <div className="mt-3 flex justify-end gap-2">
                           {hasPermission(user, "inspections:update") && (
@@ -518,7 +670,7 @@ export default function DenetimlerPage() {
                               onClick={e => { e.stopPropagation(); openEditModal(ins); }}
                               className="text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg transition-colors"
                             >
-                              Düzenle
+                              Kayıt Bilgilerini Düzenle
                             </button>
                           )}
                           {hasPermission(user, "inspections:delete") && (

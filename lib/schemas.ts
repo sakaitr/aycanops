@@ -317,14 +317,25 @@ export const inspectionCreateSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
 });
 
-// Sadece kayıt bilgilerini (firma, plaka, tarih, tür, not) sonradan düzenlemek
-// için — checklist ve fotoğraflar bu uçtan değiştirilmez.
+// Kayıt bilgileri (firma, plaka, tarih, tür, not) VE checklist/sonuç —
+// checklist maddeleri ve genel sonuç (geçti/kaldı/koşullu) kayıttan sonra da
+// düzenlenebilir olmalı (fotoğraflar ayrı uçtan, /api/inspections/[id]/photos).
 export const inspectionUpdateSchema = z.object({
   company_id: z.string().optional().nullable(),
   company_vehicle_plate: z.string().max(20).optional().nullable(),
   inspection_date: z.string().min(1).optional(),
   type: z.string().max(50).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
+  result: z.string().max(50).optional().nullable(),
+  checklist: z
+    .array(
+      z.object({
+        label: z.string().max(255).optional(),
+        ok: z.boolean().nullable(),
+        note: z.string().max(500).optional(),
+      })
+    )
+    .optional(),
 });
 
 // ─── Driver Evaluations ───────────────────────────────────────────────
@@ -571,6 +582,9 @@ export const finansMasrafTalebiSchema = z.object({
   department_id: z.string().optional().nullable(),
   proje_id: z.string().optional().nullable(),
   masraf_merkezi_id: z.string().optional().nullable(),
+  vehicle_id: z.string().optional().nullable(),
+  route_id: z.string().optional().nullable(),
+  company_id: z.string().optional().nullable(),
 });
 
 // ─── Finans: Belge Türü ─────────────────────────────────────────────────

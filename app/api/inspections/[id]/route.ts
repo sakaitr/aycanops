@@ -22,7 +22,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const body = await req.json();
     const parsed = inspectionUpdateSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
-    const { company_id, company_vehicle_plate, inspection_date, type, notes } = parsed.data;
+    const { company_id, company_vehicle_plate, inspection_date, type, notes, result, checklist } = parsed.data;
 
     const fields: string[] = [];
     const args: unknown[] = [];
@@ -31,6 +31,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (inspection_date !== undefined) { fields.push("inspection_date = ?"); args.push(inspection_date); }
     if (type !== undefined) { fields.push("type = ?"); args.push(type); }
     if (notes !== undefined) { fields.push("notes = ?"); args.push(notes); }
+    // Sonuç (geçti/kaldı/koşullu) elle değiştirildiğinde otomatik hesaplama
+    // devre dışı bırakılır — staff'ın açık kararı esas alınır.
+    if (result !== undefined) { fields.push("result = ?"); args.push(result); }
+    if (checklist !== undefined) { fields.push("checklist_json = ?"); args.push(JSON.stringify(checklist)); }
     if (fields.length === 0) return NextResponse.json({ ok: true });
 
     fields.push("updated_at = ?");

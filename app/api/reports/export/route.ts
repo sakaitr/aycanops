@@ -9,7 +9,10 @@ import path from "node:path";
 import { getReport } from "@/lib/reports/catalog";
 import { runReport } from "@/lib/reports/queries";
 import { buildXlsx, buildPdf } from "@/lib/reports/engine";
-import { buildInspectionPdf } from "@/lib/reports/inspection-pdf";
+// Dinamik import: inspection-pdf.ts modül seviyesinde "sharp" yüklüyor, native
+// binding bu container'da (linuxmusl-x64) yüklenemiyor. Statik import olsaydı
+// bu modülün sadece var olması, arac-denetim'le ilgisi olmayan TÜM rapor
+// export'larını (örn. giriş kontrol) çökertiyordu.
 
 type ReportRow = Record<string, unknown>;
 
@@ -270,6 +273,7 @@ export async function GET(request: NextRequest) {
         // denetim için 1 sayfa (checklist + fotoğraflar) gösteren zengin
         // bir belge — XLSX çıktısı hâlâ jenerik tablo (yukarıdaki akış).
         if (def.slug === "arac-denetim") {
+          const { buildInspectionPdf } = await import("@/lib/reports/inspection-pdf");
           const pdfBuffer = await buildInspectionPdf(companyIds, dateFrom, dateTo);
           return new NextResponse(pdfBuffer as unknown as BodyInit, {
             status: 200,
