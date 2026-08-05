@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const parsed = inspectionCreateSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
-    const { vehicle_id, company_vehicle_id, company_vehicle_plate, company_id, inspection_date, type, result, checklist, notes } = parsed.data;
+    const { vehicle_id, company_vehicle_id, company_vehicle_plate, company_id, source_submission_id, inspection_date, type, result, checklist, notes } = parsed.data;
     if (!vehicle_id && !company_vehicle_id && !company_vehicle_plate)
       return NextResponse.json({ ok: false, error: "Araç seçimi zorunlu" }, { status: 400 });
 
@@ -114,11 +114,18 @@ export async function POST(req: NextRequest) {
     }
 
     await db.prepare(
-      `INSERT INTO inspections (id, vehicle_id, company_vehicle_id, company_vehicle_plate, company_id, inspection_date, inspector_id, type, result, checklist_json, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, resolvedVehicleId, resolvedCompVehicleId, compVehiclePlate, resolvedCompanyId,
+      `INSERT INTO inspections (id, vehicle_id, company_vehicle_id, company_vehicle_plate, company_id, source_submission_id, inspection_date, inspector_id, type, result, checklist_json, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, resolvedVehicleId, resolvedCompVehicleId, compVehiclePlate, resolvedCompanyId, source_submission_id || null,
       inspection_date, user.id, type || "routine", autoResult,
       checklist ? JSON.stringify(checklist) : null, notes || null, now, now);
+
+    // Müşteri denetim gönderiminden açıldıysa, gönderimi "incelendi" olarak işaretle
+    if (source_submission_id) {
+      await db.prepare(
+        `UPDATE customer_inspection_submissions SET status = 'incelendi', linked_inspection_id = ?, updated_at = ? WHERE id = ?`
+      ).run(id, now, source_submission_id);
+    }
 
     // Auto-create task + notification for company responsible when inspection fails
     if (autoResult === "fail" || autoResult === "conditional") {

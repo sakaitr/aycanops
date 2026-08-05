@@ -80,3 +80,30 @@ export async function readTicketAttachmentPath(filename: string): Promise<string
 export function isSafeTicketFilename(filename: string): boolean {
   return /^[a-f0-9-]+\.(jpg|jpeg|png|webp|heic|pdf|doc|docx|xls|xlsx)$/i.test(filename);
 }
+
+// ─── Müşteri denetim dosyaları (portal'dan firma yükler) ──────────────
+const CUSTOMER_INSPECTION_UPLOAD_ROOT = process.env.MUSTERI_DENETIM_UPLOAD_DIR || path.join(process.cwd(), "data", "uploads", "musteri-denetim");
+
+export const MAX_CUSTOMER_INSPECTION_FILE_BYTES = 8 * 1024 * 1024; // 8MB
+export const MAX_CUSTOMER_INSPECTION_FILES_PER_SUBMISSION = 10;
+
+export function isAllowedCustomerInspectionFileType(mimeType: string): boolean {
+  return mimeType in ALLOWED_TICKET_MIME;
+}
+
+export function extForCustomerInspectionMime(mimeType: string): string {
+  return ALLOWED_TICKET_MIME[mimeType] || "bin";
+}
+
+export async function saveCustomerInspectionFile(filename: string, buffer: Buffer): Promise<void> {
+  await mkdir(CUSTOMER_INSPECTION_UPLOAD_ROOT, { recursive: true });
+  await writeFile(path.join(CUSTOMER_INSPECTION_UPLOAD_ROOT, filename), buffer);
+}
+
+export async function readCustomerInspectionFilePath(filename: string): Promise<string> {
+  return path.join(CUSTOMER_INSPECTION_UPLOAD_ROOT, filename);
+}
+
+export function isSafeCustomerInspectionFilename(filename: string): boolean {
+  return /^[a-f0-9-]+\.(jpg|jpeg|png|webp|heic|pdf|doc|docx|xls|xlsx)$/i.test(filename);
+}

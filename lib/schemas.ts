@@ -302,6 +302,7 @@ export const inspectionCreateSchema = z.object({
   company_vehicle_id: z.string().optional().nullable(),
   company_vehicle_plate: z.string().max(20).optional().nullable(),
   company_id: z.string().optional().nullable(),
+  source_submission_id: z.string().optional().nullable(),
   inspection_date: z.string().min(1, "Tarih zorunlu"),
   type: z.string().max(50).optional().nullable(),
   result: z.string().max(50).optional().nullable(),

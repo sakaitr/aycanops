@@ -63,6 +63,12 @@ export default function DenetimlerPage() {
   const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
   const [formType, setFormType] = useState("");
   const [formNotes, setFormNotes] = useState("");
+  const [sourceSubmissionId, setSourceSubmissionId] = useState<string | null>(null);
+
+  // Müşteri portalından yüklenen denetim dosyaları
+  const [customerSubmissions, setCustomerSubmissions] = useState<any[]>([]);
+  const [csLoading, setCsLoading] = useState(false);
+  const [csFilter, setCsFilter] = useState<"yeni" | "all">("yeni");
 
   // Checklist (populated when type selected)
   const [checklist, setChecklist] = useState<CheckItem[]>([]);
@@ -114,6 +120,39 @@ export default function DenetimlerPage() {
     fetch("/api/companies/all-vehicles").then(r => r.json()).then(d => { if (d.ok) setCompVehicles(d.data); });
     fetch("/api/configs/inspection-types").then(r => r.json()).then(d => { if (d.ok) setInspectionTypes(d.data); });
   }, []);
+  useEffect(() => { loadCustomerSubmissions(); }, [csFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadCustomerSubmissions() {
+    setCsLoading(true);
+    try {
+      const params = csFilter === "yeni" ? "?status=yeni" : "";
+      const r = await fetch(`/api/customer-inspection-submissions${params}`);
+      const d = await r.json();
+      if (d.ok) setCustomerSubmissions(d.data);
+    } finally { setCsLoading(false); }
+  }
+
+  function openFormFromSubmission(sub: any) {
+    const firstType = inspectionTypes[0]?.id || "";
+    setFormCompanyId(sub.company_id);
+    setFormPlate(sub.plate);
+    setFormVehicleId("");
+    setFormCompVehicleId("");
+    setFormDate(sub.inspection_date);
+    setFormType(firstType);
+    setFormNotes("");
+    setChecklist([]);
+    setResultOverride(null);
+    setSaveError(null);
+    setPhotoFiles([]);
+    setQuestionPhotos({});
+    setCreatedInspectionId(null);
+    setSourceSubmissionId(sub.id);
+    setWizardStep("setup");
+    setCurrentCriterionIdx(0);
+    setShowForm(true);
+    if (firstType) loadCriteriaForType(firstType);
+  }
 
   // İlk tür yüklenince formType'ı set et
   useEffect(() => {
@@ -218,6 +257,7 @@ export default function DenetimlerPage() {
     setPhotoFiles([]);
     setQuestionPhotos({});
     setCreatedInspectionId(null);
+    setSourceSubmissionId(null);
     setWizardStep("setup");
     setCurrentCriterionIdx(0);
     setShowForm(true);
@@ -343,6 +383,7 @@ export default function DenetimlerPage() {
           notes: formNotes,
           checklist,
           result: finalResult,
+          source_submission_id: sourceSubmissionId,
         };
         if (formPlate.trim()) {
           // Serbest plaka modu — firma seçili olabilir veya olmayabilir
@@ -401,6 +442,8 @@ export default function DenetimlerPage() {
       setCreatedInspectionId(null);
       setShowForm(false);
       load();
+      if (sourceSubmissionId) loadCustomerSubmissions();
+      setSourceSubmissionId(null);
     } finally { setSaving(false); }
   }
 
@@ -469,6 +512,66 @@ export default function DenetimlerPage() {
           >
             + Denetim Ekle
           </button>
+        </div>
+
+        {/* Müşteri portalından yüklenen denetim dosyaları */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold text-white">Müşteri Denetimleri</h2>
+            <div className="flex gap-1 bg-zinc-800 p-0.5 rounded-lg">
+              {([["yeni", "Yeni"], ["all", "Tümü"]] as const).map(([key, label]) => (
+                <button key={key} onClick={() => setCsFilter(key)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${csFilter === key ? "bg-white text-zinc-950" : "text-zinc-400 hover:text-white"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {csLoading ? (
+            <p className="text-zinc-600 text-xs py-4 text-center">Yükleniyor...</p>
+          ) : customerSubmissions.length === 0 ? (
+            <p className="text-zinc-600 text-xs py-4 text-center">{csFilter === "yeni" ? "Bekleyen müşteri denetimi yok" : "Kayıt yok"}</p>
+          ) : (
+            <div className="space-y-2">
+              {customerSubmissions.map(sub => (
+                <div key={sub.id} className="bg-zinc-800/50 rounded-lg p-3 flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className="text-white font-mono font-semibold text-sm">{sub.plate}</span>
+                      <span className="text-zinc-500 text-xs">{sub.company_name}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${sub.status === "yeni" ? "bg-amber-950 text-amber-300 border border-amber-800" : "bg-zinc-700 text-zinc-400"}`}>
+                        {sub.status === "yeni" ? "Yeni" : "İncelendi"}
+                      </span>
+                    </div>
+                    <p className="text-zinc-300 text-sm">{sub.title}</p>
+                    <p className="text-zinc-600 text-xs mt-0.5">
+                      {new Date(sub.inspection_date + "T00:00:00").toLocaleDateString("tr-TR")} · {sub.olusturan}
+                    </p>
+                    {sub.note && <p className="text-zinc-500 text-xs mt-1 italic">{sub.note}</p>}
+                    {sub.files?.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {sub.files.map((f: any) => (
+                          <a key={f.id} href={`/api/uploads/musteri-denetim/${f.filename}`} target="_blank" rel="noopener noreferrer"
+                            className="text-[11px] bg-zinc-900 text-zinc-400 px-2 py-1 rounded-lg hover:text-white">
+                            {f.original_name}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {hasPermission(user, "inspections:create") && sub.status === "yeni" && (
+                    <button onClick={() => openFormFromSubmission(sub)}
+                      className="text-xs font-semibold bg-white text-zinc-950 px-3 py-1.5 rounded-lg hover:bg-zinc-200 transition-colors shrink-0">
+                      Bizim Denetimimizi Ekle
+                    </button>
+                  )}
+                  {sub.linked_inspection_id && (
+                    <span className="text-[11px] text-emerald-400 shrink-0">✓ Bağlandı</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Filters */}
