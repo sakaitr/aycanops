@@ -57,13 +57,20 @@ export async function POST(req: NextRequest) {
     const note = (formData.get("note") as string | null)?.trim() || null;
     const plate = (formData.get("plate") as string | null)?.trim().toUpperCase();
     const company_vehicle_id = (formData.get("company_vehicle_id") as string | null) || null;
+    const type = (formData.get("type") as string | null) || null;
+    const checklistRaw = (formData.get("checklist") as string | null) || null;
     const files = formData.getAll("files").filter((f): f is File => f instanceof File);
+
+    let checklist: { label: string; ok: boolean | null; note?: string }[] | null = null;
+    if (checklistRaw) {
+      try { checklist = JSON.parse(checklistRaw); } catch { checklist = null; }
+    }
 
     if (!title || !inspection_date || !plate) {
       return NextResponse.json({ ok: false, error: "Başlık, tarih ve plaka zorunludur" }, { status: 400 });
     }
-    if (files.length === 0) {
-      return NextResponse.json({ ok: false, error: "En az bir dosya ekleyin" }, { status: 400 });
+    if (files.length === 0 && (!checklist || checklist.length === 0)) {
+      return NextResponse.json({ ok: false, error: "En az bir dosya ekleyin veya checklist doldurun" }, { status: 400 });
     }
     if (files.length > MAX_CUSTOMER_INSPECTION_FILES_PER_SUBMISSION) {
       return NextResponse.json({ ok: false, error: `En fazla ${MAX_CUSTOMER_INSPECTION_FILES_PER_SUBMISSION} dosya eklenebilir` }, { status: 400 });
@@ -80,9 +87,10 @@ export async function POST(req: NextRequest) {
     const id = uuidv4();
     await db.prepare(
       `INSERT INTO customer_inspection_submissions
-         (id, company_id, company_vehicle_id, plate, title, inspection_date, note, status, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'yeni', ?, ?, ?)`
-    ).run(id, portalUser.company_id, company_vehicle_id, plate, title, inspection_date, note, portalUser.id, now, now);
+         (id, company_id, company_vehicle_id, plate, type, title, inspection_date, note, checklist_json, status, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'yeni', ?, ?, ?)`
+    ).run(id, portalUser.company_id, company_vehicle_id, plate, type, title, inspection_date, note,
+      checklist ? JSON.stringify(checklist) : null, portalUser.id, now, now);
 
     for (const file of files) {
       const filename = `${uuidv4()}.${extForCustomerInspectionMime(file.type)}`;

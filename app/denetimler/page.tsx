@@ -7,11 +7,15 @@ import AppSelect from "@/components/AppSelect";
 import { hasPermission } from "@/lib/permissions";
 
 // --- Wizard adımları ---
-// "setup"   : firma, araç, tarih, tip seçimi
-// "criteria": kriter kriter ilerle (currentCriterionIdx)
-// "summary" : tüm sonuçlar + kaydet
+// "setup"        : firma, araç, tarih, tip seçimi (tekil denetim)
+// "criteria"     : kriter kriter ilerle (currentCriterionIdx)
+// "summary"      : tüm sonuçlar + kaydet
+// --- Seri denetim adımları (bir firmanın tüm araçlarını art arda denetle) ---
+// "seri-company" : firma + tür seç (oturum boyunca sabit kalır)
+// "seri-list"    : firmanın araç listesi — birini seç ya da manuel plaka gir
+// "seri-checklist": tek ekranda checkbox listesi, hepsi "Onay" ile başlar
 
-type WizardStep = "setup" | "criteria" | "summary";
+type WizardStep = "setup" | "criteria" | "summary" | "seri-company" | "seri-list" | "seri-checklist";
 
 interface CheckItem {
   label: string;
@@ -64,11 +68,20 @@ export default function DenetimlerPage() {
   const [formType, setFormType] = useState("");
   const [formNotes, setFormNotes] = useState("");
   const [sourceSubmissionId, setSourceSubmissionId] = useState<string | null>(null);
+  const [preloadedType, setPreloadedType] = useState<string | null>(null);
 
   // Müşteri portalından yüklenen denetim dosyaları
   const [customerSubmissions, setCustomerSubmissions] = useState<any[]>([]);
   const [csLoading, setCsLoading] = useState(false);
   const [csFilter, setCsFilter] = useState<"yeni" | "all">("yeni");
+
+  // Seri denetim — firma/tür oturum boyunca sabit, araçlar art arda
+  const [seriCompanyId, setSeriCompanyId] = useState("");
+  const [seriType, setSeriType] = useState("");
+  const [seriDonePlates, setSeriDonePlates] = useState<Set<string>>(new Set());
+  const [seriManualPlate, setSeriManualPlate] = useState("");
+  const [seriSaving, setSeriSaving] = useState(false);
+  const [seriError, setSeriError] = useState<string | null>(null);
 
   // Checklist (populated when type selected)
   const [checklist, setChecklist] = useState<CheckItem[]>([]);
@@ -133,25 +146,30 @@ export default function DenetimlerPage() {
   }
 
   function openFormFromSubmission(sub: any) {
-    const firstType = inspectionTypes[0]?.id || "";
+    // Firma checklist doldurduysa aynı tür + cevaplar başlangıç noktası
+    // olarak kullanılır — staff sıfırdan değil, doğrulayarak ilerler.
+    const matchedType = sub.type && inspectionTypes.some((t: any) => t.id === sub.type) ? sub.type : (inspectionTypes[0]?.id || "");
+    const customerChecklist = sub.checklist_json ? JSON.parse(sub.checklist_json) : null;
+
     setFormCompanyId(sub.company_id);
     setFormPlate(sub.plate);
     setFormVehicleId("");
     setFormCompVehicleId("");
     setFormDate(sub.inspection_date);
-    setFormType(firstType);
+    setFormType(matchedType);
     setFormNotes("");
-    setChecklist([]);
+    setChecklist(customerChecklist || []);
     setResultOverride(null);
     setSaveError(null);
     setPhotoFiles([]);
     setQuestionPhotos({});
     setCreatedInspectionId(null);
     setSourceSubmissionId(sub.id);
+    setPreloadedType(customerChecklist ? matchedType : null);
     setWizardStep("setup");
     setCurrentCriterionIdx(0);
     setShowForm(true);
-    if (firstType) loadCriteriaForType(firstType);
+    if (!customerChecklist && matchedType) loadCriteriaForType(matchedType);
   }
 
   // İlk tür yüklenince formType'ı set et
@@ -258,6 +276,7 @@ export default function DenetimlerPage() {
     setQuestionPhotos({});
     setCreatedInspectionId(null);
     setSourceSubmissionId(null);
+    setPreloadedType(null);
     setWizardStep("setup");
     setCurrentCriterionIdx(0);
     setShowForm(true);
@@ -267,10 +286,97 @@ export default function DenetimlerPage() {
   async function proceedToChecklist() {
     const hasVehicle = formPlate.trim() || formVehicleId || formCompVehicleId;
     if (!hasVehicle || !formType) return;
-    // Kriterleri yeniden yükle (tip değişmiş olabilir)
-    await loadCriteriaForType(formType);
+    // Müşteri gönderiminden checklist önceden yüklendiyse ve tür
+    // değiştirilmediyse üzerine yazma — aksi halde kriterleri yeniden yükle.
+    if (preloadedType && formType === preloadedType) {
+      setPreloadedType(null);
+    } else {
+      await loadCriteriaForType(formType);
+    }
     setCurrentCriterionIdx(0);
     setWizardStep("criteria");
+  }
+
+  // ── Seri denetim: firma + tür bir kere seçilir, ardından o firmanın
+  // araçları art arda, tek ekranda checkbox listesiyle hızlıca denetlenir.
+  function startSeri() {
+    const firstType = inspectionTypes[0]?.id || "";
+    setSeriCompanyId("");
+    setSeriType(firstType);
+    setSeriDonePlates(new Set());
+    setSeriManualPlate("");
+    setSeriError(null);
+    setFormNotes("");
+    setWizardStep("seri-company");
+    setShowForm(true);
+  }
+
+  function beginSeriList() {
+    if (!seriCompanyId || !seriType) return;
+    setWizardStep("seri-list");
+  }
+
+  async function startSeriChecklist(plate: string, compVehicleId: string) {
+    setSeriError(null);
+    setFormPlate(compVehicleId ? "" : plate);
+    setFormCompVehicleId(compVehicleId);
+    setFormVehicleId("");
+    setFormCompanyId(seriCompanyId);
+    setFormType(seriType);
+    setFormDate(new Date().toISOString().split("T")[0]);
+    setCreatedInspectionId(null);
+    setPhotoFiles([]);
+    setQuestionPhotos({});
+    setResultOverride(null);
+    setCriteriaLoading(true);
+    try {
+      const r = await fetch(`/api/configs/inspection-types/${seriType}/criteria`);
+      const d = await r.json();
+      // Seri denetimde hız için tüm kriterler "Onay" ile başlar — staff
+      // sadece sorunlu olanı değiştirir, hepsini tek tek işaretlemez.
+      setChecklist(d.ok ? d.data.map((c: any) => ({ label: c.label, ok: true, note: "" })) : []);
+    } finally {
+      setCriteriaLoading(false);
+    }
+    setWizardStep("seri-checklist");
+  }
+
+  async function saveAndContinueSeri() {
+    setSeriSaving(true);
+    setSeriError(null);
+    try {
+      const payload: any = {
+        inspection_date: formDate,
+        type: inspectionTypes.find(t => t.id === seriType)?.code || seriType,
+        notes: formNotes,
+        checklist,
+        result: finalResult,
+        company_id: seriCompanyId,
+      };
+      if (formCompVehicleId) payload.company_vehicle_id = formCompVehicleId;
+      else payload.company_vehicle_plate = formPlate.trim().toUpperCase();
+
+      const res = await fetch("/api/inspections", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const d = await res.json();
+      if (!d.ok) { setSeriError(d.error || "Kaydedilemedi"); return; }
+
+      const donePlate = formCompVehicleId
+        ? compVehicles.find(cv => cv.id === formCompVehicleId)?.plate
+        : formPlate.trim().toUpperCase();
+      if (donePlate) setSeriDonePlates(prev => new Set(prev).add(donePlate));
+
+      setChecklist([]);
+      setFormCompVehicleId("");
+      setFormPlate("");
+      setSeriManualPlate("");
+      load();
+      setWizardStep("seri-list");
+    } finally {
+      setSeriSaving(false);
+    }
   }
 
   function setCheckOk(idx: number, ok: boolean) {
@@ -506,12 +612,20 @@ export default function DenetimlerPage() {
             <h1 className="text-2xl font-bold text-white">Araç Denetimleri</h1>
             <p className="text-zinc-500 text-sm mt-0.5">{inspections.length} kayıt</p>
           </div>
-          <button
-            onClick={openForm}
-            className="bg-white text-zinc-950 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-zinc-200 transition-colors"
-          >
-            + Denetim Ekle
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={startSeri}
+              className="bg-zinc-800 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-zinc-700 transition-colors border border-zinc-700"
+            >
+              Seri Denetim Başlat
+            </button>
+            <button
+              onClick={openForm}
+              className="bg-white text-zinc-950 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-zinc-200 transition-colors"
+            >
+              + Denetim Ekle
+            </button>
+          </div>
         </div>
 
         {/* Müşteri portalından yüklenen denetim dosyaları */}
@@ -542,6 +656,11 @@ export default function DenetimlerPage() {
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${sub.status === "yeni" ? "bg-amber-950 text-amber-300 border border-amber-800" : "bg-zinc-700 text-zinc-400"}`}>
                         {sub.status === "yeni" ? "Yeni" : "İncelendi"}
                       </span>
+                      {sub.checklist_json && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-blue-950 text-blue-300 border border-blue-800">
+                          Checklist Dolu
+                        </span>
+                      )}
                     </div>
                     <p className="text-zinc-300 text-sm">{sub.title}</p>
                     <p className="text-zinc-600 text-xs mt-0.5">
@@ -810,9 +929,144 @@ export default function DenetimlerPage() {
 
             {/* Header */}
             <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-zinc-800">
-              <h2 className="text-lg font-bold text-white">Denetim Ekle</h2>
+              <h2 className="text-lg font-bold text-white">
+                {wizardStep.startsWith("seri") ? "Seri Denetim" : "Denetim Ekle"}
+              </h2>
               <button onClick={() => setShowForm(false)} className="text-zinc-600 hover:text-white text-xl leading-none">×</button>
             </div>
+
+            {/* ── SERİ ADIM 1: FİRMA + TÜR ── */}
+            {wizardStep === "seri-company" && (
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Firma *</label>
+                  <AppSelect
+                    value={seriCompanyId}
+                    onChange={setSeriCompanyId}
+                    options={[
+                      { value: "", label: "— Firma seçin —" },
+                      ...uniqueCompanies.map(cv => ({ value: cv.company_id, label: cv.company_name })),
+                    ]}
+                    triggerClass="bg-zinc-800 border-zinc-700 w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Denetim Türü *</label>
+                  <AppSelect
+                    value={seriType}
+                    onChange={setSeriType}
+                    options={inspectionTypes.map(t => ({ value: t.id, label: t.label }))}
+                    triggerClass="bg-zinc-800 border-zinc-700 w-full"
+                  />
+                </div>
+                <p className="text-zinc-600 text-xs">
+                  Firma ve tür seçince, o firmanın tüm araçlarını art arda hızlıca denetleyebilirsiniz.
+                </p>
+                <button
+                  onClick={beginSeriList}
+                  disabled={!seriCompanyId || !seriType}
+                  className="w-full bg-white text-zinc-950 text-sm font-semibold py-2.5 rounded-lg hover:bg-zinc-200 disabled:bg-zinc-700 disabled:text-zinc-500 transition-colors"
+                >
+                  Devam Et →
+                </button>
+              </div>
+            )}
+
+            {/* ── SERİ ADIM 2: ARAÇ LİSTESİ ── */}
+            {wizardStep === "seri-list" && (
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm text-zinc-400">
+                    {uniqueCompanies.find(c => c.company_id === seriCompanyId)?.company_name}
+                  </p>
+                  <span className="text-xs text-zinc-600">{seriDonePlates.size} denetlendi</span>
+                </div>
+                <div className="max-h-72 overflow-y-auto space-y-1.5 mb-4">
+                  {compVehicles.filter(cv => cv.company_id === seriCompanyId).map(cv => {
+                    const done = seriDonePlates.has(cv.plate);
+                    return (
+                      <button key={cv.id} onClick={() => startSeriChecklist(cv.plate, cv.id)}
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                          done ? "bg-emerald-950/40 text-emerald-400" : "bg-zinc-800 text-white hover:bg-zinc-700"
+                        }`}>
+                        <span className="font-mono font-semibold">{cv.plate}</span>
+                        {done && <span className="text-xs">✓ Denetlendi</span>}
+                      </button>
+                    );
+                  })}
+                  {compVehicles.filter(cv => cv.company_id === seriCompanyId).length === 0 && (
+                    <p className="text-zinc-600 text-xs text-center py-4">Bu firmaya kayıtlı araç yok, manuel plaka girin.</p>
+                  )}
+                </div>
+
+                {/* Listede olmayan araç için manuel plaka */}
+                <div className="flex gap-2 mb-4">
+                  <input value={seriManualPlate} onChange={e => setSeriManualPlate(e.target.value.toUpperCase())}
+                    placeholder="Listede yoksa plaka gir..."
+                    className="flex-1 bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500" />
+                  <button onClick={() => seriManualPlate.trim() && startSeriChecklist(seriManualPlate.trim(), "")}
+                    disabled={!seriManualPlate.trim()}
+                    className="bg-zinc-800 text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-zinc-700 disabled:opacity-40 transition-colors">
+                    Denetle
+                  </button>
+                </div>
+
+                {seriError && <p className="text-red-400 text-sm bg-red-950 border border-red-800 rounded-lg px-3 py-2 mb-3">{seriError}</p>}
+
+                <button onClick={() => setShowForm(false)}
+                  className="w-full bg-zinc-800 text-zinc-300 text-sm font-medium py-2.5 rounded-lg hover:bg-zinc-700 transition-colors">
+                  Seri Denetimi Bitir
+                </button>
+              </div>
+            )}
+
+            {/* ── SERİ ADIM 3: TEK EKRAN CHECKBOX LİSTESİ ── */}
+            {wizardStep === "seri-checklist" && (
+              <div className="p-6">
+                <p className="text-sm text-zinc-400 mb-4">
+                  <span className="font-mono font-semibold text-white">{formCompVehicleId ? compVehicles.find(cv => cv.id === formCompVehicleId)?.plate : formPlate}</span>
+                  {" · "}{selectedTypeName}
+                </p>
+                {criteriaLoading ? (
+                  <p className="text-zinc-600 text-sm text-center py-8">Kriterler yükleniyor...</p>
+                ) : checklist.length === 0 ? (
+                  <p className="text-zinc-600 text-sm text-center py-8">Bu denetim türüne ait kriter tanımlanmamış.</p>
+                ) : (
+                  <div className="space-y-2 mb-4 max-h-96 overflow-y-auto">
+                    {checklist.map((c, idx) => (
+                      <div key={idx} className={`rounded-lg p-3 ${c.ok === false ? "bg-red-950/30 border border-red-900" : "bg-zinc-800/50"}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm text-white flex-1">{c.label}</span>
+                          <button onClick={() => setChecklist(cl => cl.map((it, i) => i === idx ? { ...it, ok: !it.ok, note: !it.ok ? it.note : "" } : it))}
+                            className={`w-9 h-9 rounded-lg text-base font-bold shrink-0 transition-colors ${
+                              c.ok === true ? "bg-emerald-600 text-white" : "bg-red-700 text-white"
+                            }`}>
+                            {c.ok === true ? "✓" : "✗"}
+                          </button>
+                        </div>
+                        {c.ok === false && (
+                          <textarea value={c.note} onChange={e => setChecklist(cl => cl.map((it, i) => i === idx ? { ...it, note: e.target.value } : it))}
+                            placeholder="Red nedeni (zorunlu)..." rows={1} autoFocus
+                            className="w-full bg-zinc-900 border border-red-900 text-white text-xs px-2.5 py-1.5 rounded-lg focus:outline-none mt-2 resize-none" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {seriError && <p className="text-red-400 text-sm bg-red-950 border border-red-800 rounded-lg px-3 py-2 mb-3">{seriError}</p>}
+                <div className="flex gap-3">
+                  <button onClick={() => setWizardStep("seri-list")}
+                    className="flex-1 bg-zinc-800 text-zinc-300 text-sm font-medium py-2.5 rounded-lg hover:bg-zinc-700 transition-colors">
+                    ← Listeye Dön
+                  </button>
+                  <button onClick={saveAndContinueSeri}
+                    disabled={seriSaving || checklist.length === 0 || checklist.some(c => c.ok === false && !c.note.trim())}
+                    className="flex-1 bg-white text-zinc-950 text-sm font-semibold py-2.5 rounded-lg hover:bg-zinc-200 disabled:bg-zinc-700 disabled:text-zinc-500 transition-colors">
+                    {seriSaving ? "Kaydediliyor..." : "Kaydet ve Devam Et"}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* ── ADIM 1: SETUP ── */}
             {wizardStep === "setup" && (

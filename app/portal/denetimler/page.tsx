@@ -27,20 +27,39 @@ export default function PortalDenetimlerPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
+  const [inspectionTypes, setInspectionTypes] = useState<any[]>([]);
+  const [selectedType, setSelectedType] = useState("");
+  const [checklist, setChecklist] = useState<{ label: string; ok: boolean; note: string }[]>([]);
+  const [checklistLoading, setChecklistLoading] = useState(false);
+
   async function load() {
     try {
-      const [vRes, sRes] = await Promise.all([
+      const [vRes, sRes, tRes] = await Promise.all([
         fetch("/api/portal/araclar").then(r => r.json()),
         fetch("/api/portal/denetimler").then(r => r.json()),
+        fetch("/api/portal/inspection-types").then(r => r.json()),
       ]);
       if (!vRes.ok && vRes.error === "Yetkisiz") { router.replace("/portal/giris"); return; }
       if (vRes.ok) setVehicles(vRes.data);
       if (sRes.ok) setSubmissions(sRes.data);
+      if (tRes.ok) setInspectionTypes(tRes.data);
     } catch {}
     finally { setLoading(false); }
   }
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function onSelectType(typeId: string) {
+    setSelectedType(typeId);
+    if (!typeId) { setChecklist([]); return; }
+    setChecklistLoading(true);
+    try {
+      const r = await fetch(`/api/portal/inspection-types/${typeId}/criteria`);
+      const d = await r.json();
+      // Hızlı doldurma için tüm kriterler "Onay" ile başlar
+      setChecklist(d.ok ? d.data.map((c: any) => ({ label: c.label, ok: true, note: "" })) : []);
+    } finally { setChecklistLoading(false); }
+  }
 
   const filtered = vehicles.filter(v =>
     !search || v.plate?.toLowerCase().includes(search.toLowerCase()) || v.driver_name?.toLowerCase().includes(search.toLowerCase())
@@ -51,12 +70,14 @@ export default function PortalDenetimlerPage() {
     setForm({ title: "", inspection_date: new Date().toISOString().split("T")[0], note: "" });
     setFiles([]);
     setFormError("");
+    setSelectedType("");
+    setChecklist([]);
   }
 
   async function submit(plate: string, vehicleId: string | null) {
     setFormError("");
     if (!form.title.trim() || !form.inspection_date) { setFormError("Başlık ve tarih zorunludur"); return; }
-    if (files.length === 0) { setFormError("En az bir dosya ekleyin"); return; }
+    if (files.length === 0 && checklist.length === 0) { setFormError("En az bir dosya ekleyin veya checklist doldurun"); return; }
     setSubmitting(true);
     try {
       const fd = new FormData();
@@ -65,6 +86,8 @@ export default function PortalDenetimlerPage() {
       fd.append("note", form.note.trim());
       fd.append("plate", plate);
       if (vehicleId) fd.append("company_vehicle_id", vehicleId);
+      if (selectedType) fd.append("type", selectedType);
+      if (checklist.length > 0) fd.append("checklist", JSON.stringify(checklist));
       files.forEach(f => fd.append("files", f));
       const res = await fetch("/api/portal/denetimler", { method: "POST", body: fd });
       const d = await res.json();
@@ -170,6 +193,37 @@ export default function PortalDenetimlerPage() {
                         <input type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" className="hidden"
                           onChange={e => setFiles(Array.from(e.target.files || []))} />
                       </label>
+
+                      {/* Opsiyonel checklist — Aycan Turizm'in denetim türlerinden biriyle */}
+                      <select value={selectedType} onChange={e => onSelectType(e.target.value)}
+                        className="w-full bg-[var(--t-800)] border border-[var(--t-border-800)] rounded-lg px-3 py-2 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--t-accent)]">
+                        <option value="">Checklist ile denetle (opsiyonel)</option>
+                        {inspectionTypes.map((t: any) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                      </select>
+                      {checklistLoading ? (
+                        <p className="text-xs text-[var(--t-text-500)] text-center py-2">Yükleniyor...</p>
+                      ) : checklist.length > 0 && (
+                        <div className="space-y-1.5">
+                          {checklist.map((c, idx) => (
+                            <div key={idx} className={`rounded-lg p-2.5 ${!c.ok ? "bg-red-500/10 border border-red-500/30" : "bg-[var(--t-800)]"}`}>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs text-[var(--foreground)] flex-1">{c.label}</span>
+                                <button type="button"
+                                  onClick={() => setChecklist(cl => cl.map((it, i) => i === idx ? { ...it, ok: !it.ok, note: !it.ok ? it.note : "" } : it))}
+                                  className={`w-7 h-7 rounded-md text-xs font-bold shrink-0 transition-colors ${c.ok ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
+                                  {c.ok ? "✓" : "✗"}
+                                </button>
+                              </div>
+                              {!c.ok && (
+                                <input type="text" value={c.note} placeholder="Not..."
+                                  onChange={e => setChecklist(cl => cl.map((it, i) => i === idx ? { ...it, note: e.target.value } : it))}
+                                  className="w-full bg-[var(--t-900)] border border-red-500/30 text-[var(--foreground)] text-xs px-2 py-1 rounded-md mt-1.5 focus:outline-none" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {formError && <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-2.5 py-1.5">{formError}</p>}
                       <div className="flex gap-2">
                         <button onClick={() => setShowForm(null)}
