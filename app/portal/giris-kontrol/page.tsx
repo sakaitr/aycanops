@@ -6,6 +6,17 @@ import PortalShell from "../_components/PortalShell";
 
 const DAYS_TR = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
 
+// Not: Date.toISOString() UTC'ye çevirir. Türkiye UTC+3 olduğu için, yerel
+// gece yarısı inşa edip toISOString ile serileştirmek bir gün GERİYE kaydırır
+// (yerel 00:00 Pazartesi = UTC 21:00 Pazar) — bu yüzden yerel getter'larla
+// (getFullYear/getMonth/getDate) elle string kuruyoruz, toISOString değil.
+function toDateStr(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function getMondayOf(date: Date) {
   const d = new Date(date);
   const day = d.getDay();
@@ -26,7 +37,7 @@ function fmtTime(isoStr: string) {
 export default function PortalGirisKontrolPage() {
   const router = useRouter();
   const [weekStart, setWeekStart] = useState(() =>
-    getMondayOf(new Date()).toISOString().slice(0, 10)
+    toDateStr(getMondayOf(new Date()))
   );
   const [days, setDays] = useState<string[]>([]);
   const [rows, setRows] = useState<any[]>([]);
@@ -46,16 +57,17 @@ export default function PortalGirisKontrolPage() {
   useEffect(() => { load(weekStart); }, [weekStart, load]);
 
   function shiftWeek(dir: number) {
-    const d = new Date(weekStart);
+    const [y, m, dd] = weekStart.split("-").map(Number);
+    const d = new Date(y, m - 1, dd);
     d.setDate(d.getDate() + dir * 7);
-    setWeekStart(d.toISOString().slice(0, 10));
+    setWeekStart(toDateStr(d));
   }
 
   function arrivalsForVehicleDay(vehicleId: string, day: string) {
     return rows.filter(r => r.vehicle_id === vehicleId && r.arrival_date === day);
   }
 
-  const isThisWeek = weekStart === getMondayOf(new Date()).toISOString().slice(0, 10);
+  const isThisWeek = weekStart === toDateStr(getMondayOf(new Date()));
 
   // Haftalık özet hesapla
   const totalOnTime = rows.filter(r => r.arrived_at).length;
@@ -98,7 +110,7 @@ export default function PortalGirisKontrolPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
           </button>
           {!isThisWeek && (
-            <button onClick={() => setWeekStart(getMondayOf(new Date()).toISOString().slice(0, 10))} className="text-xs text-[var(--t-accent)] hover:underline">
+            <button onClick={() => setWeekStart(toDateStr(getMondayOf(new Date())))} className="text-xs text-[var(--t-accent)] hover:underline">
               Bugüne dön
             </button>
           )}
@@ -118,8 +130,7 @@ export default function PortalGirisKontrolPage() {
                       Araç
                     </th>
                     {days.map((day, i) => {
-                      const today = new Date().toISOString().slice(0, 10);
-                      const isToday = day === today;
+                      const isToday = day === toDateStr(new Date());
                       return (
                         <th key={day} className={`text-center px-3 py-3 font-medium min-w-[80px] ${isToday ? "text-[var(--t-accent)]" : "text-[var(--t-text-500)]"}`}>
                           <div>{DAYS_TR[i]}</div>

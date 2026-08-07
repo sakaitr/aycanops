@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import PortalShell from "./_components/PortalShell";
-import Link from "next/link";
 
 function StatCard({ label, value, sub, accent }: { label: string; value: number | string; sub?: string; accent?: boolean }) {
   return (
@@ -19,21 +18,6 @@ function StatCard({ label, value, sub, accent }: { label: string; value: number 
     </motion.div>
   );
 }
-
-const STATUS_LABEL: Record<string, string> = {
-  planned: "Planlandı",
-  active: "Aktif",
-  completed: "Tamamlandı",
-  cancelled: "İptal",
-  delayed: "Gecikmeli",
-};
-const STATUS_COLOR: Record<string, string> = {
-  planned: "text-blue-400 bg-blue-400/10",
-  active: "text-green-400 bg-green-400/10",
-  completed: "text-zinc-400 bg-zinc-400/10",
-  cancelled: "text-red-400 bg-red-400/10",
-  delayed: "text-amber-400 bg-amber-400/10",
-};
 
 export default function PortalDashboardPage() {
   const router = useRouter();
@@ -74,11 +58,6 @@ export default function PortalDashboardPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <StatCard label="Araç" value={data.stats.vehicles} sub="Aktif araç" />
             <StatCard label="Güzergah" value={data.stats.routes} sub="Tanımlı hat" />
-            <StatCard
-              label="Sefer"
-              value={data.stats.trips_this_month}
-              sub={`${data.stats.trips_completed} tamamlandı`}
-            />
             {data.stats.trips_delayed > 0 && (
               <StatCard
                 label="Gecikme"
@@ -131,65 +110,6 @@ export default function PortalDashboardPage() {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Son Seferler */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-[var(--foreground)]">Son Seferler</h2>
-              <Link href="/portal/seferler" className="text-xs text-[var(--t-accent)] hover:underline">
-                Tümü →
-              </Link>
-            </div>
-
-            {data.recent_trips.length === 0 ? (
-              <div className="text-center py-8 text-[var(--t-text-500)] text-sm bg-[var(--t-800)] border border-[var(--t-border-800)] rounded-xl">
-                Henüz sefer kaydı yok
-              </div>
-            ) : (
-              <div className="bg-[var(--t-800)] border border-[var(--t-border-800)] rounded-xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-[var(--t-border-800)]">
-                        <th className="text-left px-4 py-3 text-xs font-medium text-[var(--t-text-500)]">Tarih</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-[var(--t-text-500)]">Güzergah</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-[var(--t-text-500)]">Yön</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-[var(--t-text-500)]">Durum</th>
-                        <th className="text-right px-4 py-3 text-xs font-medium text-[var(--t-text-500)]">Kalkış</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.recent_trips.map((t: any, i: number) => (
-                        <tr
-                          key={t.id}
-                          className={`border-b border-[var(--t-border-800)] ${i === data.recent_trips.length - 1 ? "border-0" : ""}`}
-                        >
-                          <td className="px-4 py-3 text-[var(--t-text-400)] whitespace-nowrap text-xs">
-                            {new Date(t.trip_date).toLocaleDateString("tr-TR")}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--foreground)] font-medium whitespace-nowrap">
-                            {t.route_name}
-                            {t.route_code && <span className="ml-1 text-xs text-[var(--t-text-600)]">({t.route_code})</span>}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--t-text-400)] text-xs">
-                            {t.direction === "morning" ? "Sabah" : t.direction === "evening" ? "Akşam" : t.direction}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${STATUS_COLOR[t.status_code] ?? "text-zinc-400 bg-zinc-400/10"}`}>
-                              {STATUS_LABEL[t.status_code] ?? t.status_code}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-xs text-[var(--t-text-400)]">
-                            {t.actual_departure || t.planned_departure || "--"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}

@@ -191,7 +191,7 @@ export default function PortalDestekPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-[var(--foreground)]">Destek Talepleri</h1>
+            <h1 className="text-xl font-bold text-[var(--foreground)]">Destek / Şikayet</h1>
             <p className="text-xs text-[var(--t-text-500)] mt-0.5">
               Sorun veya taleplerinizi buradan iletebilirsiniz
             </p>

@@ -2,7 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePortalUser } from "@/lib/portal-auth";
 import { getDb } from "@/lib/db";
 import { apiError } from "@/lib/api-error";
-import { istanbulHourMinute } from "@/lib/time";
+import { istanbulHourMinute, todayIstanbul } from "@/lib/time";
+
+// Bir tarih string'ine (YYYY-MM-DD) N gün ekler/çıkarır. UTC ÖĞLEN'e
+// (gece yarısı değil) sabitleyerek yapıyoruz — sunucu TZ'si veya
+// toISOString'in UTC'ye çevirmesi hangi ay/gün sınırında olursa olsun,
+// öğlen saati asla yanlış takvim gününe kaymaz (bkz. lib/time.ts'teki
+// aynı sınıf hatanın açıklaması — gece yarısı + toISOString bir gün kaydırır).
+function addDaysToDateStr(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d, 12));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+// İstanbul'daki bugünün ait olduğu haftanın Pazartesi'sini döndürür.
+function mondayOfIstanbulWeek(): string {
+  const todayStr = todayIstanbul();
+  const [y, m, d] = todayStr.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay(); // 0=Paz..6=Cmt, öğlen-sabit güvenli
+  const diffFromMonday = (dow + 6) % 7;
+  return addDaysToDateStr(todayStr, -diffFromMonday);
+}
 
 // Haftalık giriş kontrolleri: ?week=YYYY-MM-DD (haftanın pazartesi tarihi)
 export async function GET(req: NextRequest) {
@@ -14,19 +35,13 @@ export async function GET(req: NextRequest) {
     // week = "2026-04-20" (pazartesi) - verilmezse bu haftanın pazartesisi
     let weekStart = searchParams.get("week") || "";
     if (!weekStart) {
-      const now = new Date();
-      const day = now.getDay(); // 0=sun
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - ((day + 6) % 7));
-      weekStart = monday.toISOString().slice(0, 10);
+      weekStart = mondayOfIstanbulWeek();
     }
 
-    // Pazartesiden Cumaya 5 gün
+    // Pazartesiden Pazara 7 gün
     const days: string[] = [];
     for (let i = 0; i < 7; i++) {
-      const d = new Date(weekStart);
-      d.setDate(d.getDate() + i);
-      days.push(d.toISOString().slice(0, 10));
+      days.push(addDaysToDateStr(weekStart, i));
     }
 
     const db = getDb();
