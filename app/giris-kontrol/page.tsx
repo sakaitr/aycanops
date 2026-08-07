@@ -4,8 +4,11 @@ import Nav from "@/components/Nav";
 import ComboboxSearch from "@/components/ComboboxSearch";
 import { useGlobalCompany } from "@/contexts/CompanyContext";
 import { hasPermission } from "@/lib/permissions";
+import { todayIstanbul } from "@/lib/time";
 
-function todayStr() { return new Date().toISOString().split("T")[0]; }
+// Not: new Date().toISOString() UTC'ye çevirir — Türkiye UTC+3 olduğu için
+// gece 00:00-03:00 arası bir gün geriye kayardı (Salı, Pazartesi görünüyordu).
+function todayStr() { return todayIstanbul(); }
 
 function formatTime(isoStr: string | null) {
   if (!isoStr) return "—";
