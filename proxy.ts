@@ -1,7 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Public pages & API routes that do not require authentication
-const PUBLIC_PATHS = new Set(["/login", "/api/auth/login"]);
+const PUBLIC_PATHS = new Set(["/login", "/api/auth/login", "/finans-giris"]);
+
+// Finans/finans_yetkili rolleri sistemden bağımsız, ayrı bir kapıdan
+// (/finans-giris) girer ve sadece bu çekirdek sayfaları görebilir.
+const FINANS_ONLY_ROLES = new Set(["finans", "finans_yetkili"]);
+const FINANS_ALLOWED_PATHS = [
+  "/finans/hareketler",
+  "/finans/faturalar",
+  "/finans/fisler",
+  "/finans/masraf-talebi",
+  "/finans/odemeler",
+  "/finans/banka-hareketleri",
+  "/finans/belgeler",
+  "/kar-zarar",
+  "/mutabakat",
+  "/butce",
+  "/cari-tedarikci",
+  "/hakedis",
+  "/yetkisiz",
+];
+
+function isAllowedForFinans(pathname: string): boolean {
+  return FINANS_ALLOWED_PATHS.some((p) => pathname.startsWith(p));
+}
 
 const PUBLIC_FILE_EXTENSIONS = [
   ".css",
@@ -100,7 +123,7 @@ export function proxy(request: NextRequest) {
     if (sessionId) {
       const role = request.cookies.get("opsdesk_role")?.value || "";
       const url = request.nextUrl.clone();
-      url.pathname = role === "personel" ? "/giris-kontrol" : "/";
+      url.pathname = FINANS_ONLY_ROLES.has(role) ? "/finans/hareketler" : role === "personel" ? "/giris-kontrol" : "/";
       return NextResponse.redirect(url);
     }
     return NextResponse.next();
@@ -122,6 +145,14 @@ export function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/yetkisiz";
     url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // ── 5. Finans-only roller — sistemden bağımsız, sadece çekirdek finans
+  // sayfalarına erişebilir (bkz. /finans-giris) ───────────────────────────────
+  if (FINANS_ONLY_ROLES.has(role) && !isAllowedForFinans(pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/finans/hareketler";
     return NextResponse.redirect(url);
   }
 

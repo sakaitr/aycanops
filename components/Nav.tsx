@@ -36,6 +36,27 @@ const NAV_PERMISSION_BY_HREF_FOR_BOTTOM_NAV: Record<string, string> = {
   "/gorevler": "dashboard:read",
 };
 
+// Finans paneli — finans/finans_yetkili rolleri sistemden bağımsız, ayrı
+// bir kapıdan (/finans-giris) girer ve sadece muhasebe/finans sayfalarını
+// görür (operasyonel sayfalar hariç). Diğer sayfalara doğrudan URL ile
+// gidilirse buraya geri yönlendirilir (bkz. proxy.ts — asıl uygulama orada).
+const FINANS_ONLY_ROLES = ["finans", "finans_yetkili"];
+const FINANS_CORE_ITEMS = [
+  { href: "/finans/hareketler", label: "Hareketler", icon: "IconActivity" },
+  { href: "/finans/faturalar", label: "Faturalar", icon: "IconDocument" },
+  { href: "/finans/fisler", label: "Fişler", icon: "IconClipboard2" },
+  { href: "/finans/masraf-talebi", label: "Masraf Talebi", icon: "IconClipboard2" },
+  { href: "/finans/odemeler", label: "Ödemeler", icon: "IconCoin" },
+  { href: "/finans/banka-hareketleri", label: "Banka Hareketleri", icon: "IconActivity" },
+  { href: "/finans/belgeler", label: "Finans Belgeleri", icon: "IconDocument" },
+  { href: "/kar-zarar", label: "Kâr-Zarar", icon: "IconBarChart" },
+  { href: "/mutabakat", label: "Firma Mutabakat", icon: "IconCoin" },
+  { href: "/butce", label: "Bütçe & Maliyet", icon: "IconCoin" },
+  { href: "/cari-tedarikci", label: "Cari & Tedarikçi", icon: "IconBuilding" },
+  { href: "/hakedis", label: "Hakediş", icon: "IconCoin" },
+];
+const FINANS_ALLOWED_HREFS = FINANS_CORE_ITEMS.map(i => i.href);
+
 // ── Nav config (DB'den fetch edilir, bu sabit sadece fetch başarısız
 // olursa fallback olarak kullanılır — nav hiçbir durumda boş kalmaz) ──
 const DEFAULT_NAV_CONFIG: NavConfigType = {
@@ -375,7 +396,15 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
     return hasPermission({ role: role as UserRole, permissions: (user as any)?.permissions }, item.permission as any);
   };
 
+  const isFinansOnly = FINANS_ONLY_ROLES.includes(role);
+
   const getGroupItems = (key: string) => {
+    // Finans-only kullanıcı: gruplardan sadece "muhasebe" görünür, o da
+    // sabit 7 sayfayla — diğer tüm grup/menü öğeleri boş döner.
+    if (isFinansOnly) {
+      if (key !== "muhasebe") return [];
+      return FINANS_CORE_ITEMS.map(it => ({ href: it.href, label: it.label, Icon: ICON_REGISTRY[it.icon] ?? DEFAULT_NAV_ICON }));
+    }
     const group = navConfig.groups.find((g) => g.key === key);
     if (!group || !group.isActive) return [];
     return [...group.items]
@@ -383,6 +412,16 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
       .filter((it) => canShowItem(it, group))
       .map((it) => ({ href: it.href, label: it.label, Icon: ICON_REGISTRY[it.icon] ?? DEFAULT_NAV_ICON }));
   };
+
+  // Finans-only rol, çekirdek 7 sayfa dışında bir URL'e giderse geri
+  // yönlendirilir — "ayrı/bağımsız sistem" davranışını URL seviyesinde
+  // gerçek biçimde uygular (nav gizlemek tek başına yeterli değil).
+  useEffect(() => {
+    if (!user) return;
+    if (isFinansOnly && !FINANS_ALLOWED_HREFS.some(h => pathname.startsWith(h))) {
+      router.replace(FINANS_ALLOWED_HREFS[0]);
+    }
+  }, [user, isFinansOnly, pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filterByAllowed = <T extends { href: string }>(ls: T[]) =>
     ls.filter((l) => {

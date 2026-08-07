@@ -1,21 +1,11 @@
 "use client";
 
-import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { IconActivity, IconLogOut } from "@/components/Icons";
 
-// Açık yönlendirme (open redirect) riskini önlemek için sadece uygulama içi,
-// tek "/" ile başlayan yollara izin verilir ("//evil.com" gibi protokol-göreceli
-// URL'ler reddedilir).
-function safeNextPath(next: string | null): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
-  return next;
-}
-
-function LoginForm() {
+export default function FinansGirisPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -34,7 +24,7 @@ function LoginForm() {
       });
       const data = await res.json();
       if (data.ok) {
-        router.push(safeNextPath(searchParams.get("next")));
+        router.push("/finans/hareketler");
       } else {
         setError(data.error || "Giriş başarısız");
       }
@@ -47,23 +37,19 @@ function LoginForm() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 px-4">
-      {/* Background subtle grid */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff06_1px,transparent_1px),linear-gradient(to_bottom,#ffffff06_1px,transparent_1px)] bg-[size:48px_48px]" />
 
       <div className="relative w-full max-w-[360px]">
-        {/* Logo */}
         <div className="mb-8 flex flex-col items-center gap-3">
           <img src="/branding/aycan-logo.png" alt="Aycan" className="h-14 w-auto object-contain" />
           <div className="text-center">
-            <h1 className="text-xl font-semibold text-white tracking-tight">Aycan Ops</h1>
-            <p className="text-zinc-500 text-sm mt-0.5">Operasyon Yönetim Sistemi</p>
+            <h1 className="text-xl font-semibold text-white tracking-tight">Aycan Finans</h1>
+            <p className="text-zinc-500 text-sm mt-0.5">Finans Departmanı Paneli</p>
           </div>
         </div>
 
-        {/* Card */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl shadow-black/40">
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Username */}
             <div className="space-y-1.5">
               <label className="block text-xs font-medium text-zinc-400" htmlFor="username">
                 Kullanıcı Adı
@@ -77,12 +63,11 @@ function LoginForm() {
                 autoFocus
                 autoComplete="username"
                 spellCheck={false}
-                className="w-full h-10 px-3.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500/50 transition-all text-sm"
+                className="w-full h-10 px-3.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/50 transition-all text-sm"
                 placeholder="kullanici.adi"
               />
             </div>
 
-            {/* Password */}
             <div className="space-y-1.5">
               <label className="block text-xs font-medium text-zinc-400" htmlFor="password">
                 Şifre
@@ -95,7 +80,7 @@ function LoginForm() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoComplete="current-password"
-                  className="w-full h-10 px-3.5 pr-10 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500/50 transition-all text-sm"
+                  className="w-full h-10 px-3.5 pr-10 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/50 transition-all text-sm"
                   placeholder="••••••••"
                 />
                 <button
@@ -109,7 +94,6 @@ function LoginForm() {
               </div>
             </div>
 
-            {/* Error */}
             <AnimatePresence mode="wait">
               {error && (
                 <motion.div
@@ -130,11 +114,10 @@ function LoginForm() {
               )}
             </AnimatePresence>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading || !username.trim() || !password}
-              className="w-full h-10 bg-white text-zinc-950 font-semibold rounded-lg hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm mt-1 flex items-center justify-center gap-2"
+              className="w-full h-10 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm mt-1 flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -148,31 +131,8 @@ function LoginForm() {
           </form>
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-2.5">
-          <a href="/finans-giris"
-            className="flex items-center justify-center gap-2 h-10 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white hover:border-zinc-700 transition-all text-xs font-medium">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-4-4a4 4 0 004 4h0a4 4 0 004-4M8 10a4 4 0 014-4h0a4 4 0 014 4"/>
-            </svg>
-            Finans Girişi
-          </a>
-          <a href="/portal/giris"
-            className="flex items-center justify-center gap-2 h-10 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white hover:border-zinc-700 transition-all text-xs font-medium">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M5 21V7l8-4v18M13 9h6v12M9 9v.01M9 12v.01M9 15v.01"/>
-            </svg>
-            Müşteri Portalı
-          </a>
-        </div>
+        <p className="text-center text-zinc-700 text-xs mt-6">Aycan Turizm · Finans Paneli</p>
       </div>
     </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={null}>
-      <LoginForm />
-    </Suspense>
   );
 }
