@@ -96,6 +96,7 @@ export default function PortalShell({ children }: { children: React.ReactNode })
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [switchingCompany, setSwitchingCompany] = useState(false);
 
   useEffect(() => {
     fetch("/api/portal/me")
@@ -113,6 +114,22 @@ export default function PortalShell({ children }: { children: React.ReactNode })
     router.replace("/portal/giris");
   }
 
+  async function handleSwitchCompany(companyId: string) {
+    if (!companyId || companyId === user?.company_id) return;
+    setSwitchingCompany(true);
+    try {
+      const res = await fetch("/api/portal/switch-company", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_id: companyId }),
+      });
+      const d = await res.json();
+      if (d.ok) window.location.reload();
+      else setSwitchingCompany(false);
+    } catch {
+      setSwitchingCompany(false);
+    }
+  }
+
   const isExact = (href: string) => href === "/portal" ? pathname === "/portal" : pathname.startsWith(href);
 
   return (
@@ -128,7 +145,20 @@ export default function PortalShell({ children }: { children: React.ReactNode })
           <div className="hidden sm:block">
             <p className="text-xs font-semibold text-[var(--foreground)] leading-none">Müşteri Portalı</p>
             {user && (
-              <p className="text-[11px] text-[var(--t-text-500)] leading-none mt-0.5">{user.company_name}</p>
+              user.companies?.length > 1 ? (
+                <select
+                  value={user.company_id}
+                  onChange={e => handleSwitchCompany(e.target.value)}
+                  disabled={switchingCompany}
+                  className="text-[11px] text-[var(--t-text-500)] bg-transparent border-none p-0 mt-0.5 focus:outline-none cursor-pointer hover:text-[var(--foreground)] disabled:opacity-50"
+                >
+                  {user.companies.map((c: any) => (
+                    <option key={c.id} value={c.id} className="bg-[var(--t-800)] text-[var(--foreground)]">{c.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-[11px] text-[var(--t-text-500)] leading-none mt-0.5">{user.company_name}</p>
+              )
             )}
           </div>
         </div>

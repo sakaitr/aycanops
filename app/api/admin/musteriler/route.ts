@@ -27,13 +27,26 @@ export async function GET(req: NextRequest) {
     const params: unknown[] = [];
 
     if (companyFilter) {
-      sql += " AND cu.company_id = ?";
+      sql += " AND EXISTS (SELECT 1 FROM customer_user_companies cuc WHERE cuc.customer_user_id = cu.id AND cuc.company_id = ?)";
       params.push(companyFilter);
     }
     sql += " ORDER BY c.name ASC, cu.full_name ASC";
 
     const data = await db.prepare(sql).all<any>(...params);
-    return NextResponse.json({ ok: true, data });
+
+    const companyRows = await db.prepare(
+      `SELECT cuc.customer_user_id, c.id, c.name
+       FROM customer_user_companies cuc JOIN companies c ON c.id = cuc.company_id`
+    ).all<{ customer_user_id: string; id: string; name: string }>();
+    const byUser = new Map<string, { id: string; name: string }[]>();
+    for (const r of companyRows) {
+      const list = byUser.get(r.customer_user_id) ?? [];
+      list.push({ id: r.id, name: r.name });
+      byUser.set(r.customer_user_id, list);
+    }
+    const enriched = data.map(u => ({ ...u, companies: byUser.get(u.id) ?? [] }));
+
+    return NextResponse.json({ ok: true, data: enriched });
   } catch (e) {
     return apiError(e);
   }
@@ -46,10 +59,14 @@ export async function POST(req: NextRequest) {
     if (!hasPermission(user, "portal_requests:approve"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
-    const { company_id, email, full_name, password } = await req.json();
-    if (!company_id || !email?.trim() || !full_name?.trim() || !password) {
+    const body = await req.json();
+    const { email, full_name, password } = body;
+    const company_ids: string[] = Array.isArray(body.company_ids) && body.company_ids.length > 0
+      ? body.company_ids
+      : body.company_id ? [body.company_id] : [];
+    if (company_ids.length === 0 || !email?.trim() || !full_name?.trim() || !password) {
       return NextResponse.json(
-        { ok: false, error: "Firma, e-posta, isim ve şifre zorunludur" },
+        { ok: false, error: "En az bir firma, e-posta, isim ve şifre zorunludur" },
         { status: 400 }
       );
     }
@@ -79,7 +96,13 @@ export async function POST(req: NextRequest) {
         `INSERT INTO customer_users (id, company_id, email, password_hash, full_name, is_active, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 1, ?, ?)`
       )
-      .run(id, company_id, email.trim().toLowerCase(), hash, full_name.trim(), now, now);
+      .run(id, company_ids[0], email.trim().toLowerCase(), hash, full_name.trim(), now, now);
+
+    for (const cid of company_ids) {
+      await db.prepare(
+        `INSERT IGNORE INTO customer_user_companies (customer_user_id, company_id, created_at) VALUES (?, ?, ?)`
+      ).run(id, cid, now);
+    }
 
     return NextResponse.json({ ok: true, id });
   } catch (e) {
@@ -94,7 +117,7 @@ export async function PUT(req: NextRequest) {
     if (!hasPermission(user, "portal_requests:approve"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
-    const { id, full_name, is_active, password } = await req.json();
+    const { id, full_name, is_active, password, company_ids } = await req.json();
     if (!id) return NextResponse.json({ ok: false, error: "ID gerekli" }, { status: 400 });
 
     const db = getDb();
@@ -119,6 +142,17 @@ export async function PUT(req: NextRequest) {
           "UPDATE customer_users SET full_name = ?, is_active = ?, updated_at = ? WHERE id = ?"
         )
         .run(full_name, is_active ? 1 : 0, now, id);
+    }
+
+    if (Array.isArray(company_ids) && company_ids.length > 0) {
+      await db.prepare("DELETE FROM customer_user_companies WHERE customer_user_id = ?").run(id);
+      for (const cid of company_ids) {
+        await db.prepare(
+          `INSERT IGNORE INTO customer_user_companies (customer_user_id, company_id, created_at) VALUES (?, ?, ?)`
+        ).run(id, cid, now);
+      }
+      // customer_users.company_id varsayılan/birincil firma referansı — ilk seçilene güncellenir
+      await db.prepare("UPDATE customer_users SET company_id = ? WHERE id = ?").run(company_ids[0], id);
     }
 
     return NextResponse.json({ ok: true });

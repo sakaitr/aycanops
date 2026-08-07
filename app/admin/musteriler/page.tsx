@@ -21,12 +21,12 @@ export default function AdminMusterilerPage() {
   const [companyFilter, setCompanyFilter] = useState("");
 
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ company_id: "", email: "", full_name: "", password: "" });
+  const [form, setForm] = useState({ company_ids: [] as string[], email: "", full_name: "", password: "" });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
   const [editUser, setEditUser] = useState<any | null>(null);
-  const [editForm, setEditForm] = useState({ full_name: "", is_active: true, password: "" });
+  const [editForm, setEditForm] = useState({ full_name: "", is_active: true, password: "", company_ids: [] as string[] });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
 
@@ -54,8 +54,8 @@ export default function AdminMusterilerPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setFormError("");
-    if (!form.company_id || !form.email || !form.full_name || !form.password) {
-      setFormError("Tüm alanlar zorunludur");
+    if (form.company_ids.length === 0 || !form.email || !form.full_name || !form.password) {
+      setFormError("En az bir firma ve diğer tüm alanlar zorunludur");
       return;
     }
     setSaving(true);
@@ -68,7 +68,7 @@ export default function AdminMusterilerPage() {
       const d = await res.json();
       if (d.ok) {
         setShowForm(false);
-        setForm({ company_id: "", email: "", full_name: "", password: "" });
+        setForm({ company_ids: [], email: "", full_name: "", password: "" });
         load();
       } else {
         setFormError(d.error || "Hata oluştu");
@@ -154,20 +154,27 @@ export default function AdminMusterilerPage() {
                 <div className="bg-[var(--t-800)] border border-[var(--t-border-700)] rounded-xl p-4 space-y-3">
                   <h3 className="text-sm font-semibold text-[var(--foreground)]">Yeni Müşteri Kullanıcısı</h3>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-[var(--t-text-500)] mb-1 block">Firma *</label>
-                      <select
-                        value={form.company_id}
-                        onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}
-                        className="w-full bg-[var(--t-900)] border border-[var(--t-border-800)] rounded-xl px-3 py-2.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--t-accent)]"
-                      >
-                        <option value="">Firma seçin...</option>
-                        {companies.map((c: any) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
+                  <div>
+                    <label className="text-xs text-[var(--t-text-500)] mb-1 block">Firma(lar) * — birden fazla seçilebilir</label>
+                    <div className="max-h-36 overflow-y-auto bg-[var(--t-900)] border border-[var(--t-border-800)] rounded-xl p-2 space-y-0.5">
+                      {companies.map((c: any) => (
+                        <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--t-800)] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={form.company_ids.includes(c.id)}
+                            onChange={e => setForm(f => ({
+                              ...f,
+                              company_ids: e.target.checked ? [...f.company_ids, c.id] : f.company_ids.filter(id => id !== c.id),
+                            }))}
+                            className="w-4 h-4 rounded"
+                          />
+                          <span className="text-sm text-[var(--foreground)]">{c.name}</span>
+                        </label>
+                      ))}
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-[var(--t-text-500)] mb-1 block">Ad Soyad *</label>
                       <input
@@ -263,7 +270,9 @@ export default function AdminMusterilerPage() {
                           <p className="text-[var(--foreground)] font-medium text-xs">{u.full_name}</p>
                         </td>
                         <td className="px-4 py-3 text-xs text-[var(--t-text-400)]">{u.email}</td>
-                        <td className="px-4 py-3 text-xs text-[var(--t-text-400)]">{u.company_name}</td>
+                        <td className="px-4 py-3 text-xs text-[var(--t-text-400)]">
+                          {u.companies?.length > 1 ? u.companies.map((c: any) => c.name).join(", ") : u.company_name}
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${u.is_active ? "text-green-400 bg-green-400/10" : "text-zinc-500 bg-zinc-500/10"}`}>
                             {u.is_active ? "Aktif" : "Pasif"}
@@ -277,7 +286,10 @@ export default function AdminMusterilerPage() {
                             <button
                               onClick={() => {
                                 setEditUser(u);
-                                setEditForm({ full_name: u.full_name, is_active: !!u.is_active, password: "" });
+                                setEditForm({
+                                  full_name: u.full_name, is_active: !!u.is_active, password: "",
+                                  company_ids: (u.companies?.length ? u.companies.map((c: any) => c.id) : [u.company_id]),
+                                });
                                 setEditError("");
                               }}
                               className="text-[11px] text-[var(--t-text-400)] hover:text-[var(--t-accent)] px-2 py-1.5 min-h-[32px]"
@@ -324,6 +336,25 @@ export default function AdminMusterilerPage() {
             >
               <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Kullanıcı Düzenle</h3>
               <form onSubmit={handleEdit} className="space-y-3">
+                <div>
+                  <label className="text-xs text-[var(--t-text-500)] mb-1 block">Firma(lar)</label>
+                  <div className="max-h-32 overflow-y-auto bg-[var(--t-900)] border border-[var(--t-border-800)] rounded-xl p-2 space-y-0.5">
+                    {companies.map((c: any) => (
+                      <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--t-800)] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editForm.company_ids.includes(c.id)}
+                          onChange={e => setEditForm(f => ({
+                            ...f,
+                            company_ids: e.target.checked ? [...f.company_ids, c.id] : f.company_ids.filter(id => id !== c.id),
+                          }))}
+                          className="w-4 h-4 rounded"
+                        />
+                        <span className="text-sm text-[var(--foreground)]">{c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <div>
                   <label className="text-xs text-[var(--t-text-500)] mb-1 block">Ad Soyad</label>
                   <input
