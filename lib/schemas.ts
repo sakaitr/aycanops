@@ -508,6 +508,44 @@ export const finansKategoriSchema = z.object({
   ad: shortStr(200),
   tip: z.enum(["gelir", "gider"]),
   hesap_id: z.string().optional().nullable(),
+  parent_id: z.string().optional().nullable(),
+});
+
+// ─── Finans: Gider (fiş/fatura birleşik — bkz. migration 094) ─────────
+export const finansGiderSchema = z.object({
+  tip: z.enum(["fis", "fatura"]),
+  tarih: z.string().min(1, "Tarih zorunlu"),
+  kategori_id: z.string().min(1, "Kategori zorunlu"),
+  cari_id: z.string().optional().nullable(),
+  belge_no: z.string().max(100).optional().nullable(),
+  tutar: z.number().min(0),
+  para_birimi_kod: z.string().max(10).optional(),
+  kdv_tutar: z.number().min(0).optional().nullable(),
+  aciklama: z.string().max(2000).optional().nullable(),
+  department_id: z.string().optional().nullable(),
+  proje_id: z.string().optional().nullable(),
+  masraf_merkezi_id: z.string().optional().nullable(),
+  vehicle_id: z.string().optional().nullable(),
+  route_id: z.string().optional().nullable(),
+  company_id: z.string().optional().nullable(),
+  durum: z.enum(["taslak", "tamamlandi"]).optional(),
+  kalemler: z
+    .array(
+      z.object({
+        aciklama: z.string().max(500),
+        miktar: z.number().min(0),
+        birim_fiyat: z.number().min(0),
+      })
+    )
+    .optional(),
+});
+
+// Anlık giriş: fotoğrafı kaybetmeden hızlıca sisteme atmak için — sadece
+// tutar+tarih zorunlu, kategori sonradan tamamlanabilir (durum='taslak').
+export const finansGiderHizliSchema = z.object({
+  tarih: z.string().min(1, "Tarih zorunlu"),
+  tutar: z.number().min(0),
+  aciklama: z.string().max(500).optional().nullable(),
 });
 
 // ─── Finans: Masraf Merkezi ───────────────────────────────────────────

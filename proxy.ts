@@ -8,8 +8,7 @@ const PUBLIC_PATHS = new Set(["/login", "/api/auth/login", "/finans-giris"]);
 const FINANS_ONLY_ROLES = new Set(["finans", "finans_yetkili"]);
 const FINANS_ALLOWED_PATHS = [
   "/finans/hareketler",
-  "/finans/faturalar",
-  "/finans/fisler",
+  "/finans/gider",
   "/finans/masraf-talebi",
   "/finans/odemeler",
   "/finans/banka-hareketleri",

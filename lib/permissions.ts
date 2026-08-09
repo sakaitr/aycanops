@@ -77,6 +77,8 @@ export const PERMISSIONS = {
   finans_banka_hareketi: ["read", "create", "update"],
   // Tek defter — tüm finansal hareketlerin birleşik görünümü (bkz. migration 087)
   finans_hareket: ["read", "create", "update", "delete"],
+  // Fiş/fatura birleşik gider girişi (bkz. migration 094) — Faturalar/Fişler'in yerine geçti
+  finans_gider: ["read", "create", "update", "delete"],
   musteriler: ["read", "create", "update", "delete"],
   cari_tedarikci: ["read", "create", "update", "delete"],
   nav_config: ["update"],

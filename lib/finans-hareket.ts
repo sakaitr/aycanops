@@ -14,7 +14,7 @@
 import { getDb } from "@/lib/db";
 import { nowIso } from "@/lib/time";
 
-export type HareketKaynakTip = "fatura" | "masraf" | "kasa" | "hakedis" | "manuel";
+export type HareketKaynakTip = "fatura" | "masraf" | "kasa" | "hakedis" | "manuel" | "gider";
 
 // Kaynak belgenin durumu → defter durumu. Defterde "reddedildi" kaydı da
 // tutulur (rapor dışıdır ama iz kalması gerekir).
@@ -30,7 +30,7 @@ function mapDurum(durum: string | null | undefined): string {
 
 /** Kaynak belgeye ait defter satırının deterministik id'si. */
 function hareketId(kaynakTip: HareketKaynakTip, kaynakId: string): string {
-  const prefix = { fatura: "fat", masraf: "msr", kasa: "kasa", hakedis: "hkd", manuel: "man" }[kaynakTip];
+  const prefix = { fatura: "fat", masraf: "msr", kasa: "kasa", hakedis: "hkd", manuel: "man", gider: "gid" }[kaynakTip];
   return `hrk-${prefix}-${kaynakId}`;
 }
 

@@ -43,8 +43,7 @@ const NAV_PERMISSION_BY_HREF_FOR_BOTTOM_NAV: Record<string, string> = {
 const FINANS_ONLY_ROLES = ["finans", "finans_yetkili"];
 const FINANS_CORE_ITEMS = [
   { href: "/finans/hareketler", label: "Hareketler", icon: "IconActivity" },
-  { href: "/finans/faturalar", label: "Faturalar", icon: "IconDocument" },
-  { href: "/finans/fisler", label: "Fişler", icon: "IconClipboard2" },
+  { href: "/finans/gider", label: "Gider", icon: "IconDocument" },
   { href: "/finans/masraf-talebi", label: "Masraf Talebi", icon: "IconClipboard2" },
   { href: "/finans/odemeler", label: "Ödemeler", icon: "IconCoin" },
   { href: "/finans/banka-hareketleri", label: "Banka Hareketleri", icon: "IconActivity" },
