@@ -24,7 +24,7 @@ export default function FinansGirisPage() {
       });
       const data = await res.json();
       if (data.ok) {
-        router.push("/finans/hareketler");
+        router.push("/finans");
       } else {
         setError(data.error || "Giriş başarısız");
       }

@@ -10,18 +10,14 @@ const FINANS_ALLOWED_PATHS = [
   "/finans/hareketler",
   "/finans/gider",
   "/finans/masraf-talebi",
-  "/finans/odemeler",
-  "/finans/banka-hareketleri",
-  "/finans/belgeler",
-  "/kar-zarar",
-  "/mutabakat",
-  "/butce",
-  "/cari-tedarikci",
-  "/hakedis",
   "/yetkisiz",
 ];
 
 function isAllowedForFinans(pathname: string): boolean {
+  // "/finans" tam eşleşme — dashboard kökü. Prefix listesine eklenirse
+  // "/finans/odemeler" gibi kaldırılmış sayfaları da yanlışlıkla
+  // startsWith ile tekrar açardı, o yüzden ayrı kontrol ediliyor.
+  if (pathname === "/finans") return true;
   return FINANS_ALLOWED_PATHS.some((p) => pathname.startsWith(p));
 }
 
@@ -122,7 +118,7 @@ export function proxy(request: NextRequest) {
     if (sessionId) {
       const role = request.cookies.get("opsdesk_role")?.value || "";
       const url = request.nextUrl.clone();
-      url.pathname = FINANS_ONLY_ROLES.has(role) ? "/finans/hareketler" : role === "personel" ? "/giris-kontrol" : "/";
+      url.pathname = FINANS_ONLY_ROLES.has(role) ? "/finans" : role === "personel" ? "/giris-kontrol" : "/";
       return NextResponse.redirect(url);
     }
     return NextResponse.next();
@@ -151,7 +147,7 @@ export function proxy(request: NextRequest) {
   // sayfalarına erişebilir (bkz. /finans-giris) ───────────────────────────────
   if (FINANS_ONLY_ROLES.has(role) && !isAllowedForFinans(pathname)) {
     const url = request.nextUrl.clone();
-    url.pathname = "/finans/hareketler";
+    url.pathname = "/finans";
     return NextResponse.redirect(url);
   }
 

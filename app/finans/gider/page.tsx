@@ -62,6 +62,9 @@ export default function GiderPage() {
     fetch("/api/cari-tedarikci?limit=500").then(r => r.json()).then(d => { if (d.ok) setCariler(d.data); }).catch(() => {});
     fetch("/api/vehicles?limit=500").then(r => r.json()).then(d => { if (d.ok) setVehicles(d.data); }).catch(() => {});
     fetch("/api/companies?limit=500").then(r => r.json()).then(d => { if (d.ok) setCompanies(d.data); }).catch(() => {});
+    // Dashboard'daki kategori kartından gelen ?kategori_id= ile ön-filtre
+    const kid = new URLSearchParams(window.location.search).get("kategori_id");
+    if (kid) setFilterKategori(kid);
   }, []);
 
   useEffect(() => { load(); }, [filterKategori, filterTip, filterDurum]); // eslint-disable-line react-hooks/exhaustive-deps

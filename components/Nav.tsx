@@ -41,20 +41,22 @@ const NAV_PERMISSION_BY_HREF_FOR_BOTTOM_NAV: Record<string, string> = {
 // görür (operasyonel sayfalar hariç). Diğer sayfalara doğrudan URL ile
 // gidilirse buraya geri yönlendirilir (bkz. proxy.ts — asıl uygulama orada).
 const FINANS_ONLY_ROLES = ["finans", "finans_yetkili"];
+// Basit düzen (2026-08 kararı): sadece Hareketler + Gider + Masraf Talebi.
+// Ödemeler/Banka Hareketleri/Belgeler/Kâr-Zarar/Mutabakat/Bütçe/Cari/Hakediş
+// bilinçli olarak gizlendi — veri/sayfalar duruyor, sadece nav'dan çıktı.
 const FINANS_CORE_ITEMS = [
+  { href: "/finans", label: "Özet", icon: "IconHome" },
   { href: "/finans/hareketler", label: "Hareketler", icon: "IconActivity" },
   { href: "/finans/gider", label: "Gider", icon: "IconDocument" },
   { href: "/finans/masraf-talebi", label: "Masraf Talebi", icon: "IconClipboard2" },
-  { href: "/finans/odemeler", label: "Ödemeler", icon: "IconCoin" },
-  { href: "/finans/banka-hareketleri", label: "Banka Hareketleri", icon: "IconActivity" },
-  { href: "/finans/belgeler", label: "Finans Belgeleri", icon: "IconDocument" },
-  { href: "/kar-zarar", label: "Kâr-Zarar", icon: "IconBarChart" },
-  { href: "/mutabakat", label: "Firma Mutabakat", icon: "IconCoin" },
-  { href: "/butce", label: "Bütçe & Maliyet", icon: "IconCoin" },
-  { href: "/cari-tedarikci", label: "Cari & Tedarikçi", icon: "IconBuilding" },
-  { href: "/hakedis", label: "Hakediş", icon: "IconCoin" },
 ];
 const FINANS_ALLOWED_HREFS = FINANS_CORE_ITEMS.map(i => i.href);
+// "/finans" tam eşleşme olmalı — startsWith ile prefix eşleştirilirse
+// "/finans/odemeler" gibi kaldırılmış sayfaları da yanlışlıkla açardı.
+function isAllowedForFinansHref(pathname: string): boolean {
+  if (pathname === "/finans") return true;
+  return FINANS_ALLOWED_HREFS.filter(h => h !== "/finans").some(h => pathname.startsWith(h));
+}
 
 // ── Nav config (DB'den fetch edilir, bu sabit sadece fetch başarısız
 // olursa fallback olarak kullanılır — nav hiçbir durumda boş kalmaz) ──
@@ -417,8 +419,8 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
   // gerçek biçimde uygular (nav gizlemek tek başına yeterli değil).
   useEffect(() => {
     if (!user) return;
-    if (isFinansOnly && !FINANS_ALLOWED_HREFS.some(h => pathname.startsWith(h))) {
-      router.replace(FINANS_ALLOWED_HREFS[0]);
+    if (isFinansOnly && !isAllowedForFinansHref(pathname)) {
+      router.replace("/finans");
     }
   }, [user, isFinansOnly, pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
