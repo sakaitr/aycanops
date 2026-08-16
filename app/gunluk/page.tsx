@@ -6,6 +6,7 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import Badge from "@/components/Badge";
 import { isAtLeastLevel } from "@/lib/permissions";
+import { todayIstanbul } from "@/lib/time";
 
 const STATUS_OPTIONS = [
   { value: "", label: "Tümü" },
@@ -18,7 +19,7 @@ const STATUS_OPTIONS = [
 const DAYS_TR = ["Paz", "Pzt", "Sal", "Çrş", "Per", "Cum", "Cmt"];
 const MONTHS_TR = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
 
-function todayStr() { return new Date().toISOString().split("T")[0]; }
+function todayStr() { return todayIstanbul(); }
 function nDaysAgo(n: number) {
   const d = new Date(); d.setDate(d.getDate() - n);
   return d.toISOString().split("T")[0];

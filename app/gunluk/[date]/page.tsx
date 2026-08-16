@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import Badge from "@/components/Badge";
+import { todayIstanbul } from "@/lib/time";
 
 const DAYS_TR = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"];
 const MONTHS_TR = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
@@ -60,7 +61,7 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
   const [checkinSaving, setCheckinSaving] = useState(false);
   const [checkinError, setCheckinError] = useState<string | null>(null);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayIstanbul();
   const isOwnWorklog = !targetUserId || targetUserId === user?.id;
   const isEditable = isOwnWorklog && (!worklog || worklog.status_code === "draft" || worklog.status_code === "returned");
   // Check-in kilidi sadece BUGÜN ve kendi günlüğün için geçerli — geçmiş
