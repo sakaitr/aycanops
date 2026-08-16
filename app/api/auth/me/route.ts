@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, clearSessionCookie, clearRoleCookie, clearLandingCookie } from "@/lib/auth";
+import { requireUser, clearSessionCookie, clearRoleCookie } from "@/lib/auth";
 import { getEffectivePermissions, getHierarchyLevel } from "@/lib/permissions";
 
 export async function GET() {
@@ -13,7 +13,6 @@ export async function GET() {
       // httpOnly olduğundan yalnızca sunucu temizleyebilir.
       await clearSessionCookie();
       await clearRoleCookie();
-      await clearLandingCookie();
       return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
     }
     // permissions: rolün DB'deki güncel izin listesi — client tarafında hasPermission()
