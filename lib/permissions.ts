@@ -81,6 +81,7 @@ export const PERMISSIONS = {
   finans_gider: ["read", "create", "update", "delete"],
   musteriler: ["read", "create", "update", "delete"],
   cari_tedarikci: ["read", "create", "update", "delete"],
+  gunluk_soru: ["read", "create", "update", "delete"],
   nav_config: ["update"],
   ziyaretci_kaydi: ["read", "create", "update"],
 } as const;

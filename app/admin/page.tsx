@@ -114,6 +114,22 @@ export default function AdminPage() {
       color: "border-cyan-800/50 hover:border-cyan-700",
     },
     {
+      href: "/admin/gunluk-sorulari",
+      icon: "📋",
+      title: "Günlük Soruları",
+      desc: "İşe başlama check-in'inde sorulacak sorular ve cevap tipleri",
+      stat: "",
+      color: "border-teal-800/50 hover:border-teal-700",
+    },
+    {
+      href: "/admin/is-giris-qr",
+      icon: "📱",
+      title: "İşe Başlama QR",
+      desc: "Ofis girişine asılacak, günlük check-in'i açan QR poster",
+      stat: "",
+      color: "border-sky-800/50 hover:border-sky-700",
+    },
+    {
       href: "/admin/uyarilar",
       icon: "⚠️",
       title: "Uyarılar",
