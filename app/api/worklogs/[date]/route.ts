@@ -49,7 +49,18 @@ export async function GET(
       .prepare("SELECT * FROM worklog_items WHERE worklog_id = ?")
       .all(worklog.id);
 
-    return NextResponse.json({ ok: true, data: { ...worklog, items } });
+    const cevapRows = await db.prepare(
+      `SELECT c.soru_id, c.cevap_json, c.detay_cevap, s.label, s.tip
+       FROM gunluk_cevap c JOIN gunluk_soru s ON s.id = c.soru_id
+       WHERE c.worklog_id = ?`
+    ).all(worklog.id) as { soru_id: string; cevap_json: string; detay_cevap: string | null; label: string; tip: string }[];
+    const cevaplar = cevapRows.map(c => ({
+      soru_id: c.soru_id, label: c.label, tip: c.tip,
+      value: JSON.parse(c.cevap_json),
+      detay: c.detay_cevap ? JSON.parse(c.detay_cevap) : null,
+    }));
+
+    return NextResponse.json({ ok: true, data: { ...worklog, items, cevaplar } });
   } catch (error) {
     console.error("Worklog detail error:", error);
     return NextResponse.json(
@@ -229,6 +240,7 @@ export async function DELETE(
       return NextResponse.json({ ok: false, error: "Yalnızca taslak günlükler silinebilir" }, { status: 400 });
 
     await db.prepare("DELETE FROM worklog_items WHERE worklog_id = ?").run(worklog.id);
+    await db.prepare("DELETE FROM gunluk_cevap WHERE worklog_id = ?").run(worklog.id);
     await db.prepare("DELETE FROM worklogs WHERE id = ?").run(worklog.id);
 
     await logAudit({
