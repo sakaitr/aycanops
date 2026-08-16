@@ -30,6 +30,7 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); else router.replace("/login"); }).catch(() => { router.replace("/login"); });
     fetch("/api/companies").then(r => r.json()).then(d => { if (d.ok) setCompanies(d.data); });
+    fetch("/api/gunluk-sorulari").then(r => r.json()).then(d => { if (d.ok) setSorular(d.data); }).finally(() => setSorularLoading(false));
   }, []);
   const [worklog, setWorklog] = useState<any>(null);
   const [rows, setRows] = useState<Row[]>([]);
@@ -51,9 +52,21 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
   const [savingIssue, setSavingIssue] = useState(false);
   const newRowRef = useRef<HTMLInputElement>(null);
 
+  // Güne Başla — işe başlama check-in soruları
+  const [sorular, setSorular] = useState<any[]>([]);
+  const [sorularLoading, setSorularLoading] = useState(true);
+  const [cevapForm, setCevapForm] = useState<Record<string, any>>({});
+  const [detayForm, setDetayForm] = useState<Record<string, any>>({});
+  const [checkinSaving, setCheckinSaving] = useState(false);
+  const [checkinError, setCheckinError] = useState<string | null>(null);
+
   const today = new Date().toISOString().split("T")[0];
   const isOwnWorklog = !targetUserId || targetUserId === user?.id;
   const isEditable = isOwnWorklog && (!worklog || worklog.status_code === "draft" || worklog.status_code === "returned");
+  // Check-in kilidi sadece BUGÜN ve kendi günlüğün için geçerli — geçmiş
+  // (bu özellikten önce oluşmuş) günlükler checkin_at'siz kalır, onları
+  // düzenlerken bu kilide takılmamalı.
+  const checkinGateActive = isOwnWorklog && date === today && !worklog?.checkin_at;
 
   function isLateHour() { return new Date().getHours() >= 22; }
 
@@ -72,10 +85,18 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
         })));
         setDescription(d.data.summary || "");
         setDescSaved(d.data.summary || "");
+        const prefill: Record<string, any> = {};
+        const detayPrefill: Record<string, any> = {};
+        for (const c of d.data.cevaplar || []) {
+          prefill[c.soru_id] = c.value;
+          if (c.detay != null) detayPrefill[c.soru_id] = c.detay;
+        }
+        setCevapForm(prefill);
+        setDetayForm(detayPrefill);
         loadNotes(d.data.id);
       } else {
         setWorklog(null); setRows([]); setDescription(""); setDescSaved("");
-        setVisits([]); setIssues([]);
+        setVisits([]); setIssues([]); setCevapForm({}); setDetayForm({});
       }
     } finally { setLoading(false); }
   }
@@ -96,6 +117,43 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
       }
     } catch {}
     return false;
+  }
+
+  function updateCevap(soruId: string, value: any) {
+    setCevapForm(f => ({ ...f, [soruId]: value }));
+  }
+
+  function toggleChecklistOption(soruId: string, option: string) {
+    setCevapForm(f => {
+      const current: string[] = Array.isArray(f[soruId]) ? f[soruId] : [];
+      const next = current.includes(option) ? current.filter(o => o !== option) : [...current, option];
+      return { ...f, [soruId]: next };
+    });
+  }
+
+  function updateDetay(soruId: string, value: any) {
+    setDetayForm(f => ({ ...f, [soruId]: value }));
+  }
+
+  function detayTetikleniyor(value: any, tetikleyici: string | null | undefined): boolean {
+    if (!tetikleyici) return false;
+    if (Array.isArray(value)) return value.includes(tetikleyici);
+    return String(value) === tetikleyici;
+  }
+
+  async function saveCevaplar() {
+    setCheckinError(null);
+    setCheckinSaving(true);
+    try {
+      const cevaplar = sorular.map(s => ({ soru_id: s.id, value: cevapForm[s.id] ?? null, detay: detayForm[s.id] ?? null }));
+      const res = await fetch(`/api/worklogs/${date}/cevaplar`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cevaplar }),
+      });
+      const d = await res.json();
+      if (!d.ok) { setCheckinError(typeof d.error === "string" ? d.error : "Cevaplar kaydedilemedi"); return; }
+      await loadWorklog();
+    } finally { setCheckinSaving(false); }
   }
 
   function addRow() {
@@ -254,10 +312,117 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
         ) : (
           <div className="space-y-4">
 
+            {/* Güne Başla — check-in soruları (sadece bugün, check-in yapılmamışsa) */}
+            {checkinGateActive && (
+              <div className="bg-zinc-900 border border-blue-800/60 rounded-xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-zinc-800 bg-blue-950/30">
+                  <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Güne Başla</span>
+                  <p className="text-zinc-500 text-xs mt-0.5">Sorular cevaplanmadan günlüğün geri kalanına geçilemez.</p>
+                </div>
+                <div className="p-4 space-y-4">
+                  {sorularLoading ? (
+                    <p className="text-zinc-600 text-sm">Yükleniyor...</p>
+                  ) : sorular.length === 0 ? (
+                    <p className="text-zinc-600 text-sm">Tanımlı soru yok — devam edebilirsin.</p>
+                  ) : (
+                    sorular.map((s: any, idx: number) => {
+                      const prevBolum = idx > 0 ? sorular[idx - 1].bolum_baslik : null;
+                      const showBolum = s.bolum_baslik && s.bolum_baslik !== prevBolum;
+                      const detayAcik = s.detay_label && detayTetikleniyor(cevapForm[s.id], s.detay_tetikleyici);
+                      return (
+                        <div key={s.id}>
+                          {showBolum && (
+                            <p className="text-[11px] font-semibold text-blue-400/80 uppercase tracking-widest pt-2 pb-1 first:pt-0">
+                              {s.bolum_baslik}
+                            </p>
+                          )}
+                          <label className="block text-sm text-zinc-300 mb-1.5">
+                            {s.label}{s.zorunlu && <span className="text-red-400"> *</span>}
+                          </label>
+                          {s.tip === "evet_hayir" && (
+                            <div className="flex gap-2">
+                              <button onClick={() => updateCevap(s.id, true)}
+                                className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${cevapForm[s.id] === true ? "bg-emerald-700 border-emerald-600 text-white" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500"}`}>
+                                Evet
+                              </button>
+                              <button onClick={() => updateCevap(s.id, false)}
+                                className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${cevapForm[s.id] === false ? "bg-red-800 border-red-700 text-white" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500"}`}>
+                                Hayır
+                              </button>
+                            </div>
+                          )}
+                          {s.tip === "metin" && (
+                            <input value={cevapForm[s.id] || ""} onChange={e => updateCevap(s.id, e.target.value)}
+                              className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500" />
+                          )}
+                          {s.tip === "uzun_metin" && (
+                            <textarea value={cevapForm[s.id] || ""} onChange={e => updateCevap(s.id, e.target.value)} rows={3}
+                              className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 resize-none" />
+                          )}
+                          {s.tip === "checklist" && (
+                            <div className="space-y-1.5">
+                              {(s.secenekler || []).map((opt: string) => {
+                                const checked = Array.isArray(cevapForm[s.id]) && cevapForm[s.id].includes(opt);
+                                return (
+                                  <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={checked} onChange={() => toggleChecklistOption(s.id, opt)} className="accent-white" />
+                                    <span className="text-sm text-zinc-300">{opt}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {s.tip === "secim" && (
+                            <select value={cevapForm[s.id] || ""} onChange={e => updateCevap(s.id, e.target.value)}
+                              className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500">
+                              <option value="">— Seçin —</option>
+                              {(s.secenekler || []).map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                            </select>
+                          )}
+                          {detayAcik && (
+                            <div className="mt-2 pl-3 border-l-2 border-zinc-700">
+                              <label className="block text-xs text-zinc-400 mb-1">{s.detay_label}</label>
+                              {s.detay_tip === "metin" && (
+                                <input value={detayForm[s.id] || ""} onChange={e => updateDetay(s.id, e.target.value)}
+                                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500" />
+                              )}
+                              {s.detay_tip === "uzun_metin" && (
+                                <textarea value={detayForm[s.id] || ""} onChange={e => updateDetay(s.id, e.target.value)} rows={2}
+                                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 resize-none" />
+                              )}
+                              {s.detay_tip === "secim" && (
+                                <select value={detayForm[s.id] || ""} onChange={e => updateDetay(s.id, e.target.value)}
+                                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500">
+                                  <option value="">— Seçin —</option>
+                                  {(s.detay_secenekler || []).map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                  {checkinError && <p className="text-red-400 text-sm bg-red-950 border border-red-800 rounded-lg px-3 py-2">{checkinError}</p>}
+                  <button onClick={saveCevaplar} disabled={checkinSaving || sorularLoading}
+                    className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-2.5 rounded-lg disabled:opacity-50 transition-colors">
+                    {checkinSaving ? "Kaydediliyor..." : "Kaydet ve Devam Et"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!checkinGateActive && <>
+            {worklog?.checkin_at && (
+              <p className="text-xs text-zinc-500">
+                Güne başlandı: {new Date(worklog.checkin_at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+              </p>
+            )}
+
             {/* Rows table */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-                <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Sabah Ziyaretleri / Yapılan İşler</span>
+                <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Planım / Yapılan İşler</span>
                 {isEditable && (
                   <button onClick={addRow}
                     className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors text-xl font-light leading-none"
@@ -324,7 +489,8 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
               )}
             </div>
 
-            {/* Description */}
+            {/* Gün Sonu Kapaması */}
+            <p className="text-[11px] font-semibold text-zinc-600 uppercase tracking-widest pt-2">Gün Sonu Kapaması</p>
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
               <div className="px-4 py-3 border-b border-zinc-800">
                 <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Açıklama / Sorun Notu</span>
@@ -447,8 +613,10 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
               </div>
             )}
 
+            </>}
+
             {/* Manager return note */}
-            {worklog?.manager_note && (
+            {!checkinGateActive && worklog?.manager_note && (
               <div className="bg-orange-950/50 border border-orange-800/50 rounded-xl px-4 py-3">
                 <p className="text-xs font-semibold text-orange-400 mb-1">İade Notu</p>
                 <p className="text-orange-200 text-sm">{worklog.manager_note}</p>
@@ -456,7 +624,7 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
             )}
 
             {/* Workflow */}
-            {worklog && (
+            {!checkinGateActive && worklog && (
               <div className="flex flex-wrap gap-2 pt-1">
                 {worklog.status_code === "draft" && (
                   <button
