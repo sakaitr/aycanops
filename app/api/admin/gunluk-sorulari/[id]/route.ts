@@ -25,6 +25,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (d.detay_label && d.detay_tetikleyici === undefined) {
       return NextResponse.json({ ok: false, error: "Takip sorusu için tetikleyici cevap seçilmeli" }, { status: 400 });
     }
+    if (d.detay_label && d.detay_tip === undefined) {
+      return NextResponse.json({ ok: false, error: "Takip sorusu için cevap tipi seçilmeli" }, { status: 400 });
+    }
 
     const db = getDb();
     const existing = await db.prepare("SELECT id FROM gunluk_soru WHERE id = ?").get(id);

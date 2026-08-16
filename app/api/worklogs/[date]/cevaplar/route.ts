@@ -30,6 +30,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dat
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
 
     const { date } = await params;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return NextResponse.json({ ok: false, error: "YYYY-MM-DD formatı bekleniyor" }, { status: 400 });
+    }
     const raw = await req.json();
     const parsed = gunlukCevapSubmitSchema.safeParse(raw);
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
@@ -39,6 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dat
     const sorular = await db.prepare(
       "SELECT id, zorunlu, detay_label, detay_tetikleyici FROM gunluk_soru WHERE is_active = 1"
     ).all() as { id: string; zorunlu: number; detay_label: string | null; detay_tetikleyici: string | null }[];
+    const soruById = new Map(sorular.map(s => [s.id, s]));
 
     const answerBySoruId = new Map(cevaplar.map(c => [c.soru_id, c.value]));
     const detayBySoruId = new Map(cevaplar.map(c => [c.soru_id, c.detay]));
@@ -70,11 +74,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dat
     }
 
     for (const c of cevaplar) {
+      const soru = soruById.get(c.soru_id);
+      const detayGecerli = soru ? detayTetikleniyor(c.value, soru.detay_tetikleyici) : false;
+      const detayCevap = detayGecerli && c.detay != null ? JSON.stringify(c.detay) : null;
       await db.prepare(
         `INSERT INTO gunluk_cevap (id, worklog_id, soru_id, cevap_json, detay_cevap, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE cevap_json = VALUES(cevap_json), detay_cevap = VALUES(detay_cevap), updated_at = VALUES(updated_at)`
-      ).run(uuidv4(), worklog.id, c.soru_id, JSON.stringify(c.value), c.detay != null ? JSON.stringify(c.detay) : null, now, now);
+      ).run(uuidv4(), worklog.id, c.soru_id, JSON.stringify(c.value), detayCevap, now, now);
     }
 
     if (!worklog.checkin_at) {

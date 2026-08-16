@@ -54,6 +54,9 @@ export async function POST(req: NextRequest) {
     if (d.detay_label && !d.detay_tetikleyici) {
       return NextResponse.json({ ok: false, error: "Takip sorusu için tetikleyici cevap seçilmeli" }, { status: 400 });
     }
+    if (d.detay_label && !d.detay_tip) {
+      return NextResponse.json({ ok: false, error: "Takip sorusu için cevap tipi seçilmeli" }, { status: 400 });
+    }
 
     const db = getDb();
     const id = uuidv4();

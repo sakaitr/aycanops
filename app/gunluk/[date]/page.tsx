@@ -382,7 +382,7 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
                           {detayAcik && (
                             <div className="mt-2 pl-3 border-l-2 border-zinc-700">
                               <label className="block text-xs text-zinc-400 mb-1">{s.detay_label}</label>
-                              {s.detay_tip === "metin" && (
+                              {s.detay_tip !== "uzun_metin" && s.detay_tip !== "secim" && (
                                 <input value={detayForm[s.id] || ""} onChange={e => updateDetay(s.id, e.target.value)}
                                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500" />
                               )}

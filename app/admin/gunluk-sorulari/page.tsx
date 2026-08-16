@@ -116,6 +116,10 @@ export default function GunlukSorulariPage() {
       setSaveError("Takip sorusu için tetikleyici cevap seçilmeli");
       return;
     }
+    if (detayVarMi && !form.detay_tip) {
+      setSaveError("Takip sorusu için cevap tipi seçilmeli");
+      return;
+    }
     if (detayVarMi && form.detay_tip === "secim" && form.detay_secenekler.length === 0) {
       setSaveError("Takip sorusu seçim tipi için en az bir seçenek eklenmeli");
       return;
