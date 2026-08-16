@@ -222,6 +222,14 @@ export const worklogUpdateSchema = z.object({
   status_code: z.string().max(50).optional(),
 });
 
+export const gunlukCevapSubmitSchema = z.object({
+  cevaplar: z.array(z.object({
+    soru_id: z.string().min(1),
+    value: z.union([z.boolean(), z.string(), z.array(z.string())]).nullable(),
+    detay: z.union([z.string(), z.array(z.string())]).nullable().optional(),
+  })),
+});
+
 export const worklogItemCreateSchema = z.object({
   title: shortStr(200),
   category_id: z.string().optional().nullable(),
@@ -696,6 +704,20 @@ export const cariTedarikciCreateSchema = z.object({
 export const cariTedarikciUpdateSchema = cariTedarikciCreateSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
+
+// ─── Günlük Soru (işe başlama check-in soruları) ────────────────────────
+export const gunlukSoruSchema = z.object({
+  label: shortStr(500),
+  tip: z.enum(["evet_hayir", "metin", "uzun_metin", "checklist", "secim"]),
+  secenekler: z.array(z.string().max(200)).optional().nullable(),
+  zorunlu: z.boolean().optional(),
+  bolum_baslik: z.string().max(200).optional().nullable(),
+  detay_label: shortStr(500).optional().nullable(),
+  detay_tip: z.enum(["metin", "uzun_metin", "secim"]).optional().nullable(),
+  detay_secenekler: z.array(z.string().max(200)).optional().nullable(),
+  detay_tetikleyici: z.string().max(200).optional().nullable(),
+});
+export const gunlukSoruUpdateSchema = gunlukSoruSchema.partial();
 
 // ─── Finans: Fiş ─────────────────────────────────────────────────────────
 export const finansFisSchema = z.object({
