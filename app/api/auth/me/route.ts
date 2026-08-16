@@ -1,11 +1,21 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireUser, clearSessionCookie, clearRoleCookie, clearLandingCookie } from "@/lib/auth";
 import { getEffectivePermissions, getHierarchyLevel } from "@/lib/permissions";
 
 export async function GET() {
   try {
     const user = await requireUser();
-    if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!user) {
+      // Bayat/geçersiz session cookie'si tarayıcıda kalırsa (süre doldu, satır
+      // silindi vb.), proxy.ts sırf cookie var diye /login'den uzaklaştırır —
+      // buradan 401 dönüp cookie'yi temizlemezsek her sayfa yükleniş
+      // /login <-> bu sayfa arasında sonsuz döngüye girer. Cookie'ler
+      // httpOnly olduğundan yalnızca sunucu temizleyebilir.
+      await clearSessionCookie();
+      await clearRoleCookie();
+      await clearLandingCookie();
+      return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    }
     // permissions: rolün DB'deki güncel izin listesi — client tarafında hasPermission()
     // çağrıları (ör. Nav.tsx) bunu kullanınca, admin panelden yapılan izin değişiklikleri
     // client bundle'ının statik varsayılanlarına değil, gerçek/güncel veriye göre çalışır.
