@@ -71,8 +71,10 @@ export default function GunlukListPage() {
   const [summary, setSummary] = useState<any>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [showNotSubmitted, setShowNotSubmitted] = useState(false);
-  const [tab, setTab] = useState<"liste" | "takvim">("liste");
+  const [tab, setTab] = useState<"liste" | "takvim" | "rapor">("liste");
   const [calWeek, setCalWeek] = useState(getMonday());
+  const [rapor, setRapor] = useState<any>(null);
+  const [raporLoading, setRaporLoading] = useState(false);
 
   const today = todayStr();
   const isManager = !!user && isAtLeastLevel(user.hierarchyLevel ?? -1, "yonetici");
@@ -106,8 +108,21 @@ export default function GunlukListPage() {
     } finally { setSummaryLoading(false); }
   }, []);
 
+  const loadRapor = useCallback(async () => {
+    setRaporLoading(true);
+    try {
+      const p = new URLSearchParams();
+      if (dateFrom) p.set("date_from", dateFrom);
+      if (dateTo) p.set("date_to", dateTo);
+      const res = await fetch(`/api/reports/gunluk-sorular?${p}`);
+      const d = await res.json();
+      if (d.ok) setRapor(d.data);
+    } finally { setRaporLoading(false); }
+  }, [dateFrom, dateTo]);
+
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { if (isManager) loadSummary(); }, [isManager, loadSummary]);
+  useEffect(() => { if (isManager && tab === "rapor") loadRapor(); }, [isManager, tab, loadRapor]);
 
   async function deleteWorklog(w: any) {
     if (!confirm(`${w.user_name ? `"${w.user_name}" kullanıcısının ` : ""}${formatDate(w.work_date)} günlüğü silinsin mi?`)) return;
@@ -189,6 +204,12 @@ export default function GunlukListPage() {
                 <button onClick={() => { setTab("takvim"); setDateFrom(calWeek); setDateTo(addDays(calWeek, 6)); }}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === "takvim" ? "bg-white text-zinc-950" : "text-zinc-400 hover:text-white"}`}>
                   Takvim
+                </button>
+              )}
+              {isManager && (
+                <button onClick={() => setTab("rapor")}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === "rapor" ? "bg-white text-zinc-950" : "text-zinc-400 hover:text-white"}`}>
+                  Rapor
                 </button>
               )}
             </div>
@@ -500,6 +521,58 @@ export default function GunlukListPage() {
             </div>
           );
         })()}
+
+        {tab === "rapor" && isManager && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2 items-center">
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                className="bg-zinc-900 border border-zinc-800 text-white text-sm px-3 py-1.5 rounded-lg focus:outline-none focus:border-zinc-600" />
+              <span className="text-zinc-600 text-sm">—</span>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                className="bg-zinc-900 border border-zinc-800 text-white text-sm px-3 py-1.5 rounded-lg focus:outline-none focus:border-zinc-600" />
+              <button onClick={loadRapor} disabled={raporLoading}
+                className="bg-zinc-800 text-white text-sm font-medium px-3 py-1.5 rounded-lg hover:bg-zinc-700 disabled:opacity-50 transition-colors">
+                {raporLoading ? "..." : "Yenile"}
+              </button>
+            </div>
+
+            {raporLoading ? (
+              <div className="py-16 text-center text-zinc-600 text-sm">Yükleniyor...</div>
+            ) : !rapor || rapor.sorular.length === 0 ? (
+              <div className="py-16 text-center text-zinc-600 text-sm">Bu aralıkta veri yok veya soru tanımlı değil</div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-zinc-500 text-sm">{rapor.toplamGunlukSayisi} günlük kaydı bu aralıkta</p>
+                {rapor.sorular.map((s: any) => (
+                  <div key={s.soru_id} className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-white text-sm font-semibold">{s.label}</p>
+                      <span className="text-xs text-zinc-500">{s.cevaplanan}/{s.toplam} cevaplandı</span>
+                    </div>
+                    {s.dagilim.length > 0 && (
+                      <div className="space-y-1.5">
+                        {s.dagilim.map((d: any) => {
+                          const pct = s.cevaplanan > 0 ? Math.round((d.adet / s.cevaplanan) * 100) : 0;
+                          return (
+                            <div key={d.label}>
+                              <div className="flex items-center justify-between text-xs mb-0.5">
+                                <span className="text-zinc-400">{d.label}</span>
+                                <span className="text-zinc-500 tabular-nums">{d.adet} · %{pct}</span>
+                              </div>
+                              <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                                <div className="h-full bg-zinc-500 rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
       </main>
     </div>
