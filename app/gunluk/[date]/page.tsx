@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, use, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -13,6 +13,13 @@ const MONTHS_TR = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temm
 function formatDateFull(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
   return `${DAYS_TR[d.getDay()]}, ${d.getDate()} ${MONTHS_TR[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function isEmptyVal(value: any): boolean {
+  if (value === null || value === undefined) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "string") return value.trim() === "";
+  return false;
 }
 
 interface Row {
@@ -36,9 +43,7 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
   const [worklog, setWorklog] = useState<any>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [description, setDescription] = useState("");
-  const [descSaved, setDescSaved] = useState("");
   const [loading, setLoading] = useState(true);
-  const [savingDesc, setSavingDesc] = useState(false);
   const [workflowUpdating, setWorkflowUpdating] = useState(false);
   const [returnNote, setReturnNote] = useState("");
   const [showReturn, setShowReturn] = useState(false);
@@ -53,21 +58,20 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
   const [savingIssue, setSavingIssue] = useState(false);
   const newRowRef = useRef<HTMLInputElement>(null);
 
-  // Güne Başla — işe başlama check-in soruları
+  // İşe başlama check-in soruları — artık ayrı bir aşama değil, formun bir parçası
   const [sorular, setSorular] = useState<any[]>([]);
   const [sorularLoading, setSorularLoading] = useState(true);
   const [cevapForm, setCevapForm] = useState<Record<string, any>>({});
   const [detayForm, setDetayForm] = useState<Record<string, any>>({});
-  const [checkinSaving, setCheckinSaving] = useState(false);
-  const [checkinError, setCheckinError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const today = todayIstanbul();
   const isOwnWorklog = !targetUserId || targetUserId === user?.id;
   const isEditable = isOwnWorklog && (!worklog || worklog.status_code === "draft" || worklog.status_code === "returned");
-  // Check-in kilidi sadece BUGÜN ve kendi günlüğün için geçerli — geçmiş
-  // (bu özellikten önce oluşmuş) günlükler checkin_at'siz kalır, onları
-  // düzenlerken bu kilide takılmamalı.
-  const checkinGateActive = isOwnWorklog && date === today && !worklog?.checkin_at;
+  // Check-in soru bölümü sadece BUGÜN, kendi günlüğünde ve henüz check-in
+  // yapılmamışsa görünür — ama artık formun geri kalanını GİZLEMİYOR, aynı
+  // sayfada birlikte doldurulup tek "Gönder" ile bitiriliyor.
+  const showCheckin = isOwnWorklog && date === today && !worklog?.checkin_at && sorular.length > 0;
 
   function isLateHour() { return new Date().getHours() >= 22; }
 
@@ -85,7 +89,6 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
           id: item.id, title: item.title, isEditing: false, isSaving: false,
         })));
         setDescription(d.data.summary || "");
-        setDescSaved(d.data.summary || "");
         const prefill: Record<string, any> = {};
         const detayPrefill: Record<string, any> = {};
         for (const c of d.data.cevaplar || []) {
@@ -96,14 +99,14 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
         setDetayForm(detayPrefill);
         loadNotes(d.data.id);
       } else {
-        setWorklog(null); setRows([]); setDescription(""); setDescSaved("");
+        setWorklog(null); setRows([]); setDescription("");
         setVisits([]); setIssues([]); setCevapForm({}); setDetayForm({});
       }
     } finally { setLoading(false); }
   }
 
-  async function ensureWorklog(): Promise<boolean> {
-    if (worklog) return true;
+  async function ensureWorklog(): Promise<any | null> {
+    if (worklog) return worklog;
     try {
       const res = await fetch("/api/worklogs", {
         method: "POST",
@@ -114,10 +117,10 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
       if (d.ok) {
         const r2 = await fetch(`/api/worklogs/${date}`);
         const d2 = await r2.json();
-        if (d2.ok) { setWorklog(d2.data); return true; }
+        if (d2.ok) { setWorklog(d2.data); return d2.data; }
       }
     } catch {}
-    return false;
+    return null;
   }
 
   function updateCevap(soruId: string, value: any) {
@@ -142,21 +145,6 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
     return String(value) === tetikleyici;
   }
 
-  async function saveCevaplar() {
-    setCheckinError(null);
-    setCheckinSaving(true);
-    try {
-      const cevaplar = sorular.map(s => ({ soru_id: s.id, value: cevapForm[s.id] ?? null, detay: detayForm[s.id] ?? null }));
-      const res = await fetch(`/api/worklogs/${date}/cevaplar`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cevaplar }),
-      });
-      const d = await res.json();
-      if (!d.ok) { setCheckinError(typeof d.error === "string" ? d.error : "Cevaplar kaydedilemedi"); return; }
-      await loadWorklog();
-    } finally { setCheckinSaving(false); }
-  }
-
   function addRow() {
     setRows(r => [...r, { id: null, title: "", isEditing: true, isSaving: false }]);
     setTimeout(() => newRowRef.current?.focus(), 30);
@@ -167,8 +155,8 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
     if (!trimmed) { setRows(r => r.filter((_, i) => i !== index)); return; }
     setRows(r => r.map((row, i) => i === index ? { ...row, isSaving: true } : row));
     try {
-      const ok = await ensureWorklog();
-      if (!ok) { setRows(r => r.filter((_, i) => i !== index)); return; }
+      const wl = await ensureWorklog();
+      if (!wl) { setRows(r => r.filter((_, i) => i !== index)); return; }
       const res = await fetch(`/api/worklogs/${date}/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -212,28 +200,32 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
   }
 
   async function addVisit() {
-    if (!newVisitCompany || !worklog) return;
+    if (!newVisitCompany) return;
     setSavingVisit(true);
     try {
+      const wl = await ensureWorklog();
+      if (!wl) return;
       await fetch("/api/worklog-notes", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "visit", worklog_id: worklog.id, company_id: newVisitCompany, note: newVisitNote }),
+        body: JSON.stringify({ type: "visit", worklog_id: wl.id, company_id: newVisitCompany, note: newVisitNote }),
       });
       setNewVisitCompany(""); setNewVisitNote("");
-      loadNotes(worklog.id);
+      loadNotes(wl.id);
     } finally { setSavingVisit(false); }
   }
 
   async function addIssue() {
-    if (!newIssue.trim() || !worklog) return;
+    if (!newIssue.trim()) return;
     setSavingIssue(true);
     try {
+      const wl = await ensureWorklog();
+      if (!wl) return;
       await fetch("/api/worklog-notes", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "issue", worklog_id: worklog.id, description: newIssue }),
+        body: JSON.stringify({ type: "issue", worklog_id: wl.id, description: newIssue }),
       });
       setNewIssue("");
-      loadNotes(worklog.id);
+      loadNotes(wl.id);
     } finally { setSavingIssue(false); }
   }
 
@@ -258,21 +250,42 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
     loadNotes(worklog.id);
   }
 
-  async function saveDescription() {
-    setSavingDesc(true);
+  // Tek "Gönder" — check-in cevapları (varsa), gün sonu notu ve onaya
+  // yollama artık tek adımda birleşiyor. Gün içinde geri dönüp ayrıca
+  // "kaydet" tıklamaya gerek yok, form bir kere doldurulup bitiriliyor.
+  function submitAll() {
+    setSubmitError(null);
+    if (showCheckin) {
+      const missing = sorular.filter((s: any) => s.zorunlu && isEmptyVal(cevapForm[s.id]));
+      if (missing.length > 0) { setSubmitError("Zorunlu soruları cevaplamadan gönderemezsiniz"); return; }
+    }
+    if (isLateHour()) { setShowLateWarning(true); return; }
+    doSubmit();
+  }
+
+  async function doSubmit() {
+    setWorkflowUpdating(true);
+    setSubmitError(null);
     try {
-      const ok = await ensureWorklog();
-      if (!ok) return;
-      await fetch(`/api/worklogs/${date}`, {
+      const wl = await ensureWorklog();
+      if (!wl) { setSubmitError("Günlük oluşturulamadı"); return; }
+      if (!wl.checkin_at && sorular.length > 0) {
+        const cevaplar = sorular.map((s: any) => ({ soru_id: s.id, value: cevapForm[s.id] ?? null, detay: detayForm[s.id] ?? null }));
+        const res = await fetch(`/api/worklogs/${date}/cevaplar`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cevaplar }),
+        });
+        const d = await res.json();
+        if (!d.ok) { setSubmitError(typeof d.error === "string" ? d.error : "Cevaplar kaydedilemedi"); return; }
+      }
+      const qs = targetUserId ? `?userId=${targetUserId}` : "";
+      await fetch(`/api/worklogs/${date}${qs}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ summary: description }),
+        body: JSON.stringify({ summary: description, status_code: "submitted" }),
       });
-      setDescSaved(description);
-      const r = await fetch(`/api/worklogs/${date}`);
-      const d = await r.json();
-      if (d.ok) setWorklog(d.data);
-    } finally { setSavingDesc(false); }
+      await loadWorklog();
+    } finally { setWorkflowUpdating(false); }
   }
 
   async function updateWorkflowStatus(fields: Record<string, any>) {
@@ -287,8 +300,6 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
       await loadWorklog();
     } finally { setWorkflowUpdating(false); }
   }
-
-  const descDirty = description !== descSaved;
 
   return (
     <div className="min-h-screen bg-zinc-950">
@@ -313,18 +324,16 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
         ) : (
           <div className="space-y-4">
 
-            {/* Güne Başla — check-in soruları (sadece bugün, check-in yapılmamışsa) */}
-            {checkinGateActive && (
+            {/* İşe başlama soruları — formun bir parçası, ayrı aşama değil */}
+            {showCheckin && (
               <div className="bg-zinc-900 border border-blue-800/60 rounded-xl overflow-hidden">
                 <div className="px-4 py-3 border-b border-zinc-800 bg-blue-950/30">
-                  <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Güne Başla</span>
-                  <p className="text-zinc-500 text-xs mt-0.5">Sorular cevaplanmadan günlüğün geri kalanına geçilemez.</p>
+                  <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">İşe Başlama Soruları</span>
+                  <p className="text-zinc-500 text-xs mt-0.5">Formun geri kalanıyla birlikte, tek seferde doldurup gönderin.</p>
                 </div>
                 <div className="p-4 space-y-4">
                   {sorularLoading ? (
                     <p className="text-zinc-600 text-sm">Yükleniyor...</p>
-                  ) : sorular.length === 0 ? (
-                    <p className="text-zinc-600 text-sm">Tanımlı soru yok — devam edebilirsin.</p>
                   ) : (
                     sorular.map((s: any, idx: number) => {
                       const prevBolum = idx > 0 ? sorular[idx - 1].bolum_baslik : null;
@@ -404,16 +413,10 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
                       );
                     })
                   )}
-                  {checkinError && <p className="text-red-400 text-sm bg-red-950 border border-red-800 rounded-lg px-3 py-2">{checkinError}</p>}
-                  <button onClick={saveCevaplar} disabled={checkinSaving || sorularLoading}
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-2.5 rounded-lg disabled:opacity-50 transition-colors">
-                    {checkinSaving ? "Kaydediliyor..." : "Kaydet ve Devam Et"}
-                  </button>
                 </div>
               </div>
             )}
 
-            {!checkinGateActive && <>
             {worklog?.checkin_at && (
               <p className="text-xs text-zinc-500">
                 Güne başlandı: {new Date(worklog.checkin_at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
@@ -490,31 +493,21 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
               )}
             </div>
 
-            {/* Gün Sonu Kapaması */}
-            <p className="text-[11px] font-semibold text-zinc-600 uppercase tracking-widest pt-2">Gün Sonu Kapaması</p>
+            {/* Gün Sonu Notu */}
+            <p className="text-[11px] font-semibold text-zinc-600 uppercase tracking-widest pt-2">Gün Sonu Notu</p>
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
               <div className="px-4 py-3 border-b border-zinc-800">
                 <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Açıklama / Sorun Notu</span>
               </div>
               <div className="p-4">
                 {isEditable ? (
-                  <>
-                    <textarea
-                      value={description}
-                      onChange={e => setDescription(e.target.value)}
-                      rows={3}
-                      placeholder="Sorun veya özel durum varsa yazın — boş bırakılırsa sorunsuz tamamlandı sayılır"
-                      className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 resize-none placeholder-zinc-600"
-                    />
-                    {descDirty && (
-                      <div className="flex justify-end mt-2">
-                        <button onClick={saveDescription} disabled={savingDesc}
-                          className="bg-white text-zinc-950 text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-zinc-200 disabled:opacity-50 transition-colors">
-                          {savingDesc ? "Kaydediliyor..." : "Kaydet"}
-                        </button>
-                      </div>
-                    )}
-                  </>
+                  <textarea
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    rows={3}
+                    placeholder="Sorun veya özel durum varsa yazın — boş bırakılırsa sorunsuz tamamlandı sayılır"
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 resize-none placeholder-zinc-600"
+                  />
                 ) : (
                   <p className={`text-sm ${description ? "text-zinc-300" : "text-emerald-400 italic"}`}>
                     {description || "✓ Sorunsuz tamamlandı"}
@@ -524,144 +517,128 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
             </div>
 
             {/* Ziyaret Edilen Firmalar */}
-            {worklog && (
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-zinc-800">
-                  <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Ziyaret Edilen Firmalar</span>
-                </div>
-                <div className="p-4 space-y-3">
-                  {visits.length > 0 && (
-                    <div className="space-y-2">
-                      {visits.map((v: any) => (
-                        <div key={v.id} className="flex items-start gap-2 group">
-                          <div className="flex-1 bg-zinc-800 rounded-lg px-3 py-2">
-                            <p className="text-white text-sm font-medium">{v.company_name || "Firma"}</p>
-                            {v.note && <p className="text-zinc-500 text-xs mt-0.5">{v.note}</p>}
-                          </div>
-                          {isEditable && (
-                            <button onClick={() => deleteVisit(v.id)}
-                              className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all text-lg leading-none mt-1.5">×</button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {isEditable && (
-                    <div className="space-y-2">
-                      <select value={newVisitCompany} onChange={e => setNewVisitCompany(e.target.value)}
-                        className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500">
-                        <option value="">— Firma seç —</option>
-                        {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                      <div className="flex gap-2">
-                        <input value={newVisitNote} onChange={e => setNewVisitNote(e.target.value)}
-                          placeholder="Not (opsiyonel)"
-                          className="flex-1 bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 placeholder-zinc-600" />
-                        <button onClick={addVisit} disabled={savingVisit || !newVisitCompany}
-                          className="px-4 py-2 bg-zinc-700 text-white text-sm rounded-lg hover:bg-zinc-600 disabled:opacity-40 transition-colors">
-                          {savingVisit ? "..." : "Ekle"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {visits.length === 0 && !isEditable && (
-                    <p className="text-zinc-600 text-sm">Ziyaret kaydı yok</p>
-                  )}
-                </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-zinc-800">
+                <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Ziyaret Edilen Firmalar</span>
               </div>
-            )}
-
-            {/* Günün Sorunları */}
-            {worklog && (
-              <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-zinc-800">
-                  <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Günün Sorunları</span>
-                </div>
-                <div className="p-4 space-y-3">
-                  {issues.length > 0 && (
-                    <div className="space-y-2">
-                      {issues.map((iss: any) => (
-                        <div key={iss.id} className="flex items-start gap-2 group">
-                          <button onClick={() => isEditable && toggleIssue(iss.id, !iss.resolved)}
-                            className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 transition-colors ${iss.resolved ? "bg-emerald-700 border-emerald-600" : "border-zinc-600 hover:border-zinc-400"}`}>
-                            {iss.resolved && <span className="text-white text-xs flex items-center justify-center w-full h-full leading-none">✓</span>}
-                          </button>
-                          <p className={`flex-1 text-sm ${iss.resolved ? "line-through text-zinc-600" : "text-zinc-300"}`}>{iss.description}</p>
-                          {isEditable && (
-                            <button onClick={() => deleteIssue(iss.id)}
-                              className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all text-lg leading-none">×</button>
-                          )}
+              <div className="p-4 space-y-3">
+                {visits.length > 0 && (
+                  <div className="space-y-2">
+                    {visits.map((v: any) => (
+                      <div key={v.id} className="flex items-start gap-2 group">
+                        <div className="flex-1 bg-zinc-800 rounded-lg px-3 py-2">
+                          <p className="text-white text-sm font-medium">{v.company_name || "Firma"}</p>
+                          {v.note && <p className="text-zinc-500 text-xs mt-0.5">{v.note}</p>}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                  {isEditable && (
+                        {isEditable && (
+                          <button onClick={() => deleteVisit(v.id)}
+                            className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all text-lg leading-none mt-1.5">×</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {isEditable && (
+                  <div className="space-y-2">
+                    <select value={newVisitCompany} onChange={e => setNewVisitCompany(e.target.value)}
+                      className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500">
+                      <option value="">— Firma seç —</option>
+                      {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
                     <div className="flex gap-2">
-                      <input value={newIssue} onChange={e => setNewIssue(e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter") addIssue(); }}
-                        placeholder="Sorun / engel yazın..."
+                      <input value={newVisitNote} onChange={e => setNewVisitNote(e.target.value)}
+                        placeholder="Not (opsiyonel)"
                         className="flex-1 bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 placeholder-zinc-600" />
-                      <button onClick={addIssue} disabled={savingIssue || !newIssue.trim()}
+                      <button onClick={addVisit} disabled={savingVisit || !newVisitCompany}
                         className="px-4 py-2 bg-zinc-700 text-white text-sm rounded-lg hover:bg-zinc-600 disabled:opacity-40 transition-colors">
-                        {savingIssue ? "..." : "Ekle"}
+                        {savingVisit ? "..." : "Ekle"}
                       </button>
                     </div>
-                  )}
-                  {issues.length === 0 && !isEditable && (
-                    <p className="text-emerald-400 text-sm italic">✓ Sorunsuz tamamlandı</p>
-                  )}
-                </div>
+                  </div>
+                )}
+                {visits.length === 0 && !isEditable && (
+                  <p className="text-zinc-600 text-sm">Ziyaret kaydı yok</p>
+                )}
               </div>
-            )}
+            </div>
 
-            </>}
+            {/* Günün Sorunları */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-zinc-800">
+                <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Günün Sorunları</span>
+              </div>
+              <div className="p-4 space-y-3">
+                {issues.length > 0 && (
+                  <div className="space-y-2">
+                    {issues.map((iss: any) => (
+                      <div key={iss.id} className="flex items-start gap-2 group">
+                        <button onClick={() => isEditable && toggleIssue(iss.id, !iss.resolved)}
+                          className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 transition-colors ${iss.resolved ? "bg-emerald-700 border-emerald-600" : "border-zinc-600 hover:border-zinc-400"}`}>
+                          {iss.resolved && <span className="text-white text-xs flex items-center justify-center w-full h-full leading-none">✓</span>}
+                        </button>
+                        <p className={`flex-1 text-sm ${iss.resolved ? "line-through text-zinc-600" : "text-zinc-300"}`}>{iss.description}</p>
+                        {isEditable && (
+                          <button onClick={() => deleteIssue(iss.id)}
+                            className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all text-lg leading-none">×</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {isEditable && (
+                  <div className="flex gap-2">
+                    <input value={newIssue} onChange={e => setNewIssue(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") addIssue(); }}
+                      placeholder="Sorun / engel yazın..."
+                      className="flex-1 bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 placeholder-zinc-600" />
+                    <button onClick={addIssue} disabled={savingIssue || !newIssue.trim()}
+                      className="px-4 py-2 bg-zinc-700 text-white text-sm rounded-lg hover:bg-zinc-600 disabled:opacity-40 transition-colors">
+                      {savingIssue ? "..." : "Ekle"}
+                    </button>
+                  </div>
+                )}
+                {issues.length === 0 && !isEditable && (
+                  <p className="text-emerald-400 text-sm italic">✓ Sorunsuz tamamlandı</p>
+                )}
+              </div>
+            </div>
 
             {/* Manager return note */}
-            {!checkinGateActive && worklog?.manager_note && (
+            {worklog?.manager_note && (
               <div className="bg-orange-950/50 border border-orange-800/50 rounded-xl px-4 py-3">
                 <p className="text-xs font-semibold text-orange-400 mb-1">İade Notu</p>
                 <p className="text-orange-200 text-sm">{worklog.manager_note}</p>
               </div>
             )}
 
-            {/* Workflow */}
-            {!checkinGateActive && worklog && (
+            {submitError && <p className="text-red-400 text-sm bg-red-950 border border-red-800 rounded-lg px-3 py-2">{submitError}</p>}
+
+            {/* Workflow — tek Gönder butonu */}
+            {(!worklog || worklog.status_code === "draft" || worklog.status_code === "returned") && isOwnWorklog && (
+              <button
+                onClick={submitAll}
+                disabled={workflowUpdating}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50">
+                {workflowUpdating ? "Gönderiliyor..." : worklog?.status_code === "returned" ? "Yeniden Gönder" : "Gönder"}
+              </button>
+            )}
+            {worklog?.status_code === "submitted" && (user?.role === "yonetici" || user?.role === "admin") && (
               <div className="flex flex-wrap gap-2 pt-1">
-                {worklog.status_code === "draft" && (
-                  <button
-                    onClick={() => isLateHour() ? setShowLateWarning(true) : updateWorkflowStatus({ status_code: "submitted" })}
-                    disabled={workflowUpdating}
-                    className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
-                    Gönder
-                  </button>
-                )}
-                {worklog.status_code === "returned" && (
-                  <button
-                    onClick={() => isLateHour() ? setShowLateWarning(true) : updateWorkflowStatus({ status_code: "submitted" })}
-                    disabled={workflowUpdating}
-                    className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
-                    Yeniden Gönder
-                  </button>
-                )}
-                {worklog.status_code === "submitted" && (user?.role === "yonetici" || user?.role === "admin") && (
-                  <>
-                    <button onClick={() => updateWorkflowStatus({ status_code: "approved" })} disabled={workflowUpdating}
-                      className="bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
-                      Onayla
-                    </button>
-                    <button onClick={() => setShowReturn(true)} disabled={workflowUpdating}
-                      className="bg-orange-900 hover:bg-orange-800 text-orange-200 text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
-                      İade Et
-                    </button>
-                  </>
-                )}
-                {worklog.status_code === "approved" && (
-                  <p className="text-emerald-400 text-sm flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-                    Onaylandı · {worklog.approved_at ? new Date(worklog.approved_at).toLocaleString("tr-TR") : ""}
-                  </p>
-                )}
+                <button onClick={() => updateWorkflowStatus({ status_code: "approved" })} disabled={workflowUpdating}
+                  className="bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
+                  Onayla
+                </button>
+                <button onClick={() => setShowReturn(true)} disabled={workflowUpdating}
+                  className="bg-orange-900 hover:bg-orange-800 text-orange-200 text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
+                  İade Et
+                </button>
               </div>
+            )}
+            {worklog?.status_code === "approved" && (
+              <p className="text-emerald-400 text-sm flex items-center gap-2 pt-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                Onaylandı · {worklog.approved_at ? new Date(worklog.approved_at).toLocaleString("tr-TR") : ""}
+              </p>
             )}
           </div>
         )}
@@ -681,7 +658,7 @@ export default function GunlukDetailPage({ params }: { params: Promise<{ date: s
               <button onClick={() => setShowLateWarning(false)}
                 className="flex-1 bg-zinc-800 text-zinc-300 text-sm font-medium py-2.5 rounded-lg hover:bg-zinc-700 transition-colors">İptal</button>
               <button
-                onClick={() => { setShowLateWarning(false); updateWorkflowStatus({ status_code: "submitted" }); }}
+                onClick={() => { setShowLateWarning(false); doSubmit(); }}
                 className="flex-1 bg-amber-700 hover:bg-amber-600 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors">
                 Yine de Gönder
               </button>
