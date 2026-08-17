@@ -8,6 +8,7 @@ export default function DenetimTurleriPage() {
   const router = useRouter();
 
   const [types, setTypes] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -17,12 +18,12 @@ export default function DenetimTurleriPage() {
 
   // Add type modal
   const [showAddType, setShowAddType] = useState(false);
-  const [addTypeForm, setAddTypeForm] = useState({ label: "", code: "" });
+  const [addTypeForm, setAddTypeForm] = useState({ label: "", code: "", company_id: "" });
   const [savingType, setSavingType] = useState(false);
 
   // Edit type
   const [editTypeId, setEditTypeId] = useState<string | null>(null);
-  const [editTypeForm, setEditTypeForm] = useState({ label: "", code: "" });
+  const [editTypeForm, setEditTypeForm] = useState({ label: "", code: "", company_id: "" });
   const [savingEditType, setSavingEditType] = useState(false);
 
   // Delete type
@@ -48,7 +49,11 @@ export default function DenetimTurleriPage() {
     }).catch(() => router.replace("/"));
   }, [router]);
 
-  useEffect(() => { if (user) loadTypes(); }, [user]);
+  useEffect(() => {
+    if (!user) return;
+    loadTypes();
+    fetch("/api/companies").then(r => r.json()).then(d => { if (d.ok) setCompanies(d.data); });
+  }, [user]);
 
   async function loadTypes() {
     setLoading(true);
@@ -79,7 +84,7 @@ export default function DenetimTurleriPage() {
   // Auto-generate code from label
   function onAddLabelChange(label: string) {
     const code = label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 50);
-    setAddTypeForm({ label, code });
+    setAddTypeForm(f => ({ ...f, label, code }));
   }
 
   async function addType() {
@@ -91,7 +96,7 @@ export default function DenetimTurleriPage() {
         body: JSON.stringify(addTypeForm),
       });
       const d = await r.json();
-      if (d.ok) { setShowAddType(false); setAddTypeForm({ label: "", code: "" }); loadTypes(); }
+      if (d.ok) { setShowAddType(false); setAddTypeForm({ label: "", code: "", company_id: "" }); loadTypes(); }
       else alert(d.error);
     } finally { setSavingType(false); }
   }
@@ -180,7 +185,7 @@ export default function DenetimTurleriPage() {
             <p className="text-zinc-500 text-sm mt-0.5">{types.length} tür tanımlı</p>
           </div>
           <button
-            onClick={() => { setShowAddType(true); setAddTypeForm({ label: "", code: "" }); }}
+            onClick={() => { setShowAddType(true); setAddTypeForm({ label: "", code: "", company_id: "" }); }}
             className="bg-white text-zinc-950 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-zinc-200 transition-colors whitespace-nowrap"
           >
             + Tür Ekle
@@ -213,6 +218,16 @@ export default function DenetimTurleriPage() {
                         placeholder="kod"
                         className="w-32 bg-zinc-800 border border-zinc-600 text-white text-xs px-3 py-1.5 rounded-lg focus:outline-none focus:border-zinc-400 font-mono"
                       />
+                      <select
+                        value={editTypeForm.company_id}
+                        onChange={e => setEditTypeForm(f => ({ ...f, company_id: e.target.value }))}
+                        className="bg-zinc-800 border border-zinc-600 text-white text-xs px-3 py-1.5 rounded-lg focus:outline-none focus:border-zinc-400"
+                      >
+                        <option value="">— Global (herkese açık) —</option>
+                        {companies.map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
                       <button onClick={saveEditType} disabled={savingEditType || !editTypeForm.label.trim()}
                         className="bg-white text-zinc-950 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-zinc-200 disabled:opacity-50 transition-colors">
                         {savingEditType ? "..." : "Kaydet"}
@@ -224,12 +239,17 @@ export default function DenetimTurleriPage() {
                       <button onClick={() => toggleExpand(type.id)} className="flex-1 flex items-center gap-3 text-left">
                         <span className="text-white font-semibold">{type.label}</span>
                         <span className="text-xs text-zinc-600 font-mono">{type.code}</span>
+                        {type.company_name ? (
+                          <span className="text-xs text-cyan-400 border border-cyan-800/60 bg-cyan-950/40 px-2 py-0.5 rounded-full shrink-0">{type.company_name}</span>
+                        ) : (
+                          <span className="text-xs text-zinc-500 border border-zinc-700 px-2 py-0.5 rounded-full shrink-0">Global</span>
+                        )}
                         <span className="ml-auto text-xs text-zinc-500 shrink-0">{type.criteria_count} kriter</span>
                         <span className="text-zinc-600 text-xs ml-2">{expanded === type.id ? "▲" : "▼"}</span>
                       </button>
                       <div className="flex gap-2 shrink-0">
                         <button
-                          onClick={() => { setEditTypeId(type.id); setEditTypeForm({ label: type.label, code: type.code }); }}
+                          onClick={() => { setEditTypeId(type.id); setEditTypeForm({ label: type.label, code: type.code, company_id: type.company_id || "" }); }}
                           className="text-xs text-zinc-500 hover:text-white border border-zinc-700 hover:border-zinc-500 px-2.5 py-1 rounded-lg transition-colors"
                         >
                           Düzenle
@@ -359,6 +379,20 @@ export default function DenetimTurleriPage() {
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 font-mono"
                 />
                 <p className="text-xs text-zinc-600 mt-1">Küçük harf, alt çizgi. Sonradan değiştirilemez.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Firma</label>
+                <select
+                  value={addTypeForm.company_id}
+                  onChange={e => setAddTypeForm(f => ({ ...f, company_id: e.target.value }))}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500"
+                >
+                  <option value="">— Global (herkese açık) —</option>
+                  {companies.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-zinc-600 mt-1">Boş bırakılırsa tüm firmaların portalında görünür. Bir firma seçilirse sadece o firmaya özel olur.</p>
               </div>
             </div>
             <div className="flex gap-3 mt-5">

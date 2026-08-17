@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
 import { v4 as uuidv4 } from "uuid";
+import { updateHareketDurum, deleteHareket } from "@/lib/finans-hareket";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -34,6 +35,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       await db.prepare(
         `UPDATE finans_masraf_talebi SET durum = 'reddedildi', onaylayan_user_id = ?, onay_tarihi = ?, red_nedeni = ?, updated_at = ? WHERE id = ?`
       ).run(user.id, now, raw.red_nedeni.trim(), now, id);
+      await updateHareketDurum("masraf", id, "reddedildi", user.id);
       await db.prepare(
         `INSERT INTO notifications (id, user_id, title, body, link, is_read, created_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
@@ -45,29 +47,43 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (raw.action === "onayla") {
       if (!hasPermission(user, "finans_masraf_talebi:approve"))
         return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
-      const ggId = uuidv4();
+
+      // Onaylanan masraf tek deftere zaten "onay_bekliyor" olarak yazılmıştı
+      // (bkz. POST /api/finans/masraf-talebi) — burada sadece durumu
+      // "onaylandi"ya çeviriyoruz, ayrıca gider kaydı OLUŞTURMUYORUZ.
+      // (Eskiden finans_gelir_gider'a ayrı satır yazılıyordu; o tablo
+      // kaldırıldı, tek defter dışında ikinci bir kayıt tutulmuyor.)
       await db.prepare(
-        `INSERT INTO finans_gelir_gider
-           (id, tur, belge_tarihi, kayit_tarihi, kategori_id, net_tutar, vergi_tutari, brut_tutar,
-            para_birimi_kod, department_id, proje_id, masraf_merkezi_id, odeme_durumu, durum,
-            aciklama, created_by, created_at, updated_at)
-         VALUES (?, 'gider', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 'odenmedi', 'taslak', ?, ?, ?, ?)`
-      ).run(
-        ggId, existing.tarih, now, existing.kategori_id, existing.tahmini_tutar, existing.tahmini_tutar,
-        existing.para_birimi_kod, existing.department_id, existing.proje_id, existing.masraf_merkezi_id,
-        `Masraf talebinden oluşturuldu: ${existing.baslik}`, existing.talep_eden_user_id, now, now
-      );
-      await db.prepare(
-        `UPDATE finans_masraf_talebi SET durum = 'onaylandi', onaylayan_user_id = ?, onay_tarihi = ?, iliskili_gelir_gider_id = ?, updated_at = ? WHERE id = ?`
-      ).run(user.id, now, ggId, now, id);
+        `UPDATE finans_masraf_talebi SET durum = 'onaylandi', onaylayan_user_id = ?, onay_tarihi = ?, updated_at = ? WHERE id = ?`
+      ).run(user.id, now, now, id);
+      await updateHareketDurum("masraf", id, "onaylandi", user.id);
       await db.prepare(
         `INSERT INTO notifications (id, user_id, title, body, link, is_read, created_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
       ).run(uuidv4(), existing.talep_eden_user_id, `Masraf talebiniz onaylandı: ${existing.baslik}`,
-        `Talebiniz onaylandı, gider kaydı oluşturuldu.`, "/finans/gelir-gider", user.id, now, now);
-      return NextResponse.json({ ok: true, data: { gelir_gider_id: ggId } });
+        `Talebiniz onaylandı.`, "/finans/masraf-talebi", user.id, now, now);
+      return NextResponse.json({ ok: true });
     }
 
     return NextResponse.json({ ok: false, error: "Geçersiz işlem" }, { status: 400 });
+  } catch (e) { return apiError(e); }
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireUser();
+    if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!hasPermission(user, "finans_masraf_talebi:delete"))
+      return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+
+    const { id } = await params;
+    const db = getDb();
+    const existing = await db.prepare("SELECT id FROM finans_masraf_talebi WHERE id = ?").get(id);
+    if (!existing) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
+
+    await db.prepare("DELETE FROM finans_masraf_talebi WHERE id = ?").run(id);
+    await deleteHareket("masraf", id);
+
+    return NextResponse.json({ ok: true });
   } catch (e) { return apiError(e); }
 }

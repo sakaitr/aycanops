@@ -42,8 +42,13 @@ const EMPTY_FORM = {
   username: "", password: "", full_name: "", role: "personel", department_id: "", is_active: true,
   restricted_pages: false, allowed_pages: [] as string[],
   restricted_companies: false, allowed_companies: [] as string[],
-  whatsapp_phone: "",
+  whatsapp_phone: "", landing_page: "",
 };
+
+// Bu roller zaten sabit/dar bir sayfa listesine kilitli (proxy.ts'te ayrı
+// allow-list ile korunuyor) — giriş sonrası ekran seçimi onlar için anlamsız
+// ve izin listesiyle çakışıp yönlendirme döngüsüne yol açabilir.
+const NARROW_LANDING_ROLES = ["personel", "finans", "finans_yetkili"];
 
 type PermissionPreview = {
   role: string;
@@ -192,6 +197,7 @@ export default function KullanicilarPage() {
       restricted_companies: ac !== null,
       allowed_companies: ac ?? [],
       whatsapp_phone: u.whatsapp_phone || "",
+      landing_page: u.landing_page || "",
     });
     setFormError(null);
     setFormTab("temel");
@@ -231,6 +237,7 @@ export default function KullanicilarPage() {
         allowed_pages: form.restricted_pages ? form.allowed_pages : null,
         allowed_companies: form.restricted_companies ? form.allowed_companies : null,
         whatsapp_phone: form.whatsapp_phone.trim() || null,
+        landing_page: NARROW_LANDING_ROLES.includes(form.role) ? null : (form.landing_page || null),
       };
       if (!editing) { body.username = form.username; body.password = form.password; }
       else if (form.password) { body.password = form.password; }
@@ -483,6 +490,17 @@ export default function KullanicilarPage() {
                     />
                     <p className="text-xs text-zinc-600 mt-1">Uluslararası format, + işareti olmadan (örn. 905321234567)</p>
                   </div>
+                  {!NARROW_LANDING_ROLES.includes(form.role) && (
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Giriş Sonrası Ekran</label>
+                      <select value={form.landing_page} onChange={e => setForm(f => ({ ...f, landing_page: e.target.value }))}
+                        className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500">
+                        <option value="">— Varsayılan (role göre) —</option>
+                        {allPages.map(p => <option key={p.href} value={p.href}>{p.label}</option>)}
+                      </select>
+                      <p className="text-xs text-zinc-600 mt-1">Kullanıcı giriş yaptığında ilk göreceği sayfa.</p>
+                    </div>
+                  )}
                   {editing && (
                     <div className="flex items-center gap-3 py-1">
                       <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Durum</label>

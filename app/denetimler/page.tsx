@@ -5,6 +5,18 @@ import Nav from "@/components/Nav";
 import Badge from "@/components/Badge";
 import AppSelect from "@/components/AppSelect";
 import { hasPermission } from "@/lib/permissions";
+import { todayIstanbul } from "@/lib/time";
+
+// 'YYYY-MM-DD' iki tarih arası gün farkı — sadece takvim günü kıyaslar,
+// saat/UTC ofset belirsizliği taşımaz.
+function daysBetween(a: string, b: string): number {
+  const [ay, am, ad] = a.split("-").map(Number);
+  const [by, bm, bd] = b.split("-").map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
+}
+function normalizePlate(p: string): string {
+  return p.toUpperCase().replace(/\s+/g, "");
+}
 
 // --- Wizard adımları ---
 // "setup"        : firma, araç, tarih, tip seçimi (tekil denetim)
@@ -83,6 +95,10 @@ export default function DenetimlerPage() {
   const [seriSaving, setSeriSaving] = useState(false);
   const [seriError, setSeriError] = useState<string | null>(null);
 
+  // plate|||typeCode -> son denetim tarihi. Aynı araç/tür 10 gün içinde
+  // tekrar denetlenmişse seri listede gizlenir, tekil formda uyarı gösterilir.
+  const [recentInspectionsByPlate, setRecentInspectionsByPlate] = useState<Map<string, string>>(new Map());
+
   // Checklist (populated when type selected)
   const [checklist, setChecklist] = useState<CheckItem[]>([]);
   const [criteriaLoading, setCriteriaLoading] = useState(false);
@@ -132,6 +148,7 @@ export default function DenetimlerPage() {
     fetch("/api/vehicles?limit=9999").then(r => r.json()).then(d => { if (d.ok) setVehicles(d.data); });
     fetch("/api/companies/all-vehicles").then(r => r.json()).then(d => { if (d.ok) setCompVehicles(d.data); });
     fetch("/api/configs/inspection-types").then(r => r.json()).then(d => { if (d.ok) setInspectionTypes(d.data); });
+    loadRecentInspections();
   }, []);
   useEffect(() => { loadCustomerSubmissions(); }, [csFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -184,6 +201,44 @@ export default function DenetimlerPage() {
     return compVehicles.filter(cv => { if (seen.has(cv.company_id)) return false; seen.add(cv.company_id); return true; });
   }, [compVehicles]);
 
+  // ── Seri denetim: 10 gün içinde aynı tür denetimi yapılmış araçlar
+  // listeden gizlenir (bu oturumda yapılanlar hariç), kalanlar en eski/hiç
+  // denetlenmemiş önce gelecek şekilde sıralanır.
+  const seriTypeCode = useMemo(() => inspectionTypes.find(t => t.id === seriType)?.code || seriType, [inspectionTypes, seriType]);
+  const seriCandidateVehicles = useMemo(
+    () => compVehicles.filter(cv => cv.company_id === seriCompanyId),
+    [compVehicles, seriCompanyId]
+  );
+  function seriLastDate(plate: string): string | undefined {
+    return recentInspectionsByPlate.get(`${normalizePlate(plate)}|||${seriTypeCode}`);
+  }
+  function seriIsRecentlyInspected(plate: string): boolean {
+    const d = seriLastDate(plate);
+    return d ? daysBetween(d, todayIstanbul()) < 10 : false;
+  }
+  const seriVisibleVehicles = useMemo(() => {
+    return seriCandidateVehicles
+      .filter(cv => seriDonePlates.has(cv.plate) || !seriIsRecentlyInspected(cv.plate))
+      .sort((a, b) => (seriLastDate(a.plate) || "").localeCompare(seriLastDate(b.plate) || ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seriCandidateVehicles, recentInspectionsByPlate, seriTypeCode, seriDonePlates]);
+  const seriHiddenCount = seriCandidateVehicles.length - seriVisibleVehicles.length;
+
+  function matchSeriVehicleByPlate(plate: string) {
+    const norm = normalizePlate(plate);
+    return seriCandidateVehicles.find(cv => normalizePlate(cv.plate) === norm) || null;
+  }
+
+  // Tekil (seri olmayan) formda da aynı 10 gün kuralı — burada gizlemek
+  // yerine sadece uyarı gösterilir, denetim yine de kaydedilebilir.
+  const setupPlateForCheck = formCompVehicleId ? (compVehicles.find(cv => cv.id === formCompVehicleId)?.plate || "") : formPlate.trim();
+  const setupTypeCodeForCheck = inspectionTypes.find(t => t.id === formType)?.code || formType;
+  const setupRecentDate = setupPlateForCheck
+    ? recentInspectionsByPlate.get(`${normalizePlate(setupPlateForCheck)}|||${setupTypeCodeForCheck}`)
+    : undefined;
+  const setupRecentDays = setupRecentDate ? daysBetween(setupRecentDate, todayIstanbul()) : null;
+  const setupShowRecentWarning = setupRecentDays !== null && setupRecentDays < 10;
+
   const autoResult = useMemo(() => computeResult(checklist), [checklist]);
   const finalResult: string = autoResult === "fail" && resultOverride === "conditional" ? "conditional" : autoResult;
 
@@ -197,6 +252,26 @@ export default function DenetimlerPage() {
       const d = await r.json();
       if (d.ok) setInspections(d.data);
     } finally { setLoading(false); }
+  }
+
+  // 10 gün kuralı için sayfanın liste filtrelerinden bağımsız, filtresiz
+  // tam veri lazım — load()'daki filterCompanyId/filterVehicleId burayı
+  // etkilemesin diye ayrı bir istek.
+  async function loadRecentInspections() {
+    try {
+      const r = await fetch("/api/inspections");
+      const d = await r.json();
+      if (!d.ok) return;
+      const map = new Map<string, string>();
+      for (const insp of d.data as any[]) {
+        const plate = (insp.company_vehicle_plate || insp.vehicle_plate || "").trim();
+        if (!plate || !insp.type || !insp.inspection_date) continue;
+        const key = `${normalizePlate(plate)}|||${insp.type}`;
+        const existing = map.get(key);
+        if (!existing || insp.inspection_date > existing) map.set(key, insp.inspection_date);
+      }
+      setRecentInspectionsByPlate(map);
+    } catch { /* sessiz geç — sadece uyarı/gizleme özelliği etkilenir */ }
   }
 
   async function deleteInspection(id: string) {
@@ -373,6 +448,7 @@ export default function DenetimlerPage() {
       setFormPlate("");
       setSeriManualPlate("");
       load();
+      loadRecentInspections();
       setWizardStep("seri-list");
     } finally {
       setSeriSaving(false);
@@ -548,6 +624,7 @@ export default function DenetimlerPage() {
       setCreatedInspectionId(null);
       setShowForm(false);
       load();
+      loadRecentInspections();
       if (sourceSubmissionId) loadCustomerSubmissions();
       setSourceSubmissionId(null);
     } finally { setSaving(false); }
@@ -981,30 +1058,48 @@ export default function DenetimlerPage() {
                   </p>
                   <span className="text-xs text-zinc-600">{seriDonePlates.size} denetlendi</span>
                 </div>
+                {seriHiddenCount > 0 && (
+                  <p className="text-xs text-zinc-600 mb-2">
+                    {seriHiddenCount} araç son 10 gün içinde bu türde denetlendiği için listede gösterilmiyor.
+                  </p>
+                )}
                 <div className="max-h-72 overflow-y-auto space-y-1.5 mb-4">
-                  {compVehicles.filter(cv => cv.company_id === seriCompanyId).map(cv => {
+                  {seriVisibleVehicles.map(cv => {
                     const done = seriDonePlates.has(cv.plate);
+                    const lastDate = seriLastDate(cv.plate);
                     return (
                       <button key={cv.id} onClick={() => startSeriChecklist(cv.plate, cv.id)}
                         className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                           done ? "bg-emerald-950/40 text-emerald-400" : "bg-zinc-800 text-white hover:bg-zinc-700"
                         }`}>
                         <span className="font-mono font-semibold">{cv.plate}</span>
-                        {done && <span className="text-xs">✓ Denetlendi</span>}
+                        {done ? (
+                          <span className="text-xs">✓ Denetlendi</span>
+                        ) : lastDate ? (
+                          <span className="text-xs text-zinc-500">Son: {lastDate}</span>
+                        ) : (
+                          <span className="text-xs text-amber-500">Hiç denetlenmedi</span>
+                        )}
                       </button>
                     );
                   })}
-                  {compVehicles.filter(cv => cv.company_id === seriCompanyId).length === 0 && (
+                  {seriCandidateVehicles.length === 0 && (
                     <p className="text-zinc-600 text-xs text-center py-4">Bu firmaya kayıtlı araç yok, manuel plaka girin.</p>
                   )}
                 </div>
 
-                {/* Listede olmayan araç için manuel plaka */}
+                {/* Listede olmayan araç için manuel plaka — girilen plaka
+                    firmanın araç listesiyle eşleşiyorsa otomatik bağlanır. */}
                 <div className="flex gap-2 mb-4">
                   <input value={seriManualPlate} onChange={e => setSeriManualPlate(e.target.value.toUpperCase())}
                     placeholder="Listede yoksa plaka gir..."
                     className="flex-1 bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500" />
-                  <button onClick={() => seriManualPlate.trim() && startSeriChecklist(seriManualPlate.trim(), "")}
+                  <button onClick={() => {
+                    if (!seriManualPlate.trim()) return;
+                    const matched = matchSeriVehicleByPlate(seriManualPlate);
+                    if (matched) startSeriChecklist(matched.plate, matched.id);
+                    else startSeriChecklist(seriManualPlate.trim(), "");
+                  }}
                     disabled={!seriManualPlate.trim()}
                     className="bg-zinc-800 text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-zinc-700 disabled:opacity-40 transition-colors">
                     Denetle
@@ -1095,6 +1190,12 @@ export default function DenetimlerPage() {
                     className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 font-mono uppercase tracking-widest"
                   />
                 </div>
+
+                {setupShowRecentWarning && (
+                  <p className="text-amber-400 text-xs bg-amber-950/40 border border-amber-800 rounded-lg px-3 py-2">
+                    {setupPlateForCheck} için bu tür denetim {setupRecentDays} gün önce ({setupRecentDate}) zaten yapılmış. Yine de devam edebilirsiniz.
+                  </p>
+                )}
 
                 {/* Tarih + Tip */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

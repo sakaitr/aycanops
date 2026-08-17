@@ -14,10 +14,61 @@ function fileHref(filename: string) {
   return `/api/uploads/musteri-denetim/${filename}`;
 }
 
+function inspectionPhotoHref(filename: string) {
+  return `/api/uploads/denetim/${filename}`;
+}
+
+const RESULT_LABEL: Record<string, string> = { pass: "Başarılı", fail: "Başarısız", conditional: "Koşullu", pending: "Bekliyor" };
+const RESULT_COLOR: Record<string, string> = {
+  pass: "text-green-400 bg-green-400/10",
+  fail: "text-red-400 bg-red-400/10",
+  conditional: "text-amber-400 bg-amber-400/10",
+  pending: "text-[var(--t-text-500)] bg-[var(--t-800)]",
+};
+
+function InspectionResultBlock({ insp }: { insp: any }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <p className="text-xs font-medium text-[var(--foreground)]">
+          {new Date(insp.inspection_date).toLocaleDateString("tr-TR")}
+          {insp.inspector_name ? ` · ${insp.inspector_name}` : ""}
+        </p>
+        <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium shrink-0 ${RESULT_COLOR[insp.result] || RESULT_COLOR.pending}`}>
+          {RESULT_LABEL[insp.result] || insp.result}
+        </span>
+      </div>
+      {insp.checklist?.length > 0 && (
+        <div className="space-y-1 mb-2">
+          {insp.checklist.map((c: any, idx: number) => (
+            <div key={idx} className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 text-[11px] ${c.ok === false ? "bg-red-500/10 text-red-300" : "text-[var(--t-text-400)]"}`}>
+              <span>{c.label}</span>
+              <span>{c.ok === true ? "✓" : c.ok === false ? "✗" : "—"}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {insp.notes && <p className="text-[11px] text-[var(--t-text-400)] mb-2">{insp.notes}</p>}
+      {insp.photos?.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {insp.photos.map((p: any) => (
+            <a key={p.id} href={inspectionPhotoHref(p.filename)} target="_blank" rel="noopener noreferrer">
+              <img src={inspectionPhotoHref(p.filename)} alt="Denetim fotoğrafı"
+                className="w-14 h-14 object-cover rounded-lg border border-[var(--t-border-800)]" />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PortalDenetimlerPage() {
   const router = useRouter();
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
+  const [staffInspections, setStaffInspections] = useState<Record<string, any[]>>({});
+  const [expandedStaffPlate, setExpandedStaffPlate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -41,7 +92,7 @@ export default function PortalDenetimlerPage() {
       ]);
       if (!vRes.ok && vRes.error === "Yetkisiz") { router.replace("/portal/giris"); return; }
       if (vRes.ok) setVehicles(vRes.data);
-      if (sRes.ok) setSubmissions(sRes.data);
+      if (sRes.ok) { setSubmissions(sRes.data); setStaffInspections(sRes.staff_inspections || {}); }
       if (tRes.ok) setInspectionTypes(tRes.data);
     } catch {}
     finally { setLoading(false); }
@@ -130,7 +181,9 @@ export default function PortalDenetimlerPage() {
             {filtered.map((v, i) => {
               const vehicleId = v.vehicle_id || v.id;
               const plateSubmissions = submissions.filter(s => s.plate === v.plate);
+              const staffList = staffInspections[(v.plate || "").toUpperCase()] || [];
               const isFormOpen = showForm === v.plate;
+              const isStaffOpen = expandedStaffPlate === v.plate;
               return (
                 <div key={v.id || i} className="bg-[var(--t-800)] border border-[var(--t-border-800)] rounded-xl p-4">
                   <div className="flex items-start justify-between gap-2">
@@ -170,11 +223,41 @@ export default function PortalDenetimlerPage() {
                               ))}
                             </div>
                           )}
+
+                          {s.linked_inspection && (
+                            <div className="mt-2.5 pt-2.5 border-t border-[var(--t-border-800)]">
+                              <p className="text-[10px] text-[var(--t-text-500)] mb-1.5">Resmi denetim</p>
+                              <InspectionResultBlock insp={s.linked_inspection} />
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                   ) : (
                     !isFormOpen && <p className="text-xs text-[var(--t-text-600)] mt-3">Henüz denetim dosyası eklenmemiş</p>
+                  )}
+
+                  {staffList.length > 0 && (
+                    <div className="mt-3">
+                      <button
+                        onClick={() => setExpandedStaffPlate(isStaffOpen ? null : v.plate)}
+                        className="w-full flex items-center justify-between gap-2 bg-[var(--t-900)] hover:bg-[var(--t-900)]/70 rounded-lg px-3 py-2 transition-colors"
+                      >
+                        <span className="text-xs font-medium text-[var(--foreground)]">
+                          Personel Denetimleri ({staffList.length})
+                        </span>
+                        <span className={`text-[var(--t-text-500)] text-[10px] transition-transform ${isStaffOpen ? "rotate-180" : ""}`}>▾</span>
+                      </button>
+                      {isStaffOpen && (
+                        <div className="mt-2 space-y-2">
+                          {staffList.map((insp: any) => (
+                            <div key={insp.id} className="bg-[var(--t-900)] rounded-lg p-3">
+                              <InspectionResultBlock insp={insp} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {isFormOpen && (

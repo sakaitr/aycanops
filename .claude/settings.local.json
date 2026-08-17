@@ -1,7 +1,30 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:otoservis.fixy.digital)"
+      "WebFetch(domain:otoservis.fixy.digital)",
+      "Read(//c/Users/Administrator/Desktop/aycanops/app/admin/hizli-gorev/**)",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"c:\\\\Users\\\\Administrator\\\\Desktop\\\\aycanops\\\\deploy-delta.ps1\")",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File \".\\\\deploy-delta.ps1\")",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -Command ':*)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File \"c:/Users/Administrator/Desktop/aycanops/make-hotfix10.ps1\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('name:', d.get\\('name'\\)\\); print\\('version:', d.get\\('version'\\)\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k: d[k] for k in ['name','version','scripts','main','module','exports'] if k in d}, indent=2\\)\\)\")",
+      "Bash(mkdir -p .ds-sync)",
+      "Bash(cp -r /private/tmp/claude-501/bundled-skills/2.1.191/bb636983670c28da5fd77b1d3d4105fb/design-sync/package-build.mjs /private/tmp/claude-501/bundled-skills/2.1.191/bb636983670c28da5fd77b1d3d4105fb/design-sync/package-validate.mjs /private/tmp/claude-501/bundled-skills/2.1.191/bb636983670c28da5fd77b1d3d4105fb/design-sync/package-capture.mjs /private/tmp/claude-501/bundled-skills/2.1.191/bb636983670c28da5fd77b1d3d4105fb/design-sync/resync.mjs /private/tmp/claude-501/bundled-skills/2.1.191/bb636983670c28da5fd77b1d3d4105fb/design-sync/lib /private/tmp/claude-501/bundled-skills/2.1.191/bb636983670c28da5fd77b1d3d4105fb/design-sync/storybook .ds-sync/)",
+      "Bash(echo '{\"name\":\"ds-sync-deps\",\"private\":true}')",
+      "Bash(npm i *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); deps={**d.get\\('dependencies',{}\\),**d.get\\('devDependencies',{}\\)}; pw=[k for k in deps if 'playwright' in k]; print\\(pw, [deps[k] for k in pw]\\)\")",
+      "Read(//Users/kayraisbilir/Library/Caches/ms-playwright/**)",
+      "Read(//Users/kayraisbilir/**)",
+      "Bash(node *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Administrator\\Desktop\\aycanops"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "context7",
+    "playwright",
+    "github"
+  ]
 }

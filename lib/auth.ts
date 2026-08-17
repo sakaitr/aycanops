@@ -14,6 +14,7 @@ export type SafeUser = {
   is_active: number;
   allowed_pages: string | null;    // JSON array of href strings, null = unrestricted
   allowed_companies: string | null; // JSON array of company IDs, null = unrestricted
+  landing_page: string | null;     // giriş sonrası yönlendirilecek sayfa, null = role varsayılanı
 };
 
 export function getSessionCookieName() {
@@ -66,7 +67,7 @@ export async function getUserBySession(sessionId: string): Promise<SafeUser | nu
   const row = await db
     .prepare(
       `SELECT users.id, users.username, users.full_name, users.role, users.department_id, users.is_active,
-              users.allowed_pages, users.allowed_companies, sessions.expires_at
+              users.allowed_pages, users.allowed_companies, users.landing_page, sessions.expires_at
        FROM sessions
        JOIN users ON users.id = sessions.user_id
        WHERE sessions.id = ?`
@@ -129,6 +130,35 @@ export async function setRoleCookie(role: string) {
 export async function clearRoleCookie() {
   const cookieStore = await cookies();
   cookieStore.set("opsdesk_role", "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isCookieSecure(),
+    path: "/",
+    maxAge: 0,
+  });
+}
+
+// Kullanıcıya özel giriş-sonrası sayfa — proxy.ts DB'ye gitmeden (edge/middleware
+// katmanında) okuyabilsin diye role cookie'siyle aynı şekilde saklanır.
+export async function setLandingCookie(landingPage: string | null) {
+  const cookieStore = await cookies();
+  if (!landingPage) {
+    cookieStore.set("opsdesk_landing", "", {
+      httpOnly: true, sameSite: "lax", secure: isCookieSecure(), path: "/", maxAge: 0,
+    });
+    return;
+  }
+  cookieStore.set("opsdesk_landing", landingPage, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isCookieSecure(),
+    path: "/",
+  });
+}
+
+export async function clearLandingCookie() {
+  const cookieStore = await cookies();
+  cookieStore.set("opsdesk_landing", "", {
     httpOnly: true,
     sameSite: "lax",
     secure: isCookieSecure(),

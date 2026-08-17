@@ -15,14 +15,14 @@ export async function PUT(
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { id } = await params;
-    const { label, code } = await req.json();
+    const { label, code, company_id } = await req.json();
     if (!label?.trim()) return NextResponse.json({ ok: false, error: "Etiket zorunlu" }, { status: 400 });
 
     const db = getDb();
     const now = nowIso();
     const result = await db.prepare(
-      "UPDATE config_inspection_types SET label = ?, code = ?, updated_at = ? WHERE id = ? AND is_active = 1"
-    ).run(label.trim(), code?.trim() || label.trim().toLowerCase(), now, id);
+      "UPDATE config_inspection_types SET label = ?, code = ?, company_id = ?, updated_at = ? WHERE id = ? AND is_active = 1"
+    ).run(label.trim(), code?.trim() || label.trim().toLowerCase(), company_id?.trim() || null, now, id);
 
     if (result.affectedRows === 0)
       return NextResponse.json({ ok: false, error: "Tür bulunamadı" }, { status: 404 });

@@ -34,9 +34,19 @@ export default function FinansDashboardPage() {
 
   const giderToplam = ozet?.toplam?.find((t: any) => t.tur === "gider");
   const taslakBekleyen = ozet?.bekleyen?.find((t: any) => t.tur === "gider");
-  const kategoriGider = (ozet?.kategori || [])
-    .filter((k: any) => k.tur === "gider" && !k.alt_id)
-    .sort((a: any, b: any) => Number(b.toplam) - Number(a.toplam))
+  // /api/finans/hareket/ozet her satırda alt_id döndürür (top-level
+  // kategorilerde bile kendi id'sini taşır) — bu yüzden üst kategori
+  // toplamını görmek için alt kategorileri ust_id'ye göre gruplamak gerekir.
+  const kategoriGiderMap = new Map<string, { ust_id: string; ust_ad: string; toplam: number; adet: number }>();
+  for (const k of (ozet?.kategori || [])) {
+    if (k.tur !== "gider") continue;
+    const key = k.ust_id || "yok";
+    const existing = kategoriGiderMap.get(key);
+    if (existing) { existing.toplam += Number(k.toplam); existing.adet += Number(k.adet); }
+    else kategoriGiderMap.set(key, { ust_id: k.ust_id, ust_ad: k.ust_ad, toplam: Number(k.toplam), adet: Number(k.adet) });
+  }
+  const kategoriGider = Array.from(kategoriGiderMap.values())
+    .sort((a, b) => b.toplam - a.toplam)
     .slice(0, 8);
 
   return (
@@ -79,7 +89,7 @@ export default function FinansDashboardPage() {
                 <p className={`text-2xl font-bold tabular-nums ${taslakBekleyen?.adet > 0 ? "text-amber-400" : "text-white"}`}>{taslakBekleyen?.adet || 0}</p>
                 {taslakBekleyen?.adet > 0 && (
                   <button onClick={() => router.push("/finans/gider")} className="text-amber-400 text-xs mt-0.5 hover:underline">
-                    kategori bekliyor →
+                    onay bekliyor →
                   </button>
                 )}
               </div>
@@ -97,6 +107,8 @@ export default function FinansDashboardPage() {
                 {kategoriGider.length === 0 ? (
                   <p className="text-zinc-600 text-sm py-4 text-center">Bu ay kayıt yok</p>
                 ) : (
+                  <>
+                  <KategoriPastaGrafik data={kategoriGider} />
                   <div className="space-y-2.5">
                     {kategoriGider.map((k: any) => {
                       const maxToplam = Number(kategoriGider[0]?.toplam) || 1;
@@ -115,6 +127,7 @@ export default function FinansDashboardPage() {
                       );
                     })}
                   </div>
+                  </>
                 )}
               </div>
 
@@ -163,6 +176,46 @@ export default function FinansDashboardPage() {
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+const PASTA_RENKLER = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#06b6d4", "#a855f7", "#ec4899", "#84cc16"];
+
+// El yapımı SVG donut/pasta grafik — projede hiçbir grafik kütüphanesi
+// kullanılmıyor, mevcut dashboard'un konvansiyonuyla tutarlı (bkz. patron
+// mail'i, İSTENİLEN TALEPLER — "pasta dilimleri olsun").
+function KategoriPastaGrafik({ data }: { data: any[] }) {
+  const total = data.reduce((s, k) => s + Number(k.toplam), 0);
+  if (total <= 0) return null;
+  const R = 60, CX = 80, CY = 80, C = 2 * Math.PI * R;
+  let offset = 0;
+
+  return (
+    <div className="flex items-center gap-5 mb-5">
+      <svg width={160} height={160} viewBox="0 0 160 160" className="shrink-0">
+        {data.map((k, i) => {
+          const frac = Number(k.toplam) / total;
+          const dash = frac * C;
+          const el = (
+            <circle key={k.ust_id || i} r={R} cx={CX} cy={CY} fill="transparent"
+              stroke={PASTA_RENKLER[i % PASTA_RENKLER.length]} strokeWidth={24}
+              strokeDasharray={`${dash} ${C - dash}`} strokeDashoffset={-offset}
+              transform={`rotate(-90 ${CX} ${CY})`} />
+          );
+          offset += dash;
+          return el;
+        })}
+      </svg>
+      <div className="space-y-1.5 min-w-0">
+        {data.slice(0, 8).map((k, i) => (
+          <div key={k.ust_id || i} className="flex items-center gap-2 text-xs">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: PASTA_RENKLER[i % PASTA_RENKLER.length] }} />
+            <span className="text-zinc-400 truncate">{k.ust_ad}</span>
+            <span className="text-zinc-600 shrink-0 ml-auto">%{Math.round((Number(k.toplam) / total) * 100)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

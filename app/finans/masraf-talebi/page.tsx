@@ -25,6 +25,9 @@ const EMPTY_FORM = {
   department_id: "",
   proje_id: "",
   masraf_merkezi_id: "",
+  vehicle_id: "",
+  route_id: "",
+  company_id: "",
 };
 
 function toDateInputValue(v: unknown): string {
@@ -52,6 +55,10 @@ export default function MasrafTalebiPage() {
   const [departmanlar, setDepartmanlar] = useState<any[]>([]);
   const [projeler, setProjeler] = useState<any[]>([]);
   const [masrafMerkezleri, setMasrafMerkezleri] = useState<any[]>([]);
+  const [araclar, setAraclar] = useState<any[]>([]);
+  const [firmalar, setFirmalar] = useState<any[]>([]);
+
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   const [durumFilter, setDurumFilter] = useState("");
 
@@ -59,10 +66,12 @@ export default function MasrafTalebiPage() {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
       if (d.ok) setUser(d.data); else router.replace("/login");
     });
-    fetch("/api/finans/kategori").then(r => r.json()).then(d => { if (d.ok) setKategoriler(d.data); });
+    fetch("/api/finans/kategori?tip=gider").then(r => r.json()).then(d => { if (d.ok) setKategoriler(d.data); });
     fetch("/api/departments").then(r => r.json()).then(d => { if (d.ok) setDepartmanlar(d.data); });
     fetch("/api/finans/proje").then(r => r.json()).then(d => { if (d.ok) setProjeler(d.data); });
     fetch("/api/finans/masraf-merkezi").then(r => r.json()).then(d => { if (d.ok) setMasrafMerkezleri(d.data); });
+    fetch("/api/vehicles?limit=500").then(r => r.json()).then(d => { if (d.ok) setAraclar(d.data); }).catch(() => {});
+    fetch("/api/companies").then(r => r.json()).then(d => { if (d.ok) setFirmalar(d.data); }).catch(() => {});
   }, []);
 
   useEffect(() => { load(); }, [durumFilter]);
@@ -79,7 +88,17 @@ export default function MasrafTalebiPage() {
     } finally { setLoading(false); }
   }
 
-  function openCreate() { setForm({ ...EMPTY_FORM }); setSaveError(null); setShowForm(true); }
+  function openCreate() { setForm({ ...EMPTY_FORM }); setPendingFile(null); setSaveError(null); setShowForm(true); }
+
+  async function uploadFis(talepId: string, file: File) {
+    const fd = new FormData();
+    fd.append("dosya", file);
+    fd.append("iliskili_tip", "masraf_talebi");
+    fd.append("iliskili_id", talepId);
+    const r = await fetch("/api/finans/belge", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!d.ok) toast.error(typeof d.error === "string" ? d.error : "Fiş yüklenemedi");
+  }
 
   async function save() {
     const tutar = Number(form.tahmini_tutar);
@@ -98,6 +117,9 @@ export default function MasrafTalebiPage() {
         department_id: form.department_id || null,
         proje_id: form.proje_id || null,
         masraf_merkezi_id: form.masraf_merkezi_id || null,
+        vehicle_id: form.vehicle_id || null,
+        route_id: form.route_id || null,
+        company_id: form.company_id || null,
       };
       const res = await fetch("/api/finans/masraf-talebi", {
         method: "POST",
@@ -106,6 +128,7 @@ export default function MasrafTalebiPage() {
       });
       const d = await res.json();
       if (!d.ok) { setSaveError(typeof d.error === "string" ? d.error : "Kayıt hatası"); return; }
+      if (pendingFile) await uploadFis(d.data.id, pendingFile);
       toast.success("Talep oluşturuldu");
       setShowForm(false);
       load();
@@ -198,6 +221,9 @@ export default function MasrafTalebiPage() {
                       <p className="text-zinc-500 text-xs">
                         {Number(row.tahmini_tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {row.para_birimi_kod}
                         {" · "}{toDateInputValue(row.tarih)}
+                        {row.kategori_ad && <>{" · "}{row.kategori_ad}</>}
+                        {row.vehicle_plate && <>{" · "}{row.vehicle_plate}</>}
+                        {row.company_ad && <>{" · "}{row.company_ad}</>}
                       </p>
                       {showActions && (
                         <div className="flex gap-2 shrink-0">
@@ -273,11 +299,38 @@ export default function MasrafTalebiPage() {
               </div>
 
               <label className="block">
+                <span className="text-zinc-400 text-xs font-medium mb-1 block">Fiş / Fatura Fotoğrafı</span>
+                <label className="flex items-center gap-2 text-xs text-zinc-400 hover:text-white cursor-pointer px-3 py-2.5 rounded-lg bg-zinc-800/60 border border-zinc-700 border-dashed">
+                  {pendingFile ? `📎 ${pendingFile.name}` : "+ Fotoğraf Seç"}
+                  <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
+                    onChange={e => setPendingFile(e.target.files?.[0] || null)} />
+                </label>
+              </label>
+
+              <label className="block">
                 <span className="text-zinc-400 text-xs font-medium mb-1 block">Kategori</span>
                 <select value={form.kategori_id} onChange={e => setForm(f => ({ ...f, kategori_id: e.target.value }))}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
                   <option value="">— Seçilmedi —</option>
-                  {kategoriler.map(k => <option key={k.id} value={k.id}>{k.ad}</option>)}
+                  {kategoriler.map(k => <option key={k.id} value={k.id}>{k.parent_id ? `   ${k.ad}` : k.ad}</option>)}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-zinc-400 text-xs font-medium mb-1 block">Araç <span className="text-zinc-600">(yakıt/bakım gibi araca ait masraflarda)</span></span>
+                <select value={form.vehicle_id} onChange={e => setForm(f => ({ ...f, vehicle_id: e.target.value }))}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
+                  <option value="">— Seçilmedi —</option>
+                  {araclar.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-zinc-400 text-xs font-medium mb-1 block">Firma <span className="text-zinc-600">(hangi müşteri için)</span></span>
+                <select value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
+                  <option value="">— Seçilmedi —</option>
+                  {firmalar.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </label>
 

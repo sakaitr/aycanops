@@ -48,31 +48,30 @@ async function forwardGeocode(q: string): Promise<LatLng | null> {
   return null;
 }
 
-// ── OSRM routing ──────────────────────────────────────────────────────────
+// ── Routing (sunucu üzerinden OpenRouteService) ────────────────────────────
 async function osrmRoute(
   pts: LatLng[],
   signal?: AbortSignal
 ): Promise<{ coords: [number, number][]; dist: number; dur: number } | null> {
   if (pts.length < 2) return null;
   try {
-    const coord = pts.map(p => `${p.lng},${p.lat}`).join(";");
-    const r = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${coord}?overview=full&geometries=geojson`,
-      { signal: signal ?? AbortSignal.timeout(12000) }
-    );
+    const r = await fetch("/api/routing/directions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ points: pts }),
+      signal: signal ?? AbortSignal.timeout(12000),
+    });
     const d = await r.json();
-    if (d.code !== "Ok" || !d.routes?.[0]) return null;
-    const route = d.routes[0];
-    const coords: [number, number][] = route.geometry.coordinates.map(
-      ([lng, lat]: [number, number]) => [lat, lng]
-    );
-    const dist = route.legs.reduce((s: number, l: any) => s + l.distance, 0);
-    const dur = route.legs.reduce((s: number, l: any) => s + l.duration, 0);
-    return { coords, dist, dur };
+    if (!d.ok || !d.data) return null;
+    return { coords: d.data.coordinates, dist: d.data.distance ?? 0, dur: d.data.duration ?? 0 };
   } catch {
     return null;
   }
 }
+
+// Not: rota optimizasyonu (osrmTrip, aşağıda) hâlâ OSRM'in halka açık demo
+// sunucusunu kullanıyor — ORS'un karşılığı (Optimization API) VROOM tabanlı
+// ve farklı bir istek şekli (job/vehicle) gerektiriyor, ayrı bir iş olarak
+// bırakıldı.
 
 async function osrmTrip(
   pts: LatLng[],

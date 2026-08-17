@@ -39,8 +39,58 @@ export async function GET(_req: NextRequest) {
       bySubmission.set(f.submission_id, list);
     }
 
-    const data = submissions.map(s => ({ ...s, files: bySubmission.get(s.id) ?? [] }));
-    return NextResponse.json({ ok: true, data });
+    // Personelin Seri Denetim ile yaptığı TÜM resmi denetimler — sadece
+    // müşteri gönderimine linked_inspection_id ile bağlı olanlar değil,
+    // personelin bağımsız yaptığı denetimler de dahil (bkz. patron geri
+    // bildirimi: "operasyon tarafında yapılan denetimler ayrı görülebilsin").
+    const companyInspections = await db.prepare(
+      `SELECT i.id, i.company_vehicle_plate, i.inspection_date, i.type, i.result, i.checklist_json, i.notes,
+              u.full_name AS inspector_name
+       FROM inspections i
+       LEFT JOIN users u ON u.id = i.inspector_id
+       WHERE i.company_id = ?
+       ORDER BY i.inspection_date DESC, i.created_at DESC`
+    ).all<any>(portalUser.company_id);
+
+    const inspectionIds = companyInspections.map(i => i.id);
+    const photosByInspection = new Map<string, any[]>();
+    if (inspectionIds.length > 0) {
+      const placeholders = inspectionIds.map(() => "?").join(",");
+      const photos = await db.prepare(
+        `SELECT id, inspection_id, filename, criterion_index FROM inspection_photos WHERE inspection_id IN (${placeholders})`
+      ).all<any>(...inspectionIds);
+      for (const p of photos) {
+        const list = photosByInspection.get(p.inspection_id) ?? [];
+        list.push(p);
+        photosByInspection.set(p.inspection_id, list);
+      }
+    }
+
+    const allInspById = new Map<string, any>();
+    const staffInspectionsByPlate = new Map<string, any[]>();
+    for (const i of companyInspections) {
+      const full = {
+        ...i,
+        checklist: i.checklist_json ? JSON.parse(i.checklist_json) : null,
+        photos: photosByInspection.get(i.id) ?? [],
+      };
+      allInspById.set(i.id, full);
+      const plate = (i.company_vehicle_plate || "").toUpperCase();
+      if (plate) {
+        const list = staffInspectionsByPlate.get(plate) ?? [];
+        list.push(full);
+        staffInspectionsByPlate.set(plate, list);
+      }
+    }
+
+    const data = submissions.map(s => ({
+      ...s,
+      files: bySubmission.get(s.id) ?? [],
+      linked_inspection: s.linked_inspection_id ? allInspById.get(s.linked_inspection_id) ?? null : null,
+    }));
+
+    const staff_inspections = Object.fromEntries(staffInspectionsByPlate);
+    return NextResponse.json({ ok: true, data, staff_inspections });
   } catch (e) {
     return apiError(e);
   }

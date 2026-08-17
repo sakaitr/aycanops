@@ -3,13 +3,14 @@ import { NextRequest, NextResponse } from "next/server";
 // Public pages & API routes that do not require authentication
 const PUBLIC_PATHS = new Set(["/login", "/api/auth/login", "/finans-giris"]);
 
-// Finans/finans_yetkili rolleri sistemden bağımsız, ayrı bir kapıdan
-// (/finans-giris) girer ve sadece bu çekirdek sayfaları görebilir.
-const FINANS_ONLY_ROLES = new Set(["finans", "finans_yetkili"]);
+// Finans/finans_yetkili/on_muhasebe rolleri sistemden bağımsız, ayrı bir
+// kapıdan (/finans-giris) girer ve sadece bu çekirdek sayfaları görebilir.
+const FINANS_ONLY_ROLES = new Set(["finans", "finans_yetkili", "on_muhasebe"]);
 const FINANS_ALLOWED_PATHS = [
   "/finans/hareketler",
   "/finans/gider",
   "/finans/masraf-talebi",
+  "/cari-tedarikci",
   "/yetkisiz",
 ];
 
@@ -47,7 +48,7 @@ const PUBLIC_FILE_EXTENSIONS = [
 const CSRF_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 // Pages accessible only by the "personel" role
-const PERSONEL_ALLOWED_PATHS = ["/giris-kontrol", "/yetkisiz", "/finans/masraf-talebi"];
+const PERSONEL_ALLOWED_PATHS = ["/giris-kontrol", "/yetkisiz", "/finans/masraf-talebi", "/is-giris", "/gunluk"];
 
 function isAllowedForPersonel(pathname: string): boolean {
   return PERSONEL_ALLOWED_PATHS.some((p) => pathname.startsWith(p));
@@ -117,8 +118,13 @@ export function proxy(request: NextRequest) {
     const sessionId = request.cookies.get(cookieName)?.value;
     if (sessionId) {
       const role = request.cookies.get("opsdesk_role")?.value || "";
+      const landing = request.cookies.get("opsdesk_landing")?.value || "";
       const url = request.nextUrl.clone();
-      url.pathname = FINANS_ONLY_ROLES.has(role) ? "/finans" : role === "personel" ? "/giris-kontrol" : "/";
+      if (landing && !FINANS_ONLY_ROLES.has(role) && role !== "personel") {
+        url.pathname = landing;
+      } else {
+        url.pathname = FINANS_ONLY_ROLES.has(role) ? "/finans" : role === "personel" ? "/giris-kontrol" : "/";
+      }
       return NextResponse.redirect(url);
     }
     return NextResponse.next();

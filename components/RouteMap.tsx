@@ -30,16 +30,13 @@ async function osrmRoute(
 ): Promise<[number, number][] | null> {
   if (pts.length < 2) return null;
   try {
-    const coord = pts.map(p => `${p.lng},${p.lat}`).join(";");
-    const r = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${coord}?overview=full&geometries=geojson`,
-      { signal: AbortSignal.timeout(12000) }
-    );
+    const r = await fetch("/api/routing/directions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ points: pts }),
+      signal: AbortSignal.timeout(12000),
+    });
     const d = await r.json();
-    if (d.code !== "Ok" || !d.routes?.[0]) return null;
-    return d.routes[0].geometry.coordinates.map(
-      ([lng, lat]: [number, number]) => [lat, lng] as [number, number]
-    );
+    return d.ok && d.data ? d.data.coordinates : null;
   } catch {
     return null;
   }

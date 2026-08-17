@@ -145,16 +145,13 @@ async function osrmRoute(stops: Stop[]): Promise<[number, number][] | null> {
   const pts = stops.filter(s => s.lat != null && s.lng != null);
   if (pts.length < 2) return null;
   try {
-    const coord = pts.map(s => `${s.lng},${s.lat}`).join(";");
-    const r = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${coord}?overview=full&geometries=geojson`,
-      { signal: AbortSignal.timeout(12000) }
-    );
+    const r = await fetch("/api/routing/directions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ points: pts.map(s => ({ lat: s.lat, lng: s.lng })) }),
+      signal: AbortSignal.timeout(12000),
+    });
     const d = await r.json();
-    if (d.code !== "Ok" || !d.routes?.[0]) return null;
-    return d.routes[0].geometry.coordinates.map(
-      ([lng, lat]: [number, number]) => [lat, lng] as [number, number]
-    );
+    return d.ok && d.data ? d.data.coordinates : null;
   } catch { return null; }
 }
 

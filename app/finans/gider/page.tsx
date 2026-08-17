@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import { hasPermission } from "@/lib/permissions";
 import { todayIstanbul } from "@/lib/time";
+import { toast } from "@/lib/toast";
 
 type Kalem = { aciklama: string; miktar: string; birim_fiyat: string };
 
@@ -50,15 +51,21 @@ export default function GiderPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const [showHizli, setShowHizli] = useState(false);
-  const [hizliForm, setHizliForm] = useState({ tarih: todayIstanbul(), tutar: "", aciklama: "" });
+  const [hizliForm, setHizliForm] = useState({ tarih: todayIstanbul(), tutar: "", kategoriId: "", aciklama: "" });
   const [hizliFile, setHizliFile] = useState<File | null>(null);
   const [hizliSaving, setHizliSaving] = useState(false);
+
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkParsing, setBulkParsing] = useState(false);
+  const [bulkRows, setBulkRows] = useState<any[] | null>(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ created: number; hatalar: any[] } | null>(null);
 
   const canWrite = hasPermission(user, "finans_gider:create");
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); else router.replace("/login"); }).catch(() => router.replace("/login"));
-    fetch("/api/finans/kategori?tip=gider").then(r => r.json()).then(d => { if (d.ok) setKategoriler(d.data); }).catch(() => {});
+    fetch("/api/finans/kategori?tip=gider&scope=me").then(r => r.json()).then(d => { if (d.ok) setKategoriler(d.data); }).catch(() => {});
     fetch("/api/cari-tedarikci?limit=500").then(r => r.json()).then(d => { if (d.ok) setCariler(d.data); }).catch(() => {});
     fetch("/api/vehicles?limit=500").then(r => r.json()).then(d => { if (d.ok) setVehicles(d.data); }).catch(() => {});
     fetch("/api/companies?limit=500").then(r => r.json()).then(d => { if (d.ok) setCompanies(d.data); }).catch(() => {});
@@ -114,7 +121,7 @@ export default function GiderPage() {
     });
     const d = await res.json();
     if (d.ok) {
-      const kr = await fetch("/api/finans/kategori?tip=gider").then(r => r.json());
+      const kr = await fetch("/api/finans/kategori?tip=gider&scope=me").then(r => r.json());
       if (kr.ok) setKategoriler(kr.data);
       setForm(f => ({ ...f, kategori_id: d.data.id }));
     } else {
@@ -162,6 +169,9 @@ export default function GiderPage() {
       });
       const d = await res.json();
       if (!d.ok) { setSaveError(typeof d.error === "string" ? d.error : "Kaydetme başarısız"); return; }
+      if (d.uyari) {
+        toast.warning(`Bu ay için ${d.uyari.butce.toLocaleString("tr-TR")} TL bütçeni ${(d.uyari.harcanan - d.uyari.butce).toLocaleString("tr-TR")} TL aştın.`);
+      }
       for (const f of files) {
         const fd = new FormData();
         fd.append("dosya", f);
@@ -175,22 +185,23 @@ export default function GiderPage() {
   }
 
   function openHizli() {
-    setHizliForm({ tarih: todayIstanbul(), tutar: "", aciklama: "" });
+    setHizliForm({ tarih: todayIstanbul(), tutar: "", kategoriId: "", aciklama: "" });
     setHizliFile(null);
     setShowHizli(true);
   }
 
   async function saveHizli() {
-    if (!hizliForm.tutar) return;
+    if (!hizliFile && !hizliForm.tutar) return; // en az fotoğraf ya da tutar girilmeli
     setHizliSaving(true);
     try {
       const res = await fetch("/api/finans/gider", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tip: "fis", tarih: hizliForm.tarih, tutar: Number(hizliForm.tutar),
+          tip: "fis", tarih: hizliForm.tarih,
+          tutar: hizliForm.tutar ? Number(hizliForm.tutar) : undefined,
           aciklama: hizliForm.aciklama || null,
-          kategori_id: kategoriler[0]?.id, // geçici — kategori sonra tamamlanır
-          durum: "taslak",
+          kategori_id: hizliForm.kategoriId || null,
+          durum: "taslak", // her zaman taslak — onay bekleyen olarak kalır
         }),
       });
       const d = await res.json();
@@ -201,7 +212,12 @@ export default function GiderPage() {
         fd.append("iliskili_id", d.data.id);
         await fetch("/api/finans/belge", { method: "POST", body: fd }).catch(() => {});
       }
-      if (d.ok) { setShowHizli(false); load(); }
+      if (d.ok) {
+        if (d.uyari) {
+          toast.warning(`Bu ay için ${d.uyari.butce.toLocaleString("tr-TR")} TL bütçeni ${(d.uyari.harcanan - d.uyari.butce).toLocaleString("tr-TR")} TL aştın.`);
+        }
+        setShowHizli(false); load();
+      }
     } finally { setHizliSaving(false); }
   }
 
@@ -212,6 +228,47 @@ export default function GiderPage() {
     });
     const d = await res.json();
     if (d.ok) { setDetail(prev => { const n = { ...prev }; delete n[id]; return n; }); load(); }
+  }
+
+  function openBulk() {
+    setBulkRows(null);
+    setBulkResult(null);
+    setShowBulk(true);
+  }
+
+  async function handleBulkFile(file: File) {
+    setBulkParsing(true);
+    setBulkRows(null);
+    setBulkResult(null);
+    try {
+      const fd = new FormData();
+      fd.append("dosya", file);
+      const res = await fetch("/api/finans/gider/import", { method: "POST", body: fd });
+      const d = await res.json();
+      if (d.ok) setBulkRows(d.data.rows);
+    } finally { setBulkParsing(false); }
+  }
+
+  async function handleBulkSave() {
+    if (!bulkRows) return;
+    const gecerli = bulkRows.filter(r => !r.hata);
+    if (gecerli.length === 0) return;
+    setBulkSaving(true);
+    try {
+      const payload = gecerli.map(r => ({
+        tip: r.tip, tarih: r.tarih, kategori_id: r.kategori_id, cari_id: r.cari_id,
+        belge_no: r.belge_no, tutar: r.tutar, kdv_tutar: r.kdv_tutar, aciklama: r.aciklama,
+      }));
+      const res = await fetch("/api/finans/gider/bulk", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setBulkResult(d.data);
+        setBulkRows(null);
+        load();
+      }
+    } finally { setBulkSaving(false); }
   }
 
   function exportUrl() {
@@ -231,7 +288,7 @@ export default function GiderPage() {
             <h1 className="text-2xl font-bold text-white">Gider</h1>
             <p className="text-zinc-500 text-sm mt-0.5">
               {rows.length} kayıt
-              {taslakCount > 0 && <span className="text-amber-400"> · {taslakCount} taslak (kategori bekliyor)</span>}
+              {taslakCount > 0 && <span className="text-amber-400"> · {taslakCount} onay bekliyor</span>}
             </p>
           </div>
           <div className="flex gap-2">
@@ -240,6 +297,13 @@ export default function GiderPage() {
             </a>
             {canWrite && (
               <>
+                <a href="/api/finans/gider/template" className="bg-zinc-800 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-zinc-700 transition-colors border border-zinc-700">
+                  Şablon İndir
+                </a>
+                <button onClick={openBulk}
+                  className="bg-zinc-800 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-zinc-700 transition-colors border border-zinc-700">
+                  Toplu Yükle
+                </button>
                 <button onClick={openHizli}
                   className="bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-amber-500 transition-colors">
                   + Anlık Giriş
@@ -326,14 +390,26 @@ export default function GiderPage() {
                         <>
                           {row.durum === "taslak" && (
                             <div className="bg-amber-950/40 border border-amber-800 rounded-lg p-3 mb-3">
-                              <p className="text-amber-300 text-xs font-semibold mb-2">Bu kayıt anlık girişten geldi, kategori seçilip tamamlanmalı</p>
-                              <select id={`kat-${row.id}`} defaultValue={row.kategori_id || ""} className="bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg mr-2">
-                                {kategoriler.map((k: any) => <option key={k.id} value={k.id}>{k.parent_id ? "   " + k.ad : k.ad}</option>)}
-                              </select>
-                              <button onClick={() => completeTaslak(row.id, (document.getElementById(`kat-${row.id}`) as HTMLSelectElement).value)}
-                                className="bg-amber-600 text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-amber-500">
-                                Tamamla
-                              </button>
+                              {row.kategori_id ? (
+                                <>
+                                  <p className="text-amber-300 text-xs font-semibold mb-2">Anlık girişten geldi, onay bekliyor</p>
+                                  <button onClick={() => completeTaslak(row.id, row.kategori_id)}
+                                    className="bg-amber-600 text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-amber-500">
+                                    Onayla
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="text-amber-300 text-xs font-semibold mb-2">Anlık girişten geldi, kategori seçilip onaylanmalı</p>
+                                  <select id={`kat-${row.id}`} defaultValue={kategoriler[0]?.id || ""} className="bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg mr-2">
+                                    {kategoriler.map((k: any) => <option key={k.id} value={k.id}>{k.parent_id ? "   " + k.ad : k.ad}</option>)}
+                                  </select>
+                                  <button onClick={() => completeTaslak(row.id, (document.getElementById(`kat-${row.id}`) as HTMLSelectElement).value)}
+                                    className="bg-amber-600 text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-amber-500">
+                                    Onayla
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
                           {d.kalemler?.length > 0 && (
@@ -504,16 +580,21 @@ export default function GiderPage() {
               <h2 className="text-lg font-bold text-white">Anlık Giriş</h2>
               <button onClick={() => setShowHizli(false)} className="text-zinc-600 hover:text-white text-xl leading-none">×</button>
             </div>
-            <p className="text-zinc-500 text-xs mb-4">Fişi kaybetmeden hızlıca ekle — kategori sonra tamamlanır.</p>
+            <p className="text-zinc-500 text-xs mb-4">Fişi kaybetmeden hızlıca ekle — en az fotoğraf yeter, kalanı doldurulabilirse hızlanır. Kayıt onay bekleyen olarak düşer.</p>
             <div className="space-y-3">
               <label className="flex items-center justify-center gap-2 bg-zinc-800 border-2 border-dashed border-amber-700 rounded-lg px-3 py-6 text-amber-400 text-sm font-semibold cursor-pointer hover:border-amber-500 transition-colors">
                 {hizliFile ? hizliFile.name : "Fotoğraf Çek / Seç"}
                 <input type="file" accept="image/*" capture="environment" className="hidden"
                   onChange={e => setHizliFile(e.target.files?.[0] || null)} />
               </label>
-              <input type="number" placeholder="Tutar *" value={hizliForm.tutar}
+              <input type="number" placeholder="Tutar (opsiyonel)" value={hizliForm.tutar}
                 onChange={e => setHizliForm(f => ({ ...f, tutar: e.target.value }))}
                 className="w-full bg-zinc-800 border border-zinc-700 text-white text-lg px-3 py-3 rounded-lg focus:outline-none focus:border-amber-600 text-center font-semibold" />
+              <select value={hizliForm.kategoriId} onChange={e => setHizliForm(f => ({ ...f, kategoriId: e.target.value }))}
+                className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none">
+                <option value="">Kategori (opsiyonel, sonra da seçilebilir)</option>
+                {kategoriler.map((k: any) => <option key={k.id} value={k.id}>{k.parent_id ? "   " + k.ad : k.ad}</option>)}
+              </select>
               <input type="date" value={hizliForm.tarih} onChange={e => setHizliForm(f => ({ ...f, tarih: e.target.value }))}
                 className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none" />
               <input placeholder="Not (opsiyonel)" value={hizliForm.aciklama}
@@ -522,11 +603,93 @@ export default function GiderPage() {
             </div>
             <div className="flex gap-3 mt-4">
               <button onClick={() => setShowHizli(false)} className="flex-1 bg-zinc-800 text-zinc-300 text-sm font-medium py-2.5 rounded-lg hover:bg-zinc-700 transition-colors">İptal</button>
-              <button onClick={saveHizli} disabled={hizliSaving || !hizliForm.tutar}
+              <button onClick={saveHizli} disabled={hizliSaving || (!hizliFile && !hizliForm.tutar)}
                 className="flex-1 bg-amber-600 text-white text-sm font-semibold py-2.5 rounded-lg hover:bg-amber-500 disabled:opacity-50 transition-colors">
                 {hizliSaving ? "Kaydediliyor..." : "Hemen Kaydet"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Toplu Yükle Modal ─── */}
+      {showBulk && (
+        <div className="fixed inset-0 bg-black/80 flex items-start justify-center z-50 px-4 overflow-y-auto py-8">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-3xl my-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-white">Excel ile Toplu Yükle</h2>
+              <button onClick={() => setShowBulk(false)} className="text-zinc-600 hover:text-white text-xl leading-none">×</button>
+            </div>
+
+            {!bulkRows && !bulkResult && (
+              <div className="space-y-3">
+                <p className="text-zinc-500 text-sm">
+                  Önce <a href="/api/finans/gider/template" className="text-white underline">şablonu indirin</a>, verinizi girin ve buradan yükleyin.
+                  Kategori adları, şablondaki "Kategoriler" sayfasıyla birebir eşleşmeli.
+                </p>
+                <label className="flex items-center justify-center gap-2 bg-zinc-800 border-2 border-dashed border-zinc-700 rounded-lg px-3 py-8 text-zinc-300 text-sm font-semibold cursor-pointer hover:border-zinc-500 transition-colors">
+                  {bulkParsing ? "Okunuyor..." : "Excel Dosyası Seç"}
+                  <input type="file" accept=".xlsx,.xls" className="hidden" disabled={bulkParsing}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleBulkFile(f); }} />
+                </label>
+              </div>
+            )}
+
+            {bulkRows && (
+              <div className="space-y-3">
+                <p className="text-sm">
+                  <span className="text-emerald-400 font-semibold">{bulkRows.filter(r => !r.hata).length} geçerli</span>
+                  {bulkRows.some(r => r.hata) && <span className="text-red-400 font-semibold"> · {bulkRows.filter(r => r.hata).length} hatalı (yüklenmeyecek)</span>}
+                </p>
+                <div className="max-h-80 overflow-y-auto border border-zinc-800 rounded-lg">
+                  <table className="w-full text-xs">
+                    <thead className="bg-zinc-800/60 sticky top-0">
+                      <tr className="text-zinc-400 text-left">
+                        <th className="px-2 py-1.5">Satır</th>
+                        <th className="px-2 py-1.5">Tip</th>
+                        <th className="px-2 py-1.5">Tarih</th>
+                        <th className="px-2 py-1.5">Kategori</th>
+                        <th className="px-2 py-1.5">Tutar</th>
+                        <th className="px-2 py-1.5">Durum</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkRows.map((r: any) => (
+                        <tr key={r.row} className={`border-t border-zinc-800/60 ${r.hata ? "bg-red-950/30" : ""}`}>
+                          <td className="px-2 py-1.5 text-zinc-500">{r.row}</td>
+                          <td className="px-2 py-1.5 text-zinc-300">{r.tip === "fis" ? "Fiş" : "Fatura"}</td>
+                          <td className="px-2 py-1.5 text-zinc-300">{r.tarih || "—"}</td>
+                          <td className="px-2 py-1.5 text-zinc-300">{r.kategori_raw || "—"}</td>
+                          <td className="px-2 py-1.5 text-zinc-300 tabular-nums">{r.tutar ?? "—"}</td>
+                          <td className="px-2 py-1.5">
+                            {r.hata ? <span className="text-red-400">{r.hata}</span> : <span className="text-emerald-400">OK</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setBulkRows(null)} className="flex-1 bg-zinc-800 text-zinc-300 text-sm font-medium py-2.5 rounded-lg hover:bg-zinc-700 transition-colors">Vazgeç</button>
+                  <button onClick={handleBulkSave} disabled={bulkSaving || bulkRows.filter(r => !r.hata).length === 0}
+                    className="flex-1 bg-white text-zinc-950 text-sm font-semibold py-2.5 rounded-lg hover:bg-zinc-200 disabled:opacity-50 transition-colors">
+                    {bulkSaving ? "Kaydediliyor..." : `${bulkRows.filter(r => !r.hata).length} Kaydı Onayla ve Yükle`}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {bulkResult && (
+              <div className="space-y-3">
+                <p className="text-emerald-400 text-sm font-semibold">{bulkResult.created} kayıt eklendi.</p>
+                {bulkResult.hatalar.length > 0 && (
+                  <div className="bg-red-950/40 border border-red-800 rounded-lg p-3 text-xs text-red-300 space-y-1">
+                    {bulkResult.hatalar.map((h: any, i: number) => <p key={i}>Satır {h.index + 1}: {h.hata}</p>)}
+                  </div>
+                )}
+                <button onClick={() => setShowBulk(false)} className="w-full bg-white text-zinc-950 text-sm font-semibold py-2.5 rounded-lg hover:bg-zinc-200 transition-colors">Kapat</button>
+              </div>
+            )}
           </div>
         </div>
       )}

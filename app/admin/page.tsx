@@ -130,6 +130,22 @@ export default function AdminPage() {
       color: "border-sky-800/50 hover:border-sky-700",
     },
     {
+      href: "/admin/finans-kategori-gruplari",
+      icon: "🗂️",
+      title: "Gider Kategori Grupları",
+      desc: "Kullanıcıya göre Gider Ekle formunda hangi kategorilerin görüneceğini belirle",
+      stat: "",
+      color: "border-lime-800/50 hover:border-lime-700",
+    },
+    {
+      href: "/admin/finans-kisisel-butce",
+      icon: "💰",
+      title: "Kişisel Bütçeler",
+      desc: "Kişi başına aylık gider bütçesi — aşılınca uyarı çıkar (engellemez)",
+      stat: "",
+      color: "border-amber-800/50 hover:border-amber-700",
+    },
+    {
       href: "/admin/uyarilar",
       icon: "⚠️",
       title: "Uyarılar",

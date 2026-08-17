@@ -6,7 +6,15 @@ import { hasPermission } from "@/lib/permissions";
 import { todayIstanbul } from "@/lib/time";
 
 const KAYNAK_LABELS: Record<string, string> = {
-  fatura: "Fatura", masraf: "Masraf", kasa: "Kasa/Elden", hakedis: "Hakediş", manuel: "Manuel",
+  fatura: "Fatura", masraf: "Masraf", kasa: "Kasa/Elden", hakedis: "Hakediş", manuel: "Manuel", gider: "Gider",
+};
+// Kaynağı silmek için çağrılacak API + gereken izin — kasa/hakedis/manuel'in
+// henüz kendi silme uçları yok (bkz. lib/finans-hareket.ts, sadece
+// gider/fatura/masraf şu an gerçekten kullanılıyor).
+const DELETE_CONFIG: Record<string, { url: (id: string) => string; perm: string }> = {
+  gider: { url: id => `/api/finans/gider/${id}`, perm: "finans_gider:delete" },
+  fatura: { url: id => `/api/finans/fatura/${id}`, perm: "finans_fatura:delete" },
+  masraf: { url: id => `/api/finans/masraf-talebi/${id}`, perm: "finans_masraf_talebi:delete" },
 };
 const DURUM_LABELS: Record<string, string> = {
   taslak: "Taslak", onay_bekliyor: "Onay Bekliyor", onaylandi: "Onaylandı",
@@ -43,12 +51,13 @@ export default function HareketlerPage() {
   const [kaynakTip, setKaynakTip] = useState("");
   const [kategoriId, setKategoriId] = useState("");
   const [q, setQ] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
       if (d.ok) setUser(d.data); else router.replace("/login");
     });
-    fetch("/api/finans/kategori?is_active=1").then(r => r.json()).then(d => { if (d.ok) setKategoriler(d.data); });
+    fetch("/api/finans/kategori?is_active=1&scope=me").then(r => r.json()).then(d => { if (d.ok) setKategoriler(d.data); });
   }, []);
 
   const load = useCallback(async () => {
@@ -72,6 +81,23 @@ export default function HareketlerPage() {
     const t = setTimeout(load, q ? 350 : 0); // arama yazarken debounce
     return () => clearTimeout(t);
   }, [user, load, q]);
+
+  async function handleDelete(row: any) {
+    const config = DELETE_CONFIG[row.kaynak_tip];
+    if (!config) return;
+    if (!confirm(`Bu ${KAYNAK_LABELS[row.kaynak_tip] || row.kaynak_tip} kaydını kalıcı olarak silmek istediğinize emin misiniz?\n${row.aciklama || row.cari_unvan || ""}`)) return;
+    setDeletingId(row.id);
+    try {
+      const r = await fetch(config.url(row.kaynak_id), { method: "DELETE" });
+      const d = await r.json();
+      if (d.ok) load();
+      else alert(d.error || "Silinemedi");
+    } catch {
+      alert("Bağlantı hatası");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const gelir = rows.filter(r => r.tur === "gelir").reduce((a, r) => a + Number(r.tutar_try || 0), 0);
   const gider = rows.filter(r => r.tur === "gider").reduce((a, r) => a + Number(r.tutar_try || 0), 0);
@@ -153,61 +179,87 @@ export default function HareketlerPage() {
 
           {loading ? (
             <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-xl h-16 animate-pulse" />)}
+              {Array.from({ length: 5 }).map((_, i) => <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-xl h-10 animate-pulse" />)}
             </div>
           ) : rows.length === 0 ? (
             <div className="text-center py-16 text-zinc-600">Bu filtrelerde hareket yok</div>
           ) : (
             <>
               <p className="text-xs text-zinc-600 mb-2">{rows.length} hareket</p>
-              <div className="space-y-2">
-                {rows.map(h => (
-                  <div key={h.id} className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
-                    <div className="flex items-start gap-2 flex-wrap">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
-                        h.tur === "gelir" ? "bg-emerald-950 text-emerald-400" : "bg-red-950 text-red-400"
-                      }`}>
-                        {h.tur === "gelir" ? "GELİR" : "GİDER"}
-                      </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 shrink-0">
-                        {KAYNAK_LABELS[h.kaynak_tip] || h.kaynak_tip}
-                      </span>
-                      <span className="text-sm text-white font-medium">{h.cari_unvan || "—"}</span>
-                      <span className="text-xs text-zinc-500">{fmtDate(h.tarih)}</span>
-                      <span className={`text-sm font-bold tabular-nums ml-auto ${
-                        h.tur === "gelir" ? "text-emerald-400" : "text-red-400"
-                      }`}>
-                        {fmt(h.tutar_try)} ₺
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs">
-                      {h.kategori_ad && (
-                        <span className="text-zinc-400">
-                          {h.kategori_ust_ad ? `${h.kategori_ust_ad} › ` : ""}{h.kategori_ad}
-                        </span>
-                      )}
-                      {h.arac_plaka && <span className="text-zinc-500 font-mono">{h.arac_plaka}</span>}
-                      {h.firma_ad && <span className="text-zinc-500">{h.firma_ad}</span>}
-                      {h.departman_ad && <span className="text-zinc-600">{h.departman_ad}</span>}
-                      {h.personel_ad && <span className="text-zinc-600">{h.personel_ad}</span>}
-                      <span className={`px-1.5 py-0.5 rounded ${
-                        h.odeme_durumu === "odendi" ? "bg-emerald-950/60 text-emerald-500"
-                          : h.odeme_durumu === "kismen_odendi" ? "bg-amber-950/60 text-amber-500"
-                          : "bg-zinc-800 text-zinc-500"
-                      }`}>
-                        {ODEME_LABELS[h.odeme_durumu] || h.odeme_durumu}
-                      </span>
-                      {h.durum !== "onaylandi" && (
-                        <span className="px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-500">
-                          {DURUM_LABELS[h.durum] || h.durum}
-                        </span>
-                      )}
-                    </div>
-
-                    {h.aciklama && <p className="text-xs text-zinc-600 mt-1 truncate">{h.aciklama}</p>}
-                  </div>
-                ))}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-left">
+                      <th className="px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">Tarih</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">Tür</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">Kaynak</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Kategori</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Cari / Açıklama</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">Detay</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">Ödeme</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap">Durum</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right whitespace-nowrap">Tutar</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider whitespace-nowrap"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((h, i) => (
+                      <tr key={h.id} className={`hover:bg-zinc-800/30 transition-colors ${i < rows.length - 1 ? "border-b border-zinc-800/50" : ""}`}>
+                        <td className="px-3 py-2.5 text-zinc-400 text-xs whitespace-nowrap">{fmtDate(h.tarih)}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                            h.tur === "gelir" ? "bg-emerald-950 text-emerald-400" : "bg-red-950 text-red-400"
+                          }`}>
+                            {h.tur === "gelir" ? "GELİR" : "GİDER"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-zinc-400 text-xs whitespace-nowrap">{KAYNAK_LABELS[h.kaynak_tip] || h.kaynak_tip}</td>
+                        <td className="px-3 py-2.5 text-zinc-400 text-xs">
+                          {h.kategori_ad ? (h.kategori_ust_ad ? `${h.kategori_ust_ad} › ${h.kategori_ad}` : h.kategori_ad) : "—"}
+                        </td>
+                        <td className="px-3 py-2.5 min-w-[160px]">
+                          <p className="text-white text-sm">{h.cari_unvan || "—"}</p>
+                          {h.aciklama && <p className="text-zinc-600 text-xs truncate max-w-[240px]">{h.aciklama}</p>}
+                        </td>
+                        <td className="px-3 py-2.5 text-zinc-500 text-xs whitespace-nowrap">
+                          {[h.arac_plaka, h.firma_ad, h.departman_ad, h.personel_ad].filter(Boolean).join(" · ") || "—"}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            h.odeme_durumu === "odendi" ? "bg-emerald-950/60 text-emerald-500"
+                              : h.odeme_durumu === "kismen_odendi" ? "bg-amber-950/60 text-amber-500"
+                              : "bg-zinc-800 text-zinc-500"
+                          }`}>
+                            {ODEME_LABELS[h.odeme_durumu] || h.odeme_durumu}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {h.durum !== "onaylandi" ? (
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-500">
+                              {DURUM_LABELS[h.durum] || h.durum}
+                            </span>
+                          ) : <span className="text-zinc-700 text-xs">—</span>}
+                        </td>
+                        <td className={`px-3 py-2.5 text-right font-bold tabular-nums whitespace-nowrap ${
+                          h.tur === "gelir" ? "text-emerald-400" : "text-red-400"
+                        }`}>
+                          {fmt(h.tutar_try)} ₺
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          {DELETE_CONFIG[h.kaynak_tip] && hasPermission(user, DELETE_CONFIG[h.kaynak_tip].perm) && (
+                            <button
+                              onClick={() => handleDelete(h)}
+                              disabled={deletingId === h.id}
+                              className="text-xs text-zinc-600 hover:text-red-400 border border-zinc-800 hover:border-red-900 px-2 py-1 rounded-lg transition-colors disabled:opacity-40"
+                            >
+                              {deletingId === h.id ? "..." : "Sil"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </>
           )}

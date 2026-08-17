@@ -40,15 +40,16 @@ const NAV_PERMISSION_BY_HREF_FOR_BOTTOM_NAV: Record<string, string> = {
 // bir kapıdan (/finans-giris) girer ve sadece muhasebe/finans sayfalarını
 // görür (operasyonel sayfalar hariç). Diğer sayfalara doğrudan URL ile
 // gidilirse buraya geri yönlendirilir (bkz. proxy.ts — asıl uygulama orada).
-const FINANS_ONLY_ROLES = ["finans", "finans_yetkili"];
-// Basit düzen (2026-08 kararı): sadece Hareketler + Gider + Masraf Talebi.
-// Ödemeler/Banka Hareketleri/Belgeler/Kâr-Zarar/Mutabakat/Bütçe/Cari/Hakediş
+const FINANS_ONLY_ROLES = ["finans", "finans_yetkili", "on_muhasebe"];
+// Basit düzen (2026-08 kararı): Hareketler + Gider + Masraf Talebi + Cari.
+// Ödemeler/Banka Hareketleri/Belgeler/Kâr-Zarar/Mutabakat/Bütçe/Hakediş
 // bilinçli olarak gizlendi — veri/sayfalar duruyor, sadece nav'dan çıktı.
 const FINANS_CORE_ITEMS = [
   { href: "/finans", label: "Özet", icon: "IconHome" },
   { href: "/finans/hareketler", label: "Hareketler", icon: "IconActivity" },
   { href: "/finans/gider", label: "Gider", icon: "IconDocument" },
   { href: "/finans/masraf-talebi", label: "Masraf Talebi", icon: "IconClipboard2" },
+  { href: "/cari-tedarikci", label: "Cari / Tedarikçi", icon: "IconBuilding" },
 ];
 const FINANS_ALLOWED_HREFS = FINANS_CORE_ITEMS.map(i => i.href);
 // "/finans" tam eşleşme olmalı — startsWith ile prefix eşleştirilirse
@@ -102,6 +103,7 @@ const DEFAULT_NAV_CONFIG: NavConfigType = {
         { id: "rota-5", href: "/guzergah-fiyatlari", label: "Güzergah Fiyatları", icon: "IconCoin", permission: "route_prices:read", isActive: true, sortOrder: 20, isCustom: false },
         { id: "operasyon-firmalar", href: "/firmalar", label: "Firmalar (Müşteriler)", icon: "IconBuilding", permission: "companies:read", isActive: true, sortOrder: 21, isCustom: false },
         { id: "operasyon-isletenler", href: "/isletenler", label: "İşletenler (Araç Tedarikçileri)", icon: "IconBuilding", permission: "isleten:read", isActive: true, sortOrder: 22, isCustom: false },
+        { id: "operasyon-is-basvuru", href: "/arac-is-basvuru", label: "İş Başvuruları", icon: "IconClipboard2", permission: "arac_is_basvuru:read", isActive: true, sortOrder: 22.5, isCustom: false },
         { id: "operasyon-hakedis", href: "/hakedis", label: "Hakediş", icon: "IconCoin", permission: "hakedis:read", isActive: true, sortOrder: 23, isCustom: false },
         { id: "operasyon-mutabakat", href: "/mutabakat", label: "Firma Mutabakat", icon: "IconCoin", permission: "firma_mutabakat:read", isActive: true, sortOrder: 24, isCustom: false },
         { id: "operasyon-yakit-fiyat", href: "/admin/yakit-fiyatlari", label: "Yakıt Fiyatları", icon: "IconCoin", permission: "yakit_fiyatlari:read", isActive: true, sortOrder: 25, isCustom: false },

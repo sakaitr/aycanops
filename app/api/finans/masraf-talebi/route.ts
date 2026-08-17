@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
 import { finansMasrafTalebiSchema } from "@/lib/schemas";
+import { syncHareket } from "@/lib/finans-hareket";
 
 export async function GET(req: NextRequest) {
   try {
@@ -26,12 +27,15 @@ export async function GET(req: NextRequest) {
 
     const rows = await getDb().prepare(
       `SELECT mt.*, u.full_name AS talep_eden_ad, k.ad AS kategori_ad,
-              d.name AS department_ad, p.ad AS proje_ad
+              d.name AS department_ad, p.ad AS proje_ad,
+              v.plate AS vehicle_plate, c.name AS company_ad
        FROM finans_masraf_talebi mt
        JOIN users u ON u.id = mt.talep_eden_user_id
        LEFT JOIN finans_kategori k ON k.id = mt.kategori_id
        LEFT JOIN departments d ON d.id = mt.department_id
        LEFT JOIN finans_proje p ON p.id = mt.proje_id
+       LEFT JOIN vehicles v ON v.id = mt.vehicle_id
+       LEFT JOIN companies c ON c.id = mt.company_id
        ${where}
        ORDER BY mt.created_at DESC`
     ).all(...params);
@@ -57,13 +61,35 @@ export async function POST(req: NextRequest) {
     await db.prepare(
       `INSERT INTO finans_masraf_talebi
          (id, talep_eden_user_id, tarih, baslik, aciklama, tahmini_tutar, para_birimi_kod,
-          kategori_id, department_id, proje_id, masraf_merkezi_id, durum, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'bekliyor', ?, ?)`
+          kategori_id, department_id, proje_id, masraf_merkezi_id, vehicle_id, route_id, company_id,
+          durum, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'bekliyor', ?, ?)`
     ).run(
       id, user.id, d.tarih, d.baslik, d.aciklama || null, d.tahmini_tutar, d.para_birimi_kod || "TRY",
       d.kategori_id || null, d.department_id || null, d.proje_id || null, d.masraf_merkezi_id || null,
+      d.vehicle_id || null, d.route_id || null, d.company_id || null,
       now, now
     );
+
+    // Tek deftere onay bekleyen olarak yaz — patron paneli "onay bekleyen"
+    // kırılımında görsün, onaylanınca/reddedilince durum güncellenir.
+    await syncHareket("masraf", id, {
+      tur: "gider",
+      tarih: d.tarih,
+      tutar: d.tahmini_tutar,
+      para_birimi: d.para_birimi_kod || "TRY",
+      kategori_id: d.kategori_id,
+      department_id: d.department_id,
+      proje_id: d.proje_id,
+      masraf_merkezi_id: d.masraf_merkezi_id,
+      vehicle_id: d.vehicle_id,
+      route_id: d.route_id,
+      company_id: d.company_id,
+      personel_id: user.id,
+      durum: "onay_bekliyor",
+      aciklama: d.baslik,
+      created_by: user.id,
+    });
 
     // Onay yetkisi olan yönetici/admin rollerine bildirim gönder.
     const approvers = await db.prepare(

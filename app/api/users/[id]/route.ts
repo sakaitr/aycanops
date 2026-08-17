@@ -19,7 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       SELECT u.id, u.username, u.full_name, u.role, u.is_active,
              u.department_id, d.name as department_name,
              u.allowed_pages, u.allowed_companies,
-             u.whatsapp_phone,
+             u.whatsapp_phone, u.landing_page,
              u.created_at, u.updated_at
       FROM users u
       LEFT JOIN departments d ON d.id = u.department_id
@@ -69,6 +69,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if ("whatsapp_phone" in body) {
       fields.push("whatsapp_phone = ?");
       values.push(body.whatsapp_phone?.trim() || null);
+    }
+    if ("landing_page" in body) {
+      fields.push("landing_page = ?");
+      values.push(body.landing_page?.trim() || null);
     }
     if (password) {
       if (password.length < 6) return NextResponse.json({ ok: false, error: "Şifre en az 6 karakter olmalı" }, { status: 400 });

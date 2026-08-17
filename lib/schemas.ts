@@ -148,6 +148,7 @@ export const userUpdateSchema = z.object({
   allowed_pages: z.array(z.string()).optional().nullable(),
   allowed_companies: z.array(z.string()).optional().nullable(),
   whatsapp_phone: z.string().max(20).regex(/^\d*$/, "Sadece rakam giriniz").optional().nullable(),
+  landing_page: z.string().max(150).optional().nullable(),
 });
 
 // ─── Tickets ──────────────────────────────────────────────────────────
@@ -523,10 +524,13 @@ export const finansKategoriSchema = z.object({
 export const finansGiderSchema = z.object({
   tip: z.enum(["fis", "fatura"]),
   tarih: z.string().min(1, "Tarih zorunlu"),
-  kategori_id: z.string().min(1, "Kategori zorunlu"),
+  // Anlık giriş (durum='taslak') için kategori/tutar opsiyonel — sadece
+  // fotoğrafla da kaydedilebilmeli. Normal Gider Ekle akışında (durum
+  // 'taslak' değilken) route.ts POST handler'ı bunları zorunlu kılar.
+  kategori_id: z.string().optional().nullable(),
   cari_id: z.string().optional().nullable(),
   belge_no: z.string().max(100).optional().nullable(),
-  tutar: z.number().min(0),
+  tutar: z.number().min(0).optional(),
   para_birimi_kod: z.string().max(10).optional(),
   kdv_tutar: z.number().min(0).optional().nullable(),
   aciklama: z.string().max(2000).optional().nullable(),
@@ -546,14 +550,6 @@ export const finansGiderSchema = z.object({
       })
     )
     .optional(),
-});
-
-// Anlık giriş: fotoğrafı kaybetmeden hızlıca sisteme atmak için — sadece
-// tutar+tarih zorunlu, kategori sonradan tamamlanabilir (durum='taslak').
-export const finansGiderHizliSchema = z.object({
-  tarih: z.string().min(1, "Tarih zorunlu"),
-  tutar: z.number().min(0),
-  aciklama: z.string().max(500).optional().nullable(),
 });
 
 // ─── Finans: Masraf Merkezi ───────────────────────────────────────────
@@ -704,6 +700,19 @@ export const cariTedarikciCreateSchema = z.object({
 export const cariTedarikciUpdateSchema = cariTedarikciCreateSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
+
+// ─── Araç/Şoför İş Başvurusu ────────────────────────────────────────────
+export const aracIsBasvuruSchema = z.object({
+  plaka: z.string().max(20).optional().nullable(),
+  sofor_adi: z.string().max(200).optional().nullable(),
+  telefon: z.string().max(30).optional().nullable(),
+  semt: z.string().max(200).optional().nullable(),
+  bos_saat: z.string().max(200).optional().nullable(),
+  uygun_guzergahlar: z.string().max(2000).optional().nullable(),
+  notlar: z.string().max(2000).optional().nullable(),
+  durum: z.enum(["yeni", "gorusuldu", "olumlu", "olumsuz", "ise_alindi"]).optional(),
+});
+export const aracIsBasvuruUpdateSchema = aracIsBasvuruSchema.partial();
 
 // ─── Günlük Soru (işe başlama check-in soruları) ────────────────────────
 export const gunlukSoruSchema = z.object({

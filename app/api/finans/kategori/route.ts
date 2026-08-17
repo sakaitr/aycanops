@@ -24,11 +24,32 @@ export async function GET(req: NextRequest) {
     }
     const tip = searchParams.get("tip");
     if (tip === "gelir" || tip === "gider") { conditions.push("k.tip = ?"); params.push(tip); }
+
+    const db = getDb();
+
+    // scope=me: Gider Ekle formu gibi giriş amaçlı kullanımlarda, isteği
+    // yapan kullanıcı bir finans_kategori_grubu'na üyeyse SADECE o grup(lar)ın
+    // kategorileri döner (bkz. migration 101, patron mail'indeki kişi bazlı
+    // gider listeleri). Hiçbir gruba üye değilse (ör. admin, ya da grup
+    // ataması yapılmamış biri) kısıtlama yok — mevcut davranış korunur.
+    if (searchParams.get("scope") === "me") {
+      const gruplar = await db.prepare(
+        "SELECT grup_id FROM finans_kategori_grup_kullanici WHERE user_id = ?"
+      ).all(user.id) as { grup_id: string }[];
+      if (gruplar.length > 0) {
+        const grupIds = gruplar.map(g => g.grup_id);
+        conditions.push(
+          `k.id IN (SELECT kategori_id FROM finans_kategori_grup_uyelik WHERE grup_id IN (${grupIds.map(() => "?").join(",")}))`
+        );
+        params.push(...grupIds);
+      }
+    }
+
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     // Ağaç sırasında döner: her üst kategori, hemen ardından kendi altları —
     // UI parent_id ile ağacı kurabilsin (bkz. migration 087).
-    const rows = await getDb().prepare(
+    const rows = await db.prepare(
       `SELECT k.*, ust.ad AS ust_ad
          FROM finans_kategori k
          LEFT JOIN finans_kategori ust ON ust.id = k.parent_id

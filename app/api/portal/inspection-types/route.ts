@@ -10,9 +10,13 @@ export async function GET() {
     if (!portalUser) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
 
     const db = getDb();
+    // NULL company_id = herkese açık global şablon; dolu ise sadece o firmaya
+    // özel (bkz. migration 103 — "EAE'nin kendi maddeleri olsun").
     const types = await db.prepare(
-      `SELECT id, label, code FROM config_inspection_types WHERE is_active = 1 ORDER BY sort_order ASC, label ASC`
-    ).all();
+      `SELECT id, label, code FROM config_inspection_types
+       WHERE is_active = 1 AND (company_id IS NULL OR company_id = ?)
+       ORDER BY sort_order ASC, label ASC`
+    ).all(portalUser.company_id);
     return NextResponse.json({ ok: true, data: types });
   } catch (e) {
     return apiError(e);

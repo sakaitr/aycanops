@@ -13,9 +13,10 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
     const db = getDb();
     const types = await db.prepare(
-      `SELECT t.*, COUNT(c.id) as criteria_count
+      `SELECT t.*, COUNT(c.id) as criteria_count, co.name as company_name
        FROM config_inspection_types t
        LEFT JOIN config_inspection_criteria c ON c.inspection_type_id = t.id AND c.is_active = 1
+       LEFT JOIN companies co ON co.id = t.company_id
        WHERE t.is_active = 1
        GROUP BY t.id
        ORDER BY t.sort_order ASC, t.label ASC`
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
     if (!hasPermission(user, "inspection_configs:create"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
-    const { label, code } = await req.json();
+    const { label, code, company_id } = await req.json();
     if (!label?.trim()) return NextResponse.json({ ok: false, error: "Etiket zorunlu" }, { status: 400 });
     if (!code?.trim()) return NextResponse.json({ ok: false, error: "Kod zorunlu" }, { status: 400 });
 
@@ -47,8 +48,8 @@ export async function POST(req: NextRequest) {
     const sortOrder = maxRow?.next_order ?? 0;
 
     await db.prepare(
-      "INSERT INTO config_inspection_types (id, code, label, sort_order, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)"
-    ).run(id, code.trim().toLowerCase(), label.trim(), sortOrder, now, now);
+      "INSERT INTO config_inspection_types (id, code, label, company_id, sort_order, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)"
+    ).run(id, code.trim().toLowerCase(), label.trim(), company_id?.trim() || null, sortOrder, now, now);
 
     return NextResponse.json({ ok: true, data: { id } });
   } catch (e: any) {

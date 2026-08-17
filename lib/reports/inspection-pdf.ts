@@ -30,7 +30,11 @@ function escapeHtml(s: string): string {
 }
 
 /** Orijinal fotoğrafı (8MB'a kadar) HTML'e gömmeden önce küçültür — hem PDF
- * üretim belleğini hem çıktı dosya boyutunu makul tutar. */
+ * üretim belleğini hem çıktı dosya boyutunu makul tutar. Deploy'da sharp'ın
+ * linuxmusl-x64 native binding'i de bundle'lanmış olmalı (bkz.
+ * "npm install --os=linux --libc=musl --cpu=x64 sharp" — pure-JS "jimp"
+ * denendi ama 100+ kayıtlık raporlarda foto başına 5-10sn sürüp isteği
+ * pratikte asıyordu, sharp ise native hızda). */
 async function photoToDataUri(filename: string): Promise<string | null> {
   try {
     const filePath = await readInspectionPhotoPath(filename);
@@ -182,15 +186,24 @@ export async function buildInspectionPdf(
   const run = async (): Promise<Buffer> => {
     const inspections = await fetchInspections(companyIds, dateFrom, dateTo);
 
-    const bodyHtml = inspections.length > 0
-      ? (await Promise.all(inspections.map(buildInspectionPageHtml))).join("")
-      : `<div class="page"><p>Bu filtrelere uyan denetim kaydı bulunamadı.</p></div>`;
+    // Denetimler TEK TEK (paralel değil) işlenir — yüzlerce denetimi aynı
+    // anda Promise.all ile işlemeye çalışmak (fotoğraf sayısı kadar eşzamanlı
+    // resize) CPU'yu kilitleyip isteğin süresiz asılı kalmasına yol açıyordu.
+    let bodyHtml = "";
+    for (const insp of inspections) {
+      bodyHtml += await buildInspectionPageHtml(insp);
+    }
+    if (inspections.length === 0) {
+      bodyHtml = `<div class="page"><p>Bu filtrelere uyan denetim kaydı bulunamadı.</p></div>`;
+    }
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${STYLES}</style></head><body>${bodyHtml}</body></html>`;
 
     const { chromium } = await import("playwright");
+    // Playwright'ın kendi indirdiği chromium bu container'da yok — sistem
+    // paketi (apt) olarak kurulu chromium-browser kullanılıyor.
     const browser = await chromium.launch({
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium-browser",
       args: ["--no-sandbox"],
     });
     try {

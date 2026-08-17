@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { verifyPassword, createSession, setSessionCookie, setRoleCookie } from "@/lib/auth";
+import { verifyPassword, createSession, setSessionCookie, setRoleCookie, setLandingCookie } from "@/lib/auth";
 import { loginSchema, zodErrorMessage } from "@/lib/validators";
 import { logAudit } from "@/lib/audit";
 import { checkRateLimit, resetRateLimit } from "@/lib/rate-limit";
@@ -46,9 +46,9 @@ export async function POST(request: NextRequest) {
     const db = getDb();
     const user = await db
       .prepare(
-        "SELECT id, username, password_hash, role, is_active FROM users WHERE username = ?"
+        "SELECT id, username, password_hash, role, is_active, landing_page FROM users WHERE username = ?"
       )
-      .get<{ id: string; username: string; password_hash: string; role: string; is_active: number }>(username);
+      .get<{ id: string; username: string; password_hash: string; role: string; is_active: number; landing_page: string | null }>(username);
 
     if (!user || !verifyPassword(password, user.password_hash)) {
       return NextResponse.json(
@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
     const { sessionId } = await createSession(user.id);
     await setSessionCookie(sessionId);
     await setRoleCookie(user.role);
+    await setLandingCookie(user.landing_page);
 
     await logAudit({
       actorUserId: user.id,

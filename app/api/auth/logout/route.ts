@@ -5,6 +5,7 @@ import {
   deleteSession,
   clearSessionCookie,
   clearRoleCookie,
+  clearLandingCookie,
   getUserBySession,
 } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest) {
     await deleteSession(sessionId);
     await clearSessionCookie();
     await clearRoleCookie();
+    await clearLandingCookie();
 
     return NextResponse.json({ ok: true });
   } catch (error) {

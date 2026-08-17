@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import { requirePortalUser } from "@/lib/portal-auth";
 import { getDb } from "@/lib/db";
 import { readInspectionPhotoPath, isSafeFilename } from "@/lib/uploads";
 
@@ -14,19 +15,27 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ filename: string }> }) {
-  const user = await requireUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-  if (!hasPermission(user, "inspections:read"))
-    return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
-
   const { filename } = await params;
   if (!isSafeFilename(filename)) {
     return NextResponse.json({ ok: false, error: "Geçersiz dosya adı" }, { status: 400 });
   }
 
   const db = getDb();
-  const exists = await db.prepare("SELECT id FROM inspection_photos WHERE filename = ?").get(filename);
-  if (!exists) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
+  const photo = await db.prepare(
+    `SELECT i.company_id FROM inspection_photos p
+     JOIN inspections i ON i.id = p.inspection_id
+     WHERE p.filename = ?`
+  ).get(filename) as { company_id: string | null } | undefined;
+  if (!photo) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
+
+  const user = await requireUser();
+  const hasOpsAccess = user && hasPermission(user, "inspections:read");
+  if (!hasOpsAccess) {
+    const portalUser = await requirePortalUser();
+    if (!portalUser || !photo.company_id || portalUser.company_id !== photo.company_id) {
+      return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    }
+  }
 
   try {
     const filePath = await readInspectionPhotoPath(filename);

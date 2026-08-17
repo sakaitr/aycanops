@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
-import { v4 as uuidv4 } from "uuid";
-import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
 import { finansGiderSchema } from "@/lib/schemas";
-import { syncHareket } from "@/lib/finans-hareket";
+import { createGiderRecord, validateGiderFields, checkPersonalBudget } from "@/lib/finans-gider";
 
 export async function GET(req: NextRequest) {
   try {
@@ -61,59 +59,11 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     const d = parsed.data;
 
-    const db = getDb();
-    const id = uuidv4();
-    const now = nowIso();
+    const fieldErrors = validateGiderFields(d);
+    if (fieldErrors) return NextResponse.json({ ok: false, error: fieldErrors }, { status: 400 });
 
-    // Kalemler varsa toplam onlardan hesaplanır (kullanıcı elle tutar
-    // girmişse bile kalemler kaynak kabul edilir — tutarsızlık olmasın).
-    const kalemToplam = d.kalemler?.reduce((sum, k) => sum + k.miktar * k.birim_fiyat, 0);
-    const tutar = kalemToplam !== undefined ? kalemToplam : d.tutar;
-
-    await db.prepare(
-      `INSERT INTO finans_gider
-         (id, tip, tarih, kategori_id, cari_id, belge_no, tutar, para_birimi_kod, kdv_tutar, aciklama,
-          department_id, proje_id, masraf_merkezi_id, vehicle_id, route_id, company_id, durum,
-          created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      id, d.tip, d.tarih, d.kategori_id, d.cari_id || null, d.belge_no || null, tutar,
-      d.para_birimi_kod || "TRY", d.kdv_tutar ?? null, d.aciklama || null,
-      d.department_id || null, d.proje_id || null, d.masraf_merkezi_id || null,
-      d.vehicle_id || null, d.route_id || null, d.company_id || null,
-      d.durum || "tamamlandi", user.id, now, now
-    );
-
-    if (d.kalemler && d.kalemler.length > 0) {
-      let sortOrder = 0;
-      for (const k of d.kalemler) {
-        await db.prepare(
-          `INSERT INTO finans_gider_kalem (id, gider_id, aciklama, miktar, birim_fiyat, tutar, sort_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
-        ).run(uuidv4(), id, k.aciklama, k.miktar, k.birim_fiyat, k.miktar * k.birim_fiyat, sortOrder++);
-      }
-    }
-
-    await syncHareket("gider", id, {
-      tur: "gider",
-      tarih: d.tarih,
-      tutar,
-      kdv_tutari: d.kdv_tutar ?? undefined,
-      para_birimi: d.para_birimi_kod || "TRY",
-      cari_id: d.cari_id,
-      kategori_id: d.kategori_id,
-      department_id: d.department_id,
-      proje_id: d.proje_id,
-      masraf_merkezi_id: d.masraf_merkezi_id,
-      vehicle_id: d.vehicle_id,
-      route_id: d.route_id,
-      company_id: d.company_id,
-      personel_id: user.id,
-      durum: d.durum === "taslak" ? "taslak" : "onaylandi",
-      aciklama: d.aciklama || d.belge_no,
-      created_by: user.id,
-    });
-
-    return NextResponse.json({ ok: true, data: { id } }, { status: 201 });
+    const id = await createGiderRecord(user.id, d);
+    const butceUyarisi = await checkPersonalBudget(user.id, d.tarih);
+    return NextResponse.json({ ok: true, data: { id }, uyari: butceUyarisi?.asildi ? butceUyarisi : null }, { status: 201 });
   } catch (e) { return apiError(e); }
 }

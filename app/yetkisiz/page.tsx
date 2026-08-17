@@ -8,6 +8,7 @@ type CurrentUser = {
   full_name: string;
   role: string;
   allowed_pages?: string | null;
+  landing_page?: string | null;
 };
 
 const ROLE_HOME: Record<string, string> = {
@@ -45,7 +46,10 @@ function YetkisizContent() {
   const [user, setUser] = useState<CurrentUser | null>(null);
 
   const next = searchParams.get("next") || "";
-  const homePath = useMemo(() => ROLE_HOME[user?.role || "personel"] || "/", [user?.role]);
+  const homePath = useMemo(
+    () => user?.landing_page || ROLE_HOME[user?.role || "personel"] || "/",
+    [user?.role, user?.landing_page]
+  );
 
   useEffect(() => {
     fetch("/api/auth/me")
