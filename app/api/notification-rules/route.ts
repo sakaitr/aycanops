@@ -21,7 +21,8 @@ export async function GET() {
       ORDER BY r.event_type, r.days_before DESC
     `).all();
     return NextResponse.json({ ok: true, data });
-  } catch {
+  } catch (e) {
+    console.error("[GET notification-rules]", e);
     return NextResponse.json({ ok: false, error: "Sunucu hatası" }, { status: 500 });
   }
 }
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, data: { id } });
   } catch (e: any) {
+    console.error("[POST notification-rules]", e);
     return NextResponse.json({ ok: false, error: "Sunucu hatası" }, { status: 500 });
   }
 }
