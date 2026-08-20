@@ -45,7 +45,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (!hasPermission(user, "finans_gider:update"))
+    // "duzenle" — tam kayıt düzenlemesi için ayrıca atanan dar izin (seçili
+    // kişiler); "update" — mevcut taslak-tamamlama akışının kullandığı izin.
+    // İkisinden biri yeterli, geriye dönük hiçbir şey kırılmıyor.
+    if (!hasPermission(user, "finans_gider:update") && !hasPermission(user, "finans_gider:duzenle"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { id } = await params;

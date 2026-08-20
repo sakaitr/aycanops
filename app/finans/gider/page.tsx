@@ -70,7 +70,9 @@ export default function GiderPage() {
 
   const canWrite = hasPermission(user, "finans_gider:create");
   const canMarkOdeme = hasPermission(user, "finans_gider:odeme_isaretle");
+  const canEditGider = hasPermission(user, "finans_gider:duzenle");
   const [updatingOdeme, setUpdatingOdeme] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); else router.replace("/login"); }).catch(() => router.replace("/login"));
@@ -139,9 +141,37 @@ export default function GiderPage() {
   }
 
   function openForm() {
+    setEditingId(null);
     setForm({ ...EMPTY_FORM });
     setKalemler([{ ...EMPTY_KALEM }]);
     setUseKalemler(false);
+    setFiles([]);
+    setSaveError(null);
+    setShowForm(true);
+  }
+
+  function openEdit(row: any, d: any) {
+    setEditingId(row.id);
+    setForm({
+      tip: row.tip,
+      tarih: row.tarih,
+      kategori_id: row.kategori_id || "",
+      cari_id: row.cari_id || "",
+      belge_no: row.belge_no || "",
+      tutar: String(row.tutar ?? ""),
+      kdv_tutar: row.kdv_tutar != null ? String(row.kdv_tutar) : "",
+      aciklama: row.aciklama || "",
+      department_id: row.department_id || "",
+      proje_id: row.proje_id || "",
+      masraf_merkezi_id: row.masraf_merkezi_id || "",
+      vehicle_id: row.vehicle_id || "",
+      company_id: row.company_id || "",
+    });
+    const hasKalemler = d?.kalemler?.length > 0;
+    setUseKalemler(hasKalemler);
+    setKalemler(hasKalemler
+      ? d.kalemler.map((k: any) => ({ aciklama: k.aciklama, miktar: String(k.miktar), birim_fiyat: String(k.birim_fiyat) }))
+      : [{ ...EMPTY_KALEM }]);
     setFiles([]);
     setSaveError(null);
     setShowForm(true);
@@ -172,8 +202,9 @@ export default function GiderPage() {
           .filter(k => k.aciklama.trim())
           .map(k => ({ aciklama: k.aciklama.trim(), miktar: Number(k.miktar) || 0, birim_fiyat: Number(k.birim_fiyat) || 0 }));
       }
-      const res = await fetch("/api/finans/gider", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      const isEdit = !!editingId;
+      const res = await fetch(isEdit ? `/api/finans/gider/${editingId}` : "/api/finans/gider", {
+        method: isEdit ? "PATCH" : "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const d = await res.json();
@@ -184,14 +215,18 @@ export default function GiderPage() {
       if (d.belge_no_uyari) {
         toast.warning(`"${form.belge_no}" belge no'lu kayıt daha önce girilmiş (${new Date(d.belge_no_uyari.tarih + "T00:00:00").toLocaleDateString("tr-TR")}, ${Number(d.belge_no_uyari.tutar).toLocaleString("tr-TR")} TL${d.belge_no_uyari.kategori_ad ? `, ${d.belge_no_uyari.kategori_ad}` : ""}).`);
       }
-      for (const f of files) {
-        const fd = new FormData();
-        fd.append("dosya", f);
-        fd.append("iliskili_tip", "gider");
-        fd.append("iliskili_id", d.data.id);
-        await fetch("/api/finans/belge", { method: "POST", body: fd }).catch(() => {});
+      if (!isEdit) {
+        for (const f of files) {
+          const fd = new FormData();
+          fd.append("dosya", f);
+          fd.append("iliskili_tip", "gider");
+          fd.append("iliskili_id", d.data.id);
+          await fetch("/api/finans/belge", { method: "POST", body: fd }).catch(() => {});
+        }
       }
       setShowForm(false);
+      setEditingId(null);
+      if (isEdit) setDetail(prev => { const n = { ...prev }; delete n[editingId!]; return n; });
       load();
     } finally { setSaving(false); }
   }
@@ -416,6 +451,14 @@ export default function GiderPage() {
                         <p className="text-zinc-600 text-xs">Yükleniyor...</p>
                       ) : (
                         <>
+                          {canEditGider && (
+                            <div className="mb-3">
+                              <button onClick={() => openEdit(row, d)}
+                                className="text-xs text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded-lg transition-colors">
+                                ✎ Düzenle
+                              </button>
+                            </div>
+                          )}
                           {row.durum === "taslak" && (
                             <div className="bg-amber-950/40 border border-amber-800 rounded-lg p-3 mb-3">
                               {row.kategori_id ? (
@@ -502,8 +545,8 @@ export default function GiderPage() {
         <div className="fixed inset-0 bg-black/80 flex items-start justify-center z-50 px-4 overflow-y-auto py-8">
           <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-lg my-auto">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-white">Gider Ekle</h2>
-              <button onClick={() => setShowForm(false)} className="text-zinc-600 hover:text-white text-xl leading-none">×</button>
+              <h2 className="text-lg font-bold text-white">{editingId ? "Gider Düzenle" : "Gider Ekle"}</h2>
+              <button onClick={() => { setShowForm(false); setEditingId(null); }} className="text-zinc-600 hover:text-white text-xl leading-none">×</button>
             </div>
             <div className="space-y-4">
               <div className="flex gap-2">
@@ -600,20 +643,22 @@ export default function GiderPage() {
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500 resize-none" />
               </div>
 
-              <div>
-                <label className="flex items-center justify-center gap-2 bg-zinc-800 border border-dashed border-zinc-700 rounded-lg px-3 py-2.5 text-zinc-500 text-xs cursor-pointer hover:border-zinc-500 hover:text-zinc-300 transition-colors">
-                  {files.length > 0 ? `${files.length} dosya seçildi` : "Fiş/Fatura Görseli veya PDF Ekle"}
-                  <input type="file" multiple accept="image/*,.pdf" className="hidden"
-                    onChange={e => setFiles(Array.from(e.target.files || []))} />
-                </label>
-              </div>
+              {!editingId && (
+                <div>
+                  <label className="flex items-center justify-center gap-2 bg-zinc-800 border border-dashed border-zinc-700 rounded-lg px-3 py-2.5 text-zinc-500 text-xs cursor-pointer hover:border-zinc-500 hover:text-zinc-300 transition-colors">
+                    {files.length > 0 ? `${files.length} dosya seçildi` : "Fiş/Fatura Görseli veya PDF Ekle"}
+                    <input type="file" multiple accept="image/*,.pdf" className="hidden"
+                      onChange={e => setFiles(Array.from(e.target.files || []))} />
+                  </label>
+                </div>
+              )}
             </div>
 
             {saveError && <p className="text-red-400 text-sm bg-red-950 border border-red-800 rounded-lg px-3 py-2 mt-3">{saveError}</p>}
             <div className="flex gap-3 mt-4">
-              <button onClick={() => setShowForm(false)} className="flex-1 bg-zinc-800 text-zinc-300 text-sm font-medium py-2.5 rounded-lg hover:bg-zinc-700 transition-colors">İptal</button>
+              <button onClick={() => { setShowForm(false); setEditingId(null); }} className="flex-1 bg-zinc-800 text-zinc-300 text-sm font-medium py-2.5 rounded-lg hover:bg-zinc-700 transition-colors">İptal</button>
               <button onClick={save} disabled={saving} className="flex-1 bg-white text-zinc-950 text-sm font-semibold py-2.5 rounded-lg hover:bg-zinc-200 disabled:bg-zinc-700 disabled:text-zinc-500 transition-colors">
-                {saving ? "Kaydediliyor..." : "Kaydet"}
+                {saving ? "Kaydediliyor..." : editingId ? "Güncelle" : "Kaydet"}
               </button>
             </div>
           </div>
