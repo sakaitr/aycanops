@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import { hasPermission } from "@/lib/permissions";
@@ -22,6 +22,13 @@ const DURUM_LABELS: Record<string, string> = {
 };
 const ODEME_LABELS: Record<string, string> = {
   odenmedi: "Ödenmedi", kismen_odendi: "Kısmen", odendi: "Ödendi",
+};
+// Detay çekmek için kaynağa göre tekil kayıt uç noktası — kasa/hakedis/manuel
+// şu an gerçekten kullanılmıyor (bkz. DELETE_CONFIG'teki not), detay yok.
+const DETAIL_CONFIG: Record<string, (id: string) => string> = {
+  gider: id => `/api/finans/gider/${id}`,
+  fatura: id => `/api/finans/fatura/${id}`,
+  masraf: id => `/api/finans/masraf-talebi/${id}`,
 };
 
 function fmt(v: unknown): string {
@@ -52,6 +59,9 @@ export default function HareketlerPage() {
   const [kategoriId, setKategoriId] = useState("");
   const [q, setQ] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Record<string, any>>({});
+  const [detailLoading, setDetailLoading] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
@@ -81,6 +91,19 @@ export default function HareketlerPage() {
     const t = setTimeout(load, q ? 350 : 0); // arama yazarken debounce
     return () => clearTimeout(t);
   }, [user, load, q]);
+
+  async function toggleExpand(row: any) {
+    const key = row.id;
+    if (expanded === key) { setExpanded(null); return; }
+    setExpanded(key);
+    if (!DETAIL_CONFIG[row.kaynak_tip] || detail[key]) return;
+    setDetailLoading(key);
+    try {
+      const r = await fetch(DETAIL_CONFIG[row.kaynak_tip](row.kaynak_id));
+      const d = await r.json();
+      if (d.ok) setDetail(prev => ({ ...prev, [key]: d.data }));
+    } finally { setDetailLoading(null); }
+  }
 
   async function handleDelete(row: any) {
     const config = DELETE_CONFIG[row.kaynak_tip];
@@ -203,8 +226,14 @@ export default function HareketlerPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((h, i) => (
-                      <tr key={h.id} className={`hover:bg-zinc-800/30 transition-colors ${i < rows.length - 1 ? "border-b border-zinc-800/50" : ""}`}>
+                    {rows.map((h, i) => {
+                    const isExpanded = expanded === h.id;
+                    const hasDetail = !!DETAIL_CONFIG[h.kaynak_tip];
+                    return (
+                    <Fragment key={h.id}>
+                      <tr
+                        onClick={() => hasDetail && toggleExpand(h)}
+                        className={`transition-colors ${hasDetail ? "cursor-pointer hover:bg-zinc-800/30" : ""} ${i < rows.length - 1 && !isExpanded ? "border-b border-zinc-800/50" : ""}`}>
                         <td className="px-3 py-2.5 text-zinc-400 text-xs whitespace-nowrap">{fmtDate(h.tarih)}</td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
@@ -246,18 +275,72 @@ export default function HareketlerPage() {
                           {fmt(h.tutar_try)} ₺
                         </td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                          {DELETE_CONFIG[h.kaynak_tip] && hasPermission(user, DELETE_CONFIG[h.kaynak_tip].perm) && (
-                            <button
-                              onClick={() => handleDelete(h)}
-                              disabled={deletingId === h.id}
-                              className="text-xs text-zinc-600 hover:text-red-400 border border-zinc-800 hover:border-red-900 px-2 py-1 rounded-lg transition-colors disabled:opacity-40"
-                            >
-                              {deletingId === h.id ? "..." : "Sil"}
-                            </button>
-                          )}
+                          <div className="flex items-center justify-end gap-2">
+                            {hasDetail && (
+                              <span className={`text-[10px] transition-transform text-zinc-600 ${isExpanded ? "rotate-180" : ""}`}>▾</span>
+                            )}
+                            {DELETE_CONFIG[h.kaynak_tip] && hasPermission(user, DELETE_CONFIG[h.kaynak_tip].perm) && (
+                              <button
+                                onClick={e => { e.stopPropagation(); handleDelete(h); }}
+                                disabled={deletingId === h.id}
+                                className="text-xs text-zinc-600 hover:text-red-400 border border-zinc-800 hover:border-red-900 px-2 py-1 rounded-lg transition-colors disabled:opacity-40"
+                              >
+                                {deletingId === h.id ? "..." : "Sil"}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
-                    ))}
+                      {isExpanded && hasDetail && (
+                        <tr className={i < rows.length - 1 ? "border-b border-zinc-800/50" : ""}>
+                          <td colSpan={10} className="px-4 py-3 bg-zinc-950/50">
+                            {detailLoading === h.id ? (
+                              <p className="text-zinc-600 text-xs">Yükleniyor...</p>
+                            ) : !detail[h.id] ? (
+                              <p className="text-zinc-600 text-xs">Detay yüklenemedi</p>
+                            ) : (
+                              <div className="grid sm:grid-cols-2 gap-4">
+                                <div className="space-y-1 text-xs">
+                                  {detail[h.id].belge_no && <p><span className="text-zinc-500">Belge No:</span> <span className="text-zinc-300">{detail[h.id].belge_no}</span></p>}
+                                  {detail[h.id].fatura_no && <p><span className="text-zinc-500">Fatura No:</span> <span className="text-zinc-300">{detail[h.id].fatura_no}</span></p>}
+                                  {detail[h.id].baslik && <p><span className="text-zinc-500">Başlık:</span> <span className="text-zinc-300">{detail[h.id].baslik}</span></p>}
+                                  {(detail[h.id].aciklama) && <p><span className="text-zinc-500">Açıklama:</span> <span className="text-zinc-300">{detail[h.id].aciklama}</span></p>}
+                                  {detail[h.id].cari_ad && <p><span className="text-zinc-500">Cari:</span> <span className="text-zinc-300">{detail[h.id].cari_ad}</span></p>}
+                                  {detail[h.id].talep_eden_ad && <p><span className="text-zinc-500">Talep Eden:</span> <span className="text-zinc-300">{detail[h.id].talep_eden_ad}</span></p>}
+                                  {detail[h.id].vade_tarihi && <p><span className="text-zinc-500">Vade:</span> <span className="text-zinc-300">{fmtDate(detail[h.id].vade_tarihi)}</span></p>}
+                                </div>
+                                {(detail[h.id].kalemler?.length > 0) && (
+                                  <div className="space-y-1">
+                                    <p className="text-zinc-500 text-[10px] font-semibold uppercase tracking-wider mb-1">Kalemler</p>
+                                    {detail[h.id].kalemler.map((k: any) => (
+                                      <div key={k.id} className="flex items-center justify-between text-xs bg-zinc-900 rounded-lg px-2.5 py-1.5">
+                                        <span className="text-zinc-300">{k.aciklama || k.urun_hizmet_adi}</span>
+                                        <span className="text-white tabular-nums">{fmt(k.tutar)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {(detail[h.id].belgeler?.length > 0) && (
+                                  <div className="space-y-1">
+                                    <p className="text-zinc-500 text-[10px] font-semibold uppercase tracking-wider mb-1">Belgeler</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {detail[h.id].belgeler.map((b: any) => (
+                                        <a key={b.id} href={`/api/uploads/finans-belge/${b.dosya_yolu?.split("/").pop() || b.id}`} target="_blank" rel="noopener noreferrer"
+                                          className="text-[11px] bg-zinc-900 text-zinc-300 px-2 py-1 rounded-lg hover:text-white">
+                                          {b.dosya_adi}
+                                        </a>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                    );
+                    })}
                   </tbody>
                 </table>
               </div>

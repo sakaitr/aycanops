@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { apiError } from "@/lib/api-error";
 import { finansGiderSchema } from "@/lib/schemas";
-import { createGiderRecord, validateGiderFields, checkPersonalBudget } from "@/lib/finans-gider";
+import { createGiderRecord, validateGiderFields, checkPersonalBudget, checkDuplicateBelgeNo } from "@/lib/finans-gider";
 
 export async function GET(req: NextRequest) {
   try {
@@ -62,8 +62,13 @@ export async function POST(req: NextRequest) {
     const fieldErrors = validateGiderFields(d);
     if (fieldErrors) return NextResponse.json({ ok: false, error: fieldErrors }, { status: 400 });
 
+    const belgeNoUyarisi = await checkDuplicateBelgeNo(d.belge_no);
     const id = await createGiderRecord(user.id, d);
     const butceUyarisi = await checkPersonalBudget(user.id, d.tarih);
-    return NextResponse.json({ ok: true, data: { id }, uyari: butceUyarisi?.asildi ? butceUyarisi : null }, { status: 201 });
+    return NextResponse.json({
+      ok: true, data: { id },
+      uyari: butceUyarisi?.asildi ? butceUyarisi : null,
+      belge_no_uyari: belgeNoUyarisi,
+    }, { status: 201 });
   } catch (e) { return apiError(e); }
 }

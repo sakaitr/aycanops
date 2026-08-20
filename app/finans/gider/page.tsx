@@ -26,6 +26,13 @@ const EMPTY_FORM = {
 
 const EMPTY_KALEM: Kalem = { aciklama: "", miktar: "1", birim_fiyat: "" };
 
+const ODEME_LABELS: Record<string, string> = { odenmedi: "Ödenmedi", kismen_odendi: "Kısmen Ödendi", odendi: "Ödendi" };
+const ODEME_COLORS: Record<string, string> = {
+  odenmedi: "bg-zinc-800 text-zinc-400 border-zinc-700",
+  kismen_odendi: "bg-amber-950/60 text-amber-400 border-amber-800",
+  odendi: "bg-emerald-950/60 text-emerald-400 border-emerald-800",
+};
+
 export default function GiderPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -62,6 +69,8 @@ export default function GiderPage() {
   const [bulkResult, setBulkResult] = useState<{ created: number; hatalar: any[] } | null>(null);
 
   const canWrite = hasPermission(user, "finans_gider:create");
+  const canMarkOdeme = hasPermission(user, "finans_gider:odeme_isaretle");
+  const [updatingOdeme, setUpdatingOdeme] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.ok) setUser(d.data); else router.replace("/login"); }).catch(() => router.replace("/login"));
@@ -172,6 +181,9 @@ export default function GiderPage() {
       if (d.uyari) {
         toast.warning(`Bu ay için ${d.uyari.butce.toLocaleString("tr-TR")} TL bütçeni ${(d.uyari.harcanan - d.uyari.butce).toLocaleString("tr-TR")} TL aştın.`);
       }
+      if (d.belge_no_uyari) {
+        toast.warning(`"${form.belge_no}" belge no'lu kayıt daha önce girilmiş (${new Date(d.belge_no_uyari.tarih + "T00:00:00").toLocaleDateString("tr-TR")}, ${Number(d.belge_no_uyari.tutar).toLocaleString("tr-TR")} TL${d.belge_no_uyari.kategori_ad ? `, ${d.belge_no_uyari.kategori_ad}` : ""}).`);
+      }
       for (const f of files) {
         const fd = new FormData();
         fd.append("dosya", f);
@@ -228,6 +240,22 @@ export default function GiderPage() {
     });
     const d = await res.json();
     if (d.ok) { setDetail(prev => { const n = { ...prev }; delete n[id]; return n; }); load(); }
+  }
+
+  async function updateOdeme(id: string, odeme_durumu: string) {
+    setUpdatingOdeme(id);
+    try {
+      const res = await fetch(`/api/finans/gider/${id}/odeme`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ odeme_durumu }),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setRows(rs => rs.map(r => r.id === id ? { ...r, odeme_durumu } : r));
+      } else {
+        toast.error(d.error || "Güncellenemedi");
+      }
+    } finally { setUpdatingOdeme(null); }
   }
 
   function openBulk() {
@@ -412,6 +440,26 @@ export default function GiderPage() {
                               )}
                             </div>
                           )}
+                          <div className="mb-3">
+                            <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-1.5">Ödeme Durumu</p>
+                            {canMarkOdeme ? (
+                              <div className="flex gap-1.5 flex-wrap">
+                                {(["odenmedi", "kismen_odendi", "odendi"] as const).map(s => (
+                                  <button key={s} onClick={() => updateOdeme(row.id, s)}
+                                    disabled={updatingOdeme === row.id}
+                                    className={`text-xs px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-40 ${
+                                      (row.odeme_durumu || "odenmedi") === s ? ODEME_COLORS[s] : "bg-zinc-800/50 text-zinc-500 border-zinc-700 hover:border-zinc-500"
+                                    }`}>
+                                    {ODEME_LABELS[s]}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className={`text-xs px-2.5 py-1 rounded-lg border ${ODEME_COLORS[row.odeme_durumu || "odenmedi"]}`}>
+                                {ODEME_LABELS[row.odeme_durumu || "odenmedi"]}
+                              </span>
+                            )}
+                          </div>
                           {d.kalemler?.length > 0 && (
                             <div className="mb-3">
                               <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-1.5">Kalemler</p>

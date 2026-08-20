@@ -7,6 +7,7 @@ import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
 import { finansGiderSchema } from "@/lib/schemas";
 import { syncHareket, deleteHareket } from "@/lib/finans-hareket";
+import { checkDuplicateBelgeNo } from "@/lib/finans-gider";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -56,6 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const parsed = finansGiderSchema.partial({ tip: true, tarih: true, kategori_id: true, tutar: true }).safeParse(raw);
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
     const d = parsed.data;
+    const belgeNoUyarisi = d.belge_no !== undefined ? await checkDuplicateBelgeNo(d.belge_no, id) : null;
 
     const now = nowIso();
     const fields: string[] = [];
@@ -116,7 +118,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       created_by: updated.created_by,
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, belge_no_uyari: belgeNoUyarisi });
   } catch (e) { return apiError(e); }
 }
 

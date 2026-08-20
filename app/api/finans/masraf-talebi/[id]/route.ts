@@ -7,6 +7,32 @@ import { apiError } from "@/lib/api-error";
 import { v4 as uuidv4 } from "uuid";
 import { updateHareketDurum, deleteHareket } from "@/lib/finans-hareket";
 
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireUser();
+    if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!hasPermission(user, "finans_masraf_talebi:read"))
+      return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+
+    const { id } = await params;
+    const row = await getDb().prepare(
+      `SELECT mt.*, u.full_name AS talep_eden_ad, k.ad AS kategori_ad,
+              d.name AS department_ad, p.ad AS proje_ad,
+              v.plate AS vehicle_plate, c.name AS company_ad
+       FROM finans_masraf_talebi mt
+       JOIN users u ON u.id = mt.talep_eden_user_id
+       LEFT JOIN finans_kategori k ON k.id = mt.kategori_id
+       LEFT JOIN departments d ON d.id = mt.department_id
+       LEFT JOIN finans_proje p ON p.id = mt.proje_id
+       LEFT JOIN vehicles v ON v.id = mt.vehicle_id
+       LEFT JOIN companies c ON c.id = mt.company_id
+       WHERE mt.id = ?`
+    ).get(id);
+    if (!row) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
+    return NextResponse.json({ ok: true, data: row });
+  } catch (e) { return apiError(e); }
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();

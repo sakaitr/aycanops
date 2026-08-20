@@ -12,6 +12,38 @@ import { syncHareketFromFatura, updateHareketDurum, deleteHareket } from "@/lib/
 // iptal edip yeniden oluşturur (aşağıdaki "iptal" action'ı).
 const finansFaturaHeaderSchema = finansFaturaSchema.omit({ kalemler: true });
 
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireUser();
+    if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
+    if (!hasPermission(user, "finans_fatura:read"))
+      return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
+
+    const { id } = await params;
+    const db = getDb();
+    const fatura = await db.prepare(
+      `SELECT f.*, bt.ad AS belge_turu_ad, c.unvan AS cari_ad
+       FROM finans_fatura f
+       LEFT JOIN finans_belge_turu bt ON bt.id = f.belge_turu_id
+       LEFT JOIN cari_tedarikci c ON c.id = f.cari_id
+       WHERE f.id = ?`
+    ).get(id) as any;
+    if (!fatura) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
+
+    if (fatura.cari_tip === "musteri" && user.allowed_companies) {
+      const allowed: string[] = JSON.parse(user.allowed_companies);
+      if (!allowed.includes(fatura.cari_id))
+        return NextResponse.json({ ok: false, error: "Bu firmaya erişim yetkiniz yok" }, { status: 403 });
+    }
+
+    const kalemler = await db.prepare(
+      `SELECT * FROM finans_fatura_kalemi WHERE fatura_id = ?`
+    ).all(id);
+
+    return NextResponse.json({ ok: true, data: { ...fatura, kalemler } });
+  } catch (e) { return apiError(e); }
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();

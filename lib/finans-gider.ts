@@ -74,6 +74,27 @@ export async function createGiderRecord(userId: string, d: GiderInput): Promise<
   return id;
 }
 
+/** Aynı belge no daha önce girilmiş mi kontrol eder — sadece uyarı amaçlı,
+ * kayıt engellenmez. Boş belge no'lar (çoğu fiş girişinde olduğu gibi)
+ * kontrol edilmez. */
+export async function checkDuplicateBelgeNo(
+  belgeNo: string | null | undefined, excludeId?: string
+): Promise<{ id: string; tarih: string; tutar: number; kategori_ad: string | null } | null> {
+  const trimmed = belgeNo?.trim();
+  if (!trimmed) return null;
+  const db = getDb();
+  const exclude = excludeId ? "AND g.id <> ?" : "";
+  const args = exclude ? [trimmed, excludeId] : [trimmed];
+  const row = await db.prepare(
+    `SELECT g.id, g.tarih, g.tutar, k.ad AS kategori_ad
+     FROM finans_gider g
+     LEFT JOIN finans_kategori k ON k.id = g.kategori_id
+     WHERE g.belge_no = ? ${exclude}
+     ORDER BY g.created_at DESC LIMIT 1`
+  ).get(...args) as { id: string; tarih: string; tutar: number; kategori_ad: string | null } | undefined;
+  return row || null;
+}
+
 /** Kaydı oluşturan kullanıcının, giderin tarihine ait ay için kişisel bütçesi
  * varsa aşılıp aşılmadığını kontrol eder. Sadece uyarı amaçlı — kayıt
  * engellenmez (patron mail'i, İSTENİLEN TALEPLER). Bütçe tanımlı değilse null. */
