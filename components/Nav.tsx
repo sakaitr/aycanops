@@ -636,6 +636,20 @@ export default function Nav({ user: userProp }: { user: NavUser | null }) {
             </Link>
           </div>
 
+          {/* Geri — ana sayfada gösterilmez */}
+          {pathname !== "/" && (
+            <button
+              onClick={() => router.back()}
+              aria-label="Geri"
+              title="Geri"
+              className="flex items-center justify-center w-8 h-8 ml-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition-colors shrink-0"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
+
           {/* Arama */}
           <div className="flex-1 flex items-center px-4">
             <GlobalSearch />
