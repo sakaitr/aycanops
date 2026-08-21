@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const body = await request.json();
-    const { company_id, route_id, vehicle_id, vehicle_assignment_status, plate_note, name, distance_km, duration_min, price, notes } = body;
+    const { company_id, route_id, vehicle_id, vehicle_assignment_status, plate_note, name, distance_km, duration_min, price, notes, calisma_gun_sayisi, giris_saati, cikis_saati } = body;
 
     if (!company_id || !name?.trim()) {
       return NextResponse.json({ ok: false, error: "Firma ve güzergah adı zorunludur" }, { status: 400 });
@@ -56,11 +56,12 @@ export async function POST(request: NextRequest) {
     const now = nowIso();
 
     await db.prepare(`
-      INSERT INTO open_routes (id, company_id, route_id, supplier_id, vehicle_id, vehicle_assignment_status, name, distance_km, duration_min, price, plate_note, notes, status, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
+      INSERT INTO open_routes (id, company_id, route_id, supplier_id, vehicle_id, vehicle_assignment_status, name, distance_km, duration_min, calisma_gun_sayisi, giris_saati, cikis_saati, price, plate_note, notes, status, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
     `).run(
       id, company_id, route_id || null, null, vehicle_id || null, vehicle_assignment_status || "searching", name.trim(),
-      distance_km || null, duration_min || null, price || null, plate_note || null, notes || null,
+      distance_km || null, duration_min || null, calisma_gun_sayisi || null, giris_saati || null, cikis_saati || null,
+      price || null, plate_note || null, notes || null,
       user.id, now, now
     );
 

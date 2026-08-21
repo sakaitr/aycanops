@@ -15,6 +15,10 @@ type OpenRoute = {
   vehicle_plate?: string | null;
   vehicle_assignment_status?: "fixed" | "temporary" | "searching" | string;
   name: string;
+  distance_km?: number | string | null;
+  calisma_gun_sayisi?: number | string | null;
+  giris_saati?: string | null;
+  cikis_saati?: string | null;
   price?: number | string | null;
   plate_note?: string | null;
   notes?: string | null;
@@ -40,6 +44,12 @@ export default function AcikGuzergahlarPage() {
   const [filter, setFilter] = useState({ status: "open", company_id: "", vehicle_status: "" });
   const [form, setForm] = useState({ vehicle_id: "", vehicle_assignment_status: "fixed", plate_note: "", notes: "" });
   const [saving, setSaving] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createRoutes, setCreateRoutes] = useState<any[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    company_id: "", route_id: "", name: "", distance_km: "", calisma_gun_sayisi: "", giris_saati: "", cikis_saati: "",
+  });
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => d.ok ? setUser(d.data) : router.replace("/login"));
@@ -52,6 +62,11 @@ export default function AcikGuzergahlarPage() {
     if (!selected?.company_id) { setRoutes([]); return; }
     fetch(`/api/routes?company_id=${selected.company_id}`).then(r => r.json()).then(d => d.ok && setRoutes(d.data));
   }, [selected?.company_id]);
+
+  useEffect(() => {
+    if (!createForm.company_id) { setCreateRoutes([]); return; }
+    fetch(`/api/routes?company_id=${createForm.company_id}`).then(r => r.json()).then(d => d.ok && setCreateRoutes(d.data));
+  }, [createForm.company_id]);
 
   async function load(status = filter.status) {
     const qs = new URLSearchParams();
@@ -96,6 +111,37 @@ export default function AcikGuzergahlarPage() {
     } finally { setSaving(false); }
   }
 
+  function pickCreateRoute(routeId: string) {
+    const route = createRoutes.find(r => r.id === routeId);
+    setCreateForm(f => ({ ...f, route_id: routeId, name: route ? route.name : f.name }));
+  }
+
+  async function createOpenRoute() {
+    if (!createForm.company_id) return alert("Firma seçin");
+    if (!createForm.route_id && !createForm.name.trim()) return alert("Güzergah seçin veya güzergah adı girin");
+    setCreating(true);
+    try {
+      const res = await fetch("/api/open-routes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_id: createForm.company_id,
+          route_id: createForm.route_id || null,
+          name: createForm.name.trim(),
+          distance_km: createForm.distance_km ? Number(createForm.distance_km) : null,
+          calisma_gun_sayisi: createForm.calisma_gun_sayisi ? Number(createForm.calisma_gun_sayisi) : null,
+          giris_saati: createForm.giris_saati || null,
+          cikis_saati: createForm.cikis_saati || null,
+        }),
+      });
+      const json = await res.json();
+      if (!json.ok) return alert(json.error || "Kayıt oluşturulamadı");
+      setShowCreate(false);
+      setCreateForm({ company_id: "", route_id: "", name: "", distance_km: "", calisma_gun_sayisi: "", giris_saati: "", cikis_saati: "" });
+      await load();
+    } finally { setCreating(false); }
+  }
+
   const visibleRows = useMemo(() => rows.filter(row => {
     if (filter.company_id && row.company_id !== filter.company_id) return false;
     if (filter.vehicle_status && row.vehicle_assignment_status !== filter.vehicle_status) return false;
@@ -117,12 +163,60 @@ export default function AcikGuzergahlarPage() {
             <h1 className="text-2xl font-bold text-white">Açık Güzergahlar</h1>
             <p className="mt-1 text-sm text-zinc-500">Geçici araç ve araç aranıyor ihtiyaçlarını operasyon ekranından kapatın.</p>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3"><div className="text-lg font-bold text-white">{counts.open}</div><div className="text-zinc-500">Açık</div></div>
-            <div className="rounded-xl border border-amber-900/50 bg-amber-950/20 px-4 py-3"><div className="text-lg font-bold text-amber-300">{counts.temporary}</div><div className="text-amber-500">Geçici</div></div>
-            <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-3"><div className="text-lg font-bold text-red-300">{counts.searching}</div><div className="text-red-500">Acil</div></div>
+          <div className="flex items-center gap-3">
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3"><div className="text-lg font-bold text-white">{counts.open}</div><div className="text-zinc-500">Açık</div></div>
+              <div className="rounded-xl border border-amber-900/50 bg-amber-950/20 px-4 py-3"><div className="text-lg font-bold text-amber-300">{counts.temporary}</div><div className="text-amber-500">Geçici</div></div>
+              <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-3"><div className="text-lg font-bold text-red-300">{counts.searching}</div><div className="text-red-500">Acil</div></div>
+            </div>
+            <button onClick={() => setShowCreate(s => !s)} className="h-fit rounded-xl bg-white px-4 py-3 text-sm font-semibold text-zinc-950 hover:bg-zinc-200">
+              {showCreate ? "Vazgeç" : "+ Kayıt"}
+            </button>
           </div>
         </div>
+
+        {showCreate && (
+          <section className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+            <h2 className="mb-3 text-sm font-bold text-white">Yeni açık güzergah kaydı</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-500">Firma</label>
+                <ComboboxSearch options={companies.map(c => ({ value: c.id, label: c.name }))} value={createForm.company_id} onChange={v => setCreateForm(f => ({ ...f, company_id: v, route_id: "", name: "" }))} emptyLabel="Firma seç" placeholder="Firma ara" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-500">Güzergah</label>
+                <ComboboxSearch options={createRoutes.map(r => ({ value: r.id, label: r.name }))} value={createForm.route_id} onChange={pickCreateRoute} emptyLabel="Güzergah seç" placeholder="Güzergah ara" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-500">Güzergah adı</label>
+                <input value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))} placeholder="Listede yoksa yeni tabela adı yazın" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-[16px] text-white outline-none" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-500">Km</label>
+                <input type="number" step="0.1" value={createForm.distance_km} onChange={e => setCreateForm(f => ({ ...f, distance_km: e.target.value }))} placeholder="0" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-[16px] text-white outline-none" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-500">Çalışma gün sayısı</label>
+                <input type="number" value={createForm.calisma_gun_sayisi} onChange={e => setCreateForm(f => ({ ...f, calisma_gun_sayisi: e.target.value }))} placeholder="0" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-[16px] text-white outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-500">Giriş saati</label>
+                  <input type="time" value={createForm.giris_saati} onChange={e => setCreateForm(f => ({ ...f, giris_saati: e.target.value }))} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-[16px] text-white outline-none" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-500">Çıkış saati</label>
+                  <input type="time" value={createForm.cikis_saati} onChange={e => setCreateForm(f => ({ ...f, cikis_saati: e.target.value }))} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-[16px] text-white outline-none" />
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button disabled={creating} onClick={createOpenRoute} className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-50">
+                {creating ? "Kaydediliyor..." : "Kaydet"}
+              </button>
+            </div>
+          </section>
+        )}
 
         <section className="mb-4 grid grid-cols-1 gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:grid-cols-3">
           <select value={filter.status} onChange={e => { setFilter(f => ({ ...f, status: e.target.value })); load(e.target.value); }} className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm text-white outline-none">
@@ -154,6 +248,13 @@ export default function AcikGuzergahlarPage() {
                       </div>
                       <h2 className="truncate text-base font-bold text-white">{row.route_name || row.name}</h2>
                       <p className="mt-1 text-sm text-zinc-500">{row.company_name || "Firma yok"}</p>
+                      {(row.distance_km != null || row.calisma_gun_sayisi != null || row.giris_saati || row.cikis_saati) && (
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {row.distance_km != null && <span>{Number(row.distance_km)} km</span>}
+                          {row.calisma_gun_sayisi != null && <span> · {row.calisma_gun_sayisi} gün/hafta</span>}
+                          {(row.giris_saati || row.cikis_saati) && <span> · {(row.giris_saati || "?").slice(0, 5)}–{(row.cikis_saati || "?").slice(0, 5)}</span>}
+                        </p>
+                      )}
                       {row.notes && <p className="mt-2 line-clamp-2 text-sm text-zinc-400">{row.notes}</p>}
                     </div>
                     <div className="flex flex-wrap gap-2 md:justify-end">
