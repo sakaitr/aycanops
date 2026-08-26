@@ -22,16 +22,10 @@ const EMPTY_FORM = {
   masraf_merkezi_id: "",
   vehicle_id: "",
   company_id: "",
+  harcayan_id: "",
 };
 
 const EMPTY_KALEM: Kalem = { aciklama: "", miktar: "1", birim_fiyat: "" };
-
-const ODEME_LABELS: Record<string, string> = { odenmedi: "Ödenmedi", kismen_odendi: "Kısmen Ödendi", odendi: "Ödendi" };
-const ODEME_COLORS: Record<string, string> = {
-  odenmedi: "bg-zinc-800 text-zinc-400 border-zinc-700",
-  kismen_odendi: "bg-amber-950/60 text-amber-400 border-amber-800",
-  odendi: "bg-emerald-950/60 text-emerald-400 border-emerald-800",
-};
 
 export default function GiderPage() {
   const router = useRouter();
@@ -41,6 +35,7 @@ export default function GiderPage() {
   const [cariler, setCariler] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [filterKategori, setFilterKategori] = useState("");
@@ -69,9 +64,7 @@ export default function GiderPage() {
   const [bulkResult, setBulkResult] = useState<{ created: number; hatalar: any[] } | null>(null);
 
   const canWrite = hasPermission(user, "finans_gider:create");
-  const canMarkOdeme = hasPermission(user, "finans_gider:odeme_isaretle");
   const canEditGider = hasPermission(user, "finans_gider:duzenle");
-  const [updatingOdeme, setUpdatingOdeme] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -80,6 +73,7 @@ export default function GiderPage() {
     fetch("/api/cari-tedarikci?limit=500").then(r => r.json()).then(d => { if (d.ok) setCariler(d.data); }).catch(() => {});
     fetch("/api/vehicles?limit=500").then(r => r.json()).then(d => { if (d.ok) setVehicles(d.data); }).catch(() => {});
     fetch("/api/companies?limit=500").then(r => r.json()).then(d => { if (d.ok) setCompanies(d.data); }).catch(() => {});
+    fetch("/api/users?simple=1").then(r => r.json()).then(d => { if (d.ok) setUsers(d.data); }).catch(() => {});
     // Dashboard'daki kategori kartından gelen ?kategori_id= ile ön-filtre
     const kid = new URLSearchParams(window.location.search).get("kategori_id");
     if (kid) setFilterKategori(kid);
@@ -166,6 +160,7 @@ export default function GiderPage() {
       masraf_merkezi_id: row.masraf_merkezi_id || "",
       vehicle_id: row.vehicle_id || "",
       company_id: row.company_id || "",
+      harcayan_id: row.harcayan_id || "",
     });
     const hasKalemler = d?.kalemler?.length > 0;
     setUseKalemler(hasKalemler);
@@ -196,6 +191,7 @@ export default function GiderPage() {
         masraf_merkezi_id: form.masraf_merkezi_id || null,
         vehicle_id: form.vehicle_id || null,
         company_id: form.company_id || null,
+        harcayan_id: form.harcayan_id || null,
       };
       if (useKalemler) {
         payload.kalemler = kalemler
@@ -275,22 +271,6 @@ export default function GiderPage() {
     });
     const d = await res.json();
     if (d.ok) { setDetail(prev => { const n = { ...prev }; delete n[id]; return n; }); load(); }
-  }
-
-  async function updateOdeme(id: string, odeme_durumu: string) {
-    setUpdatingOdeme(id);
-    try {
-      const res = await fetch(`/api/finans/gider/${id}/odeme`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ odeme_durumu }),
-      });
-      const d = await res.json();
-      if (d.ok) {
-        setRows(rs => rs.map(r => r.id === id ? { ...r, odeme_durumu } : r));
-      } else {
-        toast.error(d.error || "Güncellenemedi");
-      }
-    } finally { setUpdatingOdeme(null); }
   }
 
   function openBulk() {
@@ -483,26 +463,9 @@ export default function GiderPage() {
                               )}
                             </div>
                           )}
-                          <div className="mb-3">
-                            <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-1.5">Ödeme Durumu</p>
-                            {canMarkOdeme ? (
-                              <div className="flex gap-1.5 flex-wrap">
-                                {(["odenmedi", "kismen_odendi", "odendi"] as const).map(s => (
-                                  <button key={s} onClick={() => updateOdeme(row.id, s)}
-                                    disabled={updatingOdeme === row.id}
-                                    className={`text-xs px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-40 ${
-                                      (row.odeme_durumu || "odenmedi") === s ? ODEME_COLORS[s] : "bg-zinc-800/50 text-zinc-500 border-zinc-700 hover:border-zinc-500"
-                                    }`}>
-                                    {ODEME_LABELS[s]}
-                                  </button>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className={`text-xs px-2.5 py-1 rounded-lg border ${ODEME_COLORS[row.odeme_durumu || "odenmedi"]}`}>
-                                {ODEME_LABELS[row.odeme_durumu || "odenmedi"]}
-                              </span>
-                            )}
-                          </div>
+                          {d.harcayan_ad && (
+                            <p className="text-zinc-500 text-xs mb-3"><span className="uppercase tracking-wider">Harcamayı Yapan:</span> <span className="text-zinc-300">{d.harcayan_ad}</span></p>
+                          )}
                           {d.kalemler?.length > 0 && (
                             <div className="mb-3">
                               <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-1.5">Kalemler</p>
@@ -593,6 +556,15 @@ export default function GiderPage() {
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500">
                   <option value="">— Cari seçin —</option>
                   {cariler.map((c: any) => <option key={c.id} value={c.id}>{c.unvan}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Harcamayı Yapan (opsiyonel)</label>
+                <select value={form.harcayan_id} onChange={e => setForm(f => ({ ...f, harcayan_id: e.target.value }))}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500">
+                  <option value="">— Kişi seçin —</option>
+                  {users.map((u: any) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                 </select>
               </div>
 

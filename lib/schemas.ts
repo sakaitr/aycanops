@@ -540,6 +540,7 @@ export const finansGiderSchema = z.object({
   vehicle_id: z.string().optional().nullable(),
   route_id: z.string().optional().nullable(),
   company_id: z.string().optional().nullable(),
+  harcayan_id: z.string().optional().nullable(),
   durum: z.enum(["taslak", "tamamlandi"]).optional(),
   kalemler: z
     .array(

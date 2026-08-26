@@ -23,6 +23,15 @@ const DURUM_LABELS: Record<string, string> = {
 const ODEME_LABELS: Record<string, string> = {
   odenmedi: "Ödenmedi", kismen_odendi: "Kısmen", odendi: "Ödendi",
 };
+const ODEME_COLORS: Record<string, string> = {
+  odenmedi: "bg-zinc-800/50 text-zinc-500 border-zinc-700",
+  kismen_odendi: "bg-amber-950/60 text-amber-400 border-amber-800",
+  odendi: "bg-emerald-950/60 text-emerald-400 border-emerald-800",
+};
+// Sadece gider kaynaklı hareketlerin ödeme durumu buradan işaretlenebiliyor —
+// fatura'nın kendi tahsilat/ödeme eşleştirme akışı var (bkz. /api/finans/odeme),
+// masraf'ta henüz odeme_durumu kavramı yok.
+const ODEME_KAYNAKLARI = new Set(["gider"]);
 // Detay çekmek için kaynağa göre tekil kayıt uç noktası — kasa/hakedis/manuel
 // şu an gerçekten kullanılmıyor (bkz. DELETE_CONFIG'teki not), detay yok.
 const DETAIL_CONFIG: Record<string, (id: string) => string> = {
@@ -50,6 +59,9 @@ export default function HareketlerPage() {
   const [user, setUser] = useState<any>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [kategoriler, setKategoriler] = useState<any[]>([]);
+  const [giderKategorileri, setGiderKategorileri] = useState<any[]>([]);
+  const [cariler, setCariler] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [dateFrom, setDateFrom] = useState(ayBasi());
@@ -62,12 +74,21 @@ export default function HareketlerPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [detail, setDetail] = useState<Record<string, any>>({});
   const [detailLoading, setDetailLoading] = useState<string | null>(null);
+  const [updatingOdeme, setUpdatingOdeme] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    tarih: todayIstanbul(), kategori_id: "", cari_id: "", belge_no: "", tutar: "", kdv_tutar: "", aciklama: "", harcayan_id: "",
+  });
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
       if (d.ok) setUser(d.data); else router.replace("/login");
     });
     fetch("/api/finans/kategori?is_active=1&scope=me").then(r => r.json()).then(d => { if (d.ok) setKategoriler(d.data); });
+    fetch("/api/finans/kategori?tip=gider&scope=me").then(r => r.json()).then(d => { if (d.ok) setGiderKategorileri(d.data); });
+    fetch("/api/cari-tedarikci?limit=500").then(r => r.json()).then(d => { if (d.ok) setCariler(d.data); }).catch(() => {});
+    fetch("/api/users?simple=1").then(r => r.json()).then(d => { if (d.ok) setUsers(d.data); }).catch(() => {});
   }, []);
 
   const load = useCallback(async () => {
@@ -103,6 +124,46 @@ export default function HareketlerPage() {
       const d = await r.json();
       if (d.ok) setDetail(prev => ({ ...prev, [key]: d.data }));
     } finally { setDetailLoading(null); }
+  }
+
+  async function updateOdeme(row: any, odeme_durumu: string) {
+    setUpdatingOdeme(row.id);
+    try {
+      const res = await fetch(`/api/finans/gider/${row.kaynak_id}/odeme`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ odeme_durumu }),
+      });
+      const d = await res.json();
+      if (d.ok) setRows(rs => rs.map(r => r.id === row.id ? { ...r, odeme_durumu } : r));
+      else alert(d.error || "Güncellenemedi");
+    } finally { setUpdatingOdeme(null); }
+  }
+
+  async function createGider() {
+    if (!createForm.kategori_id) return alert("Kategori seçin");
+    if (!createForm.tutar) return alert("Tutar zorunlu");
+    setCreating(true);
+    try {
+      const res = await fetch("/api/finans/gider", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tip: "fis",
+          tarih: createForm.tarih,
+          kategori_id: createForm.kategori_id,
+          cari_id: createForm.cari_id || null,
+          belge_no: createForm.belge_no || null,
+          tutar: Number(createForm.tutar),
+          kdv_tutar: createForm.kdv_tutar ? Number(createForm.kdv_tutar) : null,
+          aciklama: createForm.aciklama || null,
+          harcayan_id: createForm.harcayan_id || null,
+        }),
+      });
+      const d = await res.json();
+      if (!d.ok) return alert(typeof d.error === "string" ? d.error : "Kaydedilemedi");
+      setShowCreate(false);
+      setCreateForm({ tarih: todayIstanbul(), kategori_id: "", cari_id: "", belge_no: "", tutar: "", kdv_tutar: "", aciklama: "", harcayan_id: "" });
+      load();
+    } finally { setCreating(false); }
   }
 
   async function handleDelete(row: any) {
@@ -142,12 +203,78 @@ export default function HareketlerPage() {
       <Nav user={user} />
       <div className="min-h-screen bg-zinc-950 pt-16">
         <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-white">Hareketler</h1>
-            <p className="text-zinc-500 text-sm mt-0.5">
-              Tüm finansal hareketler tek defterde — fatura, masraf, elden ödeme, hakediş
-            </p>
+          <div className="mb-6 flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-white">Hareketler</h1>
+              <p className="text-zinc-500 text-sm mt-0.5">
+                Tüm finansal hareketler tek defterde — fatura, masraf, elden ödeme, hakediş
+              </p>
+            </div>
+            {hasPermission(user, "finans_gider:create") && (
+              <button onClick={() => setShowCreate(s => !s)}
+                className="shrink-0 bg-white text-zinc-950 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-zinc-200 transition-colors">
+                {showCreate ? "Vazgeç" : "+ Kayıt Ekle"}
+              </button>
+            )}
           </div>
+
+          {showCreate && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-5">
+              <h2 className="text-sm font-bold text-white mb-3">Yeni gider kaydı</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Tarih *</label>
+                  <input type="date" value={createForm.tarih} onChange={e => setCreateForm(f => ({ ...f, tarih: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none [color-scheme:dark]" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Kategori *</label>
+                  <select value={createForm.kategori_id} onChange={e => setCreateForm(f => ({ ...f, kategori_id: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none">
+                    <option value="">— Kategori seçin —</option>
+                    {giderKategorileri.map((k: any) => <option key={k.id} value={k.id}>{k.parent_id ? "   " + k.ad : k.ad}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Tutar *</label>
+                  <input type="number" value={createForm.tutar} onChange={e => setCreateForm(f => ({ ...f, tutar: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Cari (opsiyonel)</label>
+                  <select value={createForm.cari_id} onChange={e => setCreateForm(f => ({ ...f, cari_id: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none">
+                    <option value="">— Cari seçin —</option>
+                    {cariler.map((c: any) => <option key={c.id} value={c.id}>{c.unvan}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Harcamayı Yapan (opsiyonel)</label>
+                  <select value={createForm.harcayan_id} onChange={e => setCreateForm(f => ({ ...f, harcayan_id: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none">
+                    <option value="">— Kişi seçin —</option>
+                    {users.map((u: any) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Belge No (opsiyonel)</label>
+                  <input value={createForm.belge_no} onChange={e => setCreateForm(f => ({ ...f, belge_no: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none" />
+                </div>
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Açıklama</label>
+                  <input value={createForm.aciklama} onChange={e => setCreateForm(f => ({ ...f, aciklama: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none" />
+                </div>
+              </div>
+              <div className="flex justify-end mt-4">
+                <button onClick={createGider} disabled={creating}
+                  className="bg-white text-zinc-950 text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-zinc-200 disabled:opacity-50 transition-colors">
+                  {creating ? "Kaydediliyor..." : "Kaydet"}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Özet şerit */}
           <div className="grid grid-cols-3 gap-3 mb-5">
@@ -308,6 +435,29 @@ export default function HareketlerPage() {
                                   {detail[h.id].cari_ad && <p><span className="text-zinc-500">Cari:</span> <span className="text-zinc-300">{detail[h.id].cari_ad}</span></p>}
                                   {detail[h.id].talep_eden_ad && <p><span className="text-zinc-500">Talep Eden:</span> <span className="text-zinc-300">{detail[h.id].talep_eden_ad}</span></p>}
                                   {detail[h.id].vade_tarihi && <p><span className="text-zinc-500">Vade:</span> <span className="text-zinc-300">{fmtDate(detail[h.id].vade_tarihi)}</span></p>}
+                                  {detail[h.id].harcayan_ad && <p><span className="text-zinc-500">Harcamayı Yapan:</span> <span className="text-zinc-300">{detail[h.id].harcayan_ad}</span></p>}
+                                  {ODEME_KAYNAKLARI.has(h.kaynak_tip) && (
+                                    <div className="pt-1">
+                                      <p className="text-zinc-500 text-[10px] font-semibold uppercase tracking-wider mb-1.5">Ödeme Durumu</p>
+                                      {hasPermission(user, "finans_gider:odeme_isaretle") ? (
+                                        <div className="flex gap-1.5 flex-wrap">
+                                          {(["odenmedi", "kismen_odendi", "odendi"] as const).map(s => (
+                                            <button key={s} onClick={() => updateOdeme(h, s)}
+                                              disabled={updatingOdeme === h.id}
+                                              className={`text-xs px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-40 ${
+                                                (h.odeme_durumu || "odenmedi") === s ? ODEME_COLORS[s] : "bg-zinc-800/50 text-zinc-500 border-zinc-700 hover:border-zinc-500"
+                                              }`}>
+                                              {ODEME_LABELS[s]}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <span className={`text-xs px-2.5 py-1 rounded-lg border ${ODEME_COLORS[h.odeme_durumu || "odenmedi"]}`}>
+                                          {ODEME_LABELS[h.odeme_durumu || "odenmedi"]}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                                 {(detail[h.id].kalemler?.length > 0) && (
                                   <div className="space-y-1">

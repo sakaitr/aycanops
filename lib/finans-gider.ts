@@ -31,14 +31,14 @@ export async function createGiderRecord(userId: string, d: GiderInput): Promise<
     `INSERT INTO finans_gider
        (id, tip, tarih, kategori_id, cari_id, belge_no, tutar, para_birimi_kod, kdv_tutar, aciklama,
         department_id, proje_id, masraf_merkezi_id, vehicle_id, route_id, company_id, durum,
-        created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        created_by, harcayan_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id, d.tip, d.tarih, d.kategori_id || null, d.cari_id || null, d.belge_no || null, tutar,
     d.para_birimi_kod || "TRY", d.kdv_tutar ?? null, d.aciklama || null,
     d.department_id || null, d.proje_id || null, d.masraf_merkezi_id || null,
     d.vehicle_id || null, d.route_id || null, d.company_id || null,
-    d.durum || "tamamlandi", userId, now, now
+    d.durum || "tamamlandi", userId, d.harcayan_id || null, now, now
   );
 
   if (d.kalemler && d.kalemler.length > 0) {

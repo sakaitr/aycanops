@@ -31,13 +31,14 @@ export async function GET(req: NextRequest) {
 
     const db = getDb();
     const rows = await db.prepare(
-      `SELECT g.*, k.ad AS kategori_ad, c.unvan AS cari_ad, u.full_name AS created_by_ad,
+      `SELECT g.*, k.ad AS kategori_ad, c.unvan AS cari_ad, u.full_name AS created_by_ad, h.full_name AS harcayan_ad,
               (SELECT COUNT(*) FROM finans_gider_kalem gk WHERE gk.gider_id = g.id) AS kalem_sayisi,
               (SELECT COUNT(*) FROM finans_belge b WHERE b.iliskili_tip = 'gider' AND b.iliskili_id = g.id) AS belge_sayisi
        FROM finans_gider g
        LEFT JOIN finans_kategori k ON k.id = g.kategori_id
        LEFT JOIN cari_tedarikci c ON c.id = g.cari_id
        LEFT JOIN users u ON u.id = g.created_by
+       LEFT JOIN users h ON h.id = g.harcayan_id
        ${where}
        ORDER BY g.tarih DESC, g.created_at DESC
        LIMIT 500`

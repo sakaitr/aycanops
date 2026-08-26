@@ -19,11 +19,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const db = getDb();
     const gider = await db.prepare(
-      `SELECT g.*, k.ad AS kategori_ad, c.unvan AS cari_ad, u.full_name AS created_by_ad
+      `SELECT g.*, k.ad AS kategori_ad, c.unvan AS cari_ad, u.full_name AS created_by_ad, h.full_name AS harcayan_ad
        FROM finans_gider g
        LEFT JOIN finans_kategori k ON k.id = g.kategori_id
        LEFT JOIN cari_tedarikci c ON c.id = g.cari_id
        LEFT JOIN users u ON u.id = g.created_by
+       LEFT JOIN users h ON h.id = g.harcayan_id
        WHERE g.id = ?`
     ).get(id);
     if (!gider) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
@@ -81,6 +82,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (d.vehicle_id !== undefined) set("vehicle_id", d.vehicle_id || null);
     if (d.route_id !== undefined) set("route_id", d.route_id || null);
     if (d.company_id !== undefined) set("company_id", d.company_id || null);
+    if (d.harcayan_id !== undefined) set("harcayan_id", d.harcayan_id || null);
     if (d.durum !== undefined) set("durum", d.durum);
     fields.push("updated_at = ?"); args.push(now);
     args.push(id);
