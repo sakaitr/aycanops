@@ -77,9 +77,36 @@ export default function HareketlerPage() {
   const [updatingOdeme, setUpdatingOdeme] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     tarih: todayIstanbul(), kategori_id: "", cari_id: "", belge_no: "", tutar: "", kdv_tutar: "", aciklama: "", harcayan_id: "",
   });
+
+  function closeCreate() {
+    setShowCreate(false);
+    setEditingId(null);
+    setEditingRowId(null);
+    setCreateForm({ tarih: todayIstanbul(), kategori_id: "", cari_id: "", belge_no: "", tutar: "", kdv_tutar: "", aciklama: "", harcayan_id: "" });
+  }
+
+  function openEdit(h: any) {
+    const d = detail[h.id];
+    if (!d) return;
+    setEditingId(h.kaynak_id);
+    setEditingRowId(h.id);
+    setCreateForm({
+      tarih: d.tarih || todayIstanbul(),
+      kategori_id: d.kategori_id || "",
+      cari_id: d.cari_id || "",
+      belge_no: d.belge_no || "",
+      tutar: String(d.tutar ?? ""),
+      kdv_tutar: d.kdv_tutar != null ? String(d.kdv_tutar) : "",
+      aciklama: d.aciklama || "",
+      harcayan_id: d.harcayan_id || "",
+    });
+    setShowCreate(true);
+  }
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
@@ -144,8 +171,9 @@ export default function HareketlerPage() {
     if (!createForm.tutar) return alert("Tutar zorunlu");
     setCreating(true);
     try {
-      const res = await fetch("/api/finans/gider", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      const isEdit = !!editingId;
+      const res = await fetch(isEdit ? `/api/finans/gider/${editingId}` : "/api/finans/gider", {
+        method: isEdit ? "PATCH" : "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tip: "fis",
           tarih: createForm.tarih,
@@ -160,8 +188,11 @@ export default function HareketlerPage() {
       });
       const d = await res.json();
       if (!d.ok) return alert(typeof d.error === "string" ? d.error : "Kaydedilemedi");
-      setShowCreate(false);
-      setCreateForm({ tarih: todayIstanbul(), kategori_id: "", cari_id: "", belge_no: "", tutar: "", kdv_tutar: "", aciklama: "", harcayan_id: "" });
+      if (isEdit && editingRowId) {
+        const fresh = await fetch(`/api/finans/gider/${editingId}`).then(r => r.json());
+        if (fresh.ok) setDetail(prev => ({ ...prev, [editingRowId]: fresh.data }));
+      }
+      closeCreate();
       load();
     } finally { setCreating(false); }
   }
@@ -211,7 +242,7 @@ export default function HareketlerPage() {
               </p>
             </div>
             {hasPermission(user, "finans_gider:create") && (
-              <button onClick={() => setShowCreate(s => !s)}
+              <button onClick={() => (showCreate ? closeCreate() : setShowCreate(true))}
                 className="shrink-0 bg-white text-zinc-950 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-zinc-200 transition-colors">
                 {showCreate ? "Vazgeç" : "+ Kayıt Ekle"}
               </button>
@@ -220,7 +251,7 @@ export default function HareketlerPage() {
 
           {showCreate && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-5">
-              <h2 className="text-sm font-bold text-white mb-3">Yeni gider kaydı</h2>
+              <h2 className="text-sm font-bold text-white mb-3">{editingId ? "Gider düzenle" : "Yeni gider kaydı"}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Tarih *</label>
@@ -270,7 +301,7 @@ export default function HareketlerPage() {
               <div className="flex justify-end mt-4">
                 <button onClick={createGider} disabled={creating}
                   className="bg-white text-zinc-950 text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-zinc-200 disabled:opacity-50 transition-colors">
-                  {creating ? "Kaydediliyor..." : "Kaydet"}
+                  {creating ? "Kaydediliyor..." : editingId ? "Güncelle" : "Kaydet"}
                 </button>
               </div>
             </div>
@@ -428,6 +459,12 @@ export default function HareketlerPage() {
                             ) : (
                               <div className="grid sm:grid-cols-2 gap-4">
                                 <div className="space-y-1 text-xs">
+                                  {h.kaynak_tip === "gider" && hasPermission(user, "finans_gider:duzenle") && (
+                                    <button onClick={() => openEdit(h)}
+                                      className="mb-1 text-xs text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded-lg transition-colors">
+                                      ✎ Düzenle
+                                    </button>
+                                  )}
                                   {detail[h.id].belge_no && <p><span className="text-zinc-500">Belge No:</span> <span className="text-zinc-300">{detail[h.id].belge_no}</span></p>}
                                   {detail[h.id].fatura_no && <p><span className="text-zinc-500">Fatura No:</span> <span className="text-zinc-300">{detail[h.id].fatura_no}</span></p>}
                                   {detail[h.id].baslik && <p><span className="text-zinc-500">Başlık:</span> <span className="text-zinc-300">{detail[h.id].baslik}</span></p>}
