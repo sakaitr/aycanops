@@ -47,6 +47,10 @@ const PUBLIC_FILE_EXTENSIONS = [
 // Mutating HTTP methods that require CSRF protection on API routes
 const CSRF_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+// Makine-makine uçları: kendi gizli anahtarlarıyla (x-cron-secret / ?token=)
+// kimlik doğrular, tarayıcı çağrısı değildir — Origin başlığı gelmez.
+const CSRF_EXEMPT_PREFIXES = ["/api/cron/", "/api/integrations/traccar/webhook"];
+
 // Pages accessible only by the "personel" role
 const PERSONEL_ALLOWED_PATHS = ["/giris-kontrol", "/yetkisiz", "/finans/masraf-talebi", "/is-giris", "/gunluk"];
 
@@ -59,7 +63,7 @@ export function proxy(request: NextRequest) {
 
   // ── 1. CSRF protection – mutation methods on /api/ routes ──────────────────
   if (pathname.startsWith("/api/") && CSRF_METHODS.has(request.method)) {
-    if (pathname !== "/api/auth/login") {
+    if (pathname !== "/api/auth/login" && !CSRF_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p))) {
       const origin = request.headers.get("origin") || request.headers.get("referer");
       const host = request.headers.get("host");
 

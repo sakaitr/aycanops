@@ -1,14 +1,23 @@
 /**
- * lib/planner.ts — Personnel shuttle route optimization engine
+ * lib/planner.ts — Personel servisi rota optimizasyon motoru
  *
- * Algorithm:
- *  1. OSRM /table  → N×N duration matrix for all points (depots + personnel)
- *  2. Capacitated greedy clustering → assign personnel to vehicles
- *  3. Nearest-neighbour TSP + 2-opt per vehicle
- *  4. OSRM /route  → road-accurate polyline per vehicle
+ * Birincil yol: self-hosted VROOM (VRP çözücü) + Valhalla (yol matrisi).
+ *   - Kapasite kısıtı, opsiyonel araç zaman penceresi, binlerce durak.
+ *   - VROOM yol geometrisini de döndürür (options.g).
+ * Yedek yol: VROOM/Valhalla erişilemezse yerel haversine matrisi +
+ *   greedy kapasiteli atama + nearest-neighbour TSP + 2-opt.
+ *
+ * Dışa açılan PlanInput / PlanResult arayüzü değişmedi — app/api/plan
+ * ve app/guzergahlar/rota UI'ı aynı kalır.
  */
-
-const OSRM = "https://router.project-osrm.org";
+import {
+  vroomSolve,
+  valhallaRoute,
+  decodePolyline,
+  RoutingError,
+  type VroomVehicle,
+  type VroomJob,
+} from "@/lib/routing";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -21,7 +30,7 @@ export interface PlanPersonnel {
 
 export interface PlanVehicle {
   id: string;
-  label: string;   // plate or route name
+  label: string; // plaka veya güzergah adı
   capacity: number;
   depot_lat: number;
   depot_lng: number;
@@ -30,7 +39,7 @@ export interface PlanVehicle {
 export interface PlanInput {
   personnel: PlanPersonnel[];
   vehicles: PlanVehicle[];
-  max_duration?: number;  // max seconds per vehicle leg, informational
+  max_duration?: number; // araç başına maksimum saniye (opsiyonel zaman penceresi)
 }
 
 export interface PlanStop {
@@ -39,14 +48,14 @@ export interface PlanStop {
   lat: number;
   lng: number;
   order: number;
-  arrival_seconds: number; // cumulative from depot
+  arrival_seconds: number; // depodan kümülatif
 }
 
 export interface PlanVehicleResult {
   vehicle_id: string;
   vehicle_label: string;
   stops: PlanStop[];
-  geometry: [number, number][];  // [lat, lng]
+  geometry: [number, number][]; // [lat, lng]
   duration_seconds: number;
   distance_meters: number;
 }
@@ -56,6 +65,7 @@ export interface PlanResult {
   unassigned: PlanPersonnel[];
   total_duration: number;
   total_distance: number;
+  engine: "vroom" | "fallback";
 }
 
 // ── Entry point ────────────────────────────────────────────────────────
@@ -64,72 +74,150 @@ export async function planRoutes(input: PlanInput): Promise<PlanResult> {
   const { personnel, vehicles } = input;
 
   if (personnel.length === 0 || vehicles.length === 0) {
-    return { vehicles: [], unassigned: [], total_duration: 0, total_distance: 0 };
+    return { vehicles: [], unassigned: [], total_duration: 0, total_distance: 0, engine: "vroom" };
   }
 
-  // Points array: [depot_v0, depot_v1, ..., p0, p1, ..., pN]
+  try {
+    return await planWithVroom(input);
+  } catch (e) {
+    if (e instanceof RoutingError) {
+      console.warn("[planner] VROOM/Valhalla erişilemedi, yerel yedek algoritmaya düşülüyor:", e.message);
+      return await planWithFallback(input);
+    }
+    throw e;
+  }
+}
+
+// ── Birincil: VROOM ────────────────────────────────────────────────────
+
+async function planWithVroom(input: PlanInput): Promise<PlanResult> {
+  const { personnel, vehicles, max_duration } = input;
+
+  const vroomVehicles: VroomVehicle[] = vehicles.map((v, i) => ({
+    id: i,
+    profile: "auto", // Valhalla costing
+    start: [v.depot_lng, v.depot_lat],
+    end: [v.depot_lng, v.depot_lat],
+    capacity: [Math.max(1, Math.floor(v.capacity))],
+    description: v.label,
+    ...(max_duration && max_duration > 0 ? { time_window: [0, Math.round(max_duration)] as [number, number] } : {}),
+  }));
+
+  const vroomJobs: VroomJob[] = personnel.map((p, i) => ({
+    id: i,
+    location: [p.lng, p.lat],
+    amount: [1],
+    description: p.name,
+  }));
+
+  const solution = await vroomSolve(vroomVehicles, vroomJobs, { geometry: true });
+
+  const results: PlanVehicleResult[] = [];
+  const assignedIds = new Set<string>();
+
+  for (const route of solution.routes) {
+    const v = vehicles[route.vehicle];
+    if (!v) continue;
+
+    const stops: PlanStop[] = [];
+    let order = 0;
+    for (const step of route.steps) {
+      if (step.type !== "job" || step.id == null) continue;
+      const p = personnel[step.id];
+      if (!p) continue;
+      assignedIds.add(p.id);
+      order += 1;
+      stops.push({
+        id: p.id,
+        name: p.name,
+        lat: p.lat,
+        lng: p.lng,
+        order,
+        arrival_seconds: Math.round(step.arrival),
+      });
+    }
+
+    let geometry: [number, number][] = [];
+    if (route.geometry) {
+      geometry = decodePolyline(route.geometry, 5);
+    } else if (stops.length > 0) {
+      const geo = await valhallaRoute([
+        { lat: v.depot_lat, lng: v.depot_lng },
+        ...stops.map((s) => ({ lat: s.lat, lng: s.lng })),
+      ]);
+      geometry = geo?.coordinates ?? [];
+    }
+
+    results.push({
+      vehicle_id: v.id,
+      vehicle_label: v.label,
+      stops,
+      geometry,
+      duration_seconds: Math.round(route.duration),
+      distance_meters: Math.round(route.distance),
+    });
+  }
+
+  // VROOM'un hiç kullanmadığı araçları da (boş) döndür — UI tümünü bekliyor
+  const usedVehicleIdx = new Set(solution.routes.map((r) => r.vehicle));
+  for (let i = 0; i < vehicles.length; i++) {
+    if (usedVehicleIdx.has(i)) continue;
+    results.push({
+      vehicle_id: vehicles[i].id,
+      vehicle_label: vehicles[i].label,
+      stops: [],
+      geometry: [],
+      duration_seconds: 0,
+      distance_meters: 0,
+    });
+  }
+  results.sort(
+    (a, b) => vehicles.findIndex((v) => v.id === a.vehicle_id) - vehicles.findIndex((v) => v.id === b.vehicle_id),
+  );
+
+  const unassigned = personnel.filter((p) => !assignedIds.has(p.id));
+
+  return {
+    vehicles: results,
+    unassigned,
+    total_duration: results.reduce((s, r) => s + r.duration_seconds, 0),
+    total_distance: results.reduce((s, r) => s + r.distance_meters, 0),
+    engine: "vroom",
+  };
+}
+
+// ── Yedek: yerel haversine + greedy ───────────────────────────────────
+
+async function planWithFallback(input: PlanInput): Promise<PlanResult> {
+  const { personnel, vehicles } = input;
+
   const D = vehicles.length;
   const allPoints = [
-    ...vehicles.map(v => ({ lat: v.depot_lat, lng: v.depot_lng })),
-    ...personnel.map(p => ({ lat: p.lat, lng: p.lng })),
+    ...vehicles.map((v) => ({ lat: v.depot_lat, lng: v.depot_lng })),
+    ...personnel.map((p) => ({ lat: p.lat, lng: p.lng })),
   ];
+  const durations = haversineMatrix(allPoints); // saniye tahmini (30 km/h)
 
-  // 1. Distance matrix
-  const { durations } = await buildMatrix(allPoints);
-
-  // 2. Capacitated greedy assignment
   const assignments = capacitatedAssign(D, vehicles, personnel, durations);
 
-  // 3. TSP + route geometry per vehicle
   const results: PlanVehicleResult[] = [];
   const assigned = new Set<string>();
 
-  // Fetch route geometries in parallel for speed
-  const routePromises: Promise<{ geometry: [number,number][]; duration: number; distance: number }>[] = [];
-  const vehicleOrders: number[][] = [];
-
-  for (let vi = 0; vi < vehicles.length; vi++) {
-    const pList = assignments[vi];
-    if (pList.length === 0) {
-      vehicleOrders.push([]);
-      routePromises.push(Promise.resolve({ geometry: [], duration: 0, distance: 0 }));
-      continue;
-    }
-
-    const personIdxs = pList.map(p => D + personnel.indexOf(p));
-    const ordered = nearestNeighbor(vi, personIdxs, durations);
-    const optimized = twoOpt(vi, ordered, durations);
-    vehicleOrders.push(optimized);
-
-    const v = vehicles[vi];
-    const routePts = [
-      { lat: v.depot_lat, lng: v.depot_lng },
-      ...optimized.map(idx => ({ lat: personnel[idx - D].lat, lng: personnel[idx - D].lng })),
-    ];
-    routePromises.push(osrmRoute(routePts));
-  }
-
-  const routeResults = await Promise.all(routePromises);
-
   for (let vi = 0; vi < vehicles.length; vi++) {
     const v = vehicles[vi];
     const pList = assignments[vi];
-    const optimized = vehicleOrders[vi];
-    const rr = routeResults[vi];
 
     if (pList.length === 0) {
       results.push({
-        vehicle_id: v.id,
-        vehicle_label: v.label,
-        stops: [],
-        geometry: [],
-        duration_seconds: 0,
-        distance_meters: 0,
+        vehicle_id: v.id, vehicle_label: v.label, stops: [], geometry: [],
+        duration_seconds: 0, distance_meters: 0,
       });
       continue;
     }
 
-    // Build stops with cumulative durations
+    const personIdxs = pList.map((p) => D + personnel.indexOf(p));
+    const optimized = twoOpt(vi, nearestNeighbor(vi, personIdxs, durations), durations);
+
     let cumDur = 0;
     let prevIdx = vi;
     const stops: PlanStop[] = optimized.map((matrixIdx, order) => {
@@ -137,58 +225,59 @@ export async function planRoutes(input: PlanInput): Promise<PlanResult> {
       assigned.add(p.id);
       cumDur += durations[prevIdx]?.[matrixIdx] ?? 0;
       prevIdx = matrixIdx;
-      return {
-        id: p.id,
-        name: p.name,
-        lat: p.lat,
-        lng: p.lng,
-        order: order + 1,
-        arrival_seconds: Math.round(cumDur),
-      };
+      return { id: p.id, name: p.name, lat: p.lat, lng: p.lng, order: order + 1, arrival_seconds: Math.round(cumDur) };
     });
+
+    const geo = await valhallaRoute([
+      { lat: v.depot_lat, lng: v.depot_lng },
+      ...stops.map((s) => ({ lat: s.lat, lng: s.lng })),
+    ]);
 
     results.push({
       vehicle_id: v.id,
       vehicle_label: v.label,
       stops,
-      geometry: rr.geometry,
-      duration_seconds: rr.duration,
-      distance_meters: rr.distance,
+      geometry: geo?.coordinates ?? [],
+      duration_seconds: geo?.duration ?? Math.round(cumDur),
+      distance_meters: geo?.distance ?? 0,
     });
   }
 
-  const unassigned = personnel.filter(p => !assigned.has(p.id));
+  const unassigned = personnel.filter((p) => !assigned.has(p.id));
 
   return {
     vehicles: results,
     unassigned,
     total_duration: results.reduce((s, r) => s + r.duration_seconds, 0),
     total_distance: results.reduce((s, r) => s + r.distance_meters, 0),
+    engine: "fallback",
   };
 }
 
-// ── OSRM Table → duration matrix ──────────────────────────────────────
+// ── Yardımcılar (yedek yol) ──────────────────────────────────────────
 
-async function buildMatrix(points: Array<{ lat: number; lng: number }>) {
-  if (points.length > 100) {
-    throw new Error("Çok fazla nokta (max 100). Personel sayısını veya araç depolarını azaltın.");
+function haversineMatrix(points: Array<{ lat: number; lng: number }>): number[][] {
+  const R = 6_371_000;
+  const speed = 30 / 3.6; // 30 km/h → m/s
+  const n = points.length;
+  const m: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const dLat = ((points[j].lat - points[i].lat) * Math.PI) / 180;
+      const dLng = ((points[j].lng - points[i].lng) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((points[i].lat * Math.PI) / 180) *
+          Math.cos((points[j].lat * Math.PI) / 180) *
+          Math.sin(dLng / 2) ** 2;
+      const dist = 2 * R * Math.asin(Math.sqrt(a));
+      const sec = dist / speed;
+      m[i][j] = sec;
+      m[j][i] = sec;
+    }
   }
-
-  const coords = points.map(p => `${p.lng},${p.lat}`).join(";");
-  const url = `${OSRM}/table/v1/driving/${coords}?annotations=duration,distance`;
-
-  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) throw new Error(`OSRM /table HTTP ${res.status}`);
-  const data = await res.json();
-  if (data.code !== "Ok") throw new Error(`OSRM /table error: ${data.code} – ${data.message ?? ""}`);
-
-  return {
-    durations: data.durations as number[][],
-    distances: data.distances as number[][] | undefined,
-  };
+  return m;
 }
-
-// ── Capacitated greedy clustering ─────────────────────────────────────
 
 function capacitatedAssign(
   D: number,
@@ -200,14 +289,17 @@ function capacitatedAssign(
   const buckets: PlanPersonnel[][] = vehicles.map(() => []);
 
   for (let vi = 0; vi < vehicles.length; vi++) {
-    let curIdx = vi; // depot of this vehicle
+    let curIdx = vi;
     const cap = vehicles[vi].capacity;
-
     while (buckets[vi].length < cap && unassigned.size > 0) {
-      let best = -1, bestDur = Infinity;
+      let best = -1;
+      let bestDur = Infinity;
       for (const pi of unassigned) {
         const d = durations[curIdx]?.[D + pi] ?? Infinity;
-        if (d < bestDur) { bestDur = d; best = pi; }
+        if (d < bestDur) {
+          bestDur = d;
+          best = pi;
+        }
       }
       if (best === -1) break;
       buckets[vi].push(personnel[best]);
@@ -216,7 +308,6 @@ function capacitatedAssign(
     }
   }
 
-  // Distribute remaining (capacity overflow) to least-loaded vehicle
   for (const pi of unassigned) {
     let minVi = 0;
     for (let vi = 1; vi < vehicles.length; vi++) {
@@ -224,22 +315,22 @@ function capacitatedAssign(
     }
     buckets[minVi].push(personnel[pi]);
   }
-
   return buckets;
 }
-
-// ── Nearest-neighbour TSP heuristic ───────────────────────────────────
 
 function nearestNeighbor(depotIdx: number, personIdxs: number[], durations: number[][]): number[] {
   const unvisited = new Set(personIdxs);
   const route: number[] = [];
   let cur = depotIdx;
-
   while (unvisited.size > 0) {
-    let best = -1, bestDur = Infinity;
+    let best = -1;
+    let bestDur = Infinity;
     for (const idx of unvisited) {
       const d = durations[cur]?.[idx] ?? Infinity;
-      if (d < bestDur) { bestDur = d; best = idx; }
+      if (d < bestDur) {
+        bestDur = d;
+        best = idx;
+      }
     }
     if (best === -1) break;
     route.push(best);
@@ -249,13 +340,10 @@ function nearestNeighbor(depotIdx: number, personIdxs: number[], durations: numb
   return route;
 }
 
-// ── 2-opt improvement ─────────────────────────────────────────────────
-
 function twoOpt(depotIdx: number, route: number[], durations: number[][]): number[] {
   if (route.length <= 2) return route;
   let best = [...route];
   let improved = true;
-
   while (improved) {
     improved = false;
     for (let i = 0; i < best.length - 1; i++) {
@@ -264,47 +352,14 @@ function twoOpt(depotIdx: number, route: number[], durations: number[][]): numbe
         const b = best[i];
         const c = best[j];
         const dNext = j + 1 < best.length ? best[j + 1] : depotIdx;
-
         const current = (durations[a]?.[b] ?? 0) + (durations[c]?.[dNext] ?? 0);
         const swapped = (durations[a]?.[c] ?? 0) + (durations[b]?.[dNext] ?? 0);
-
         if (swapped < current - 1) {
-          const newRoute = [
-            ...best.slice(0, i),
-            ...best.slice(i, j + 1).reverse(),
-            ...best.slice(j + 1),
-          ];
-          best = newRoute;
+          best = [...best.slice(0, i), ...best.slice(i, j + 1).reverse(), ...best.slice(j + 1)];
           improved = true;
         }
       }
     }
   }
   return best;
-}
-
-// ── OSRM Route → polyline ─────────────────────────────────────────────
-
-async function osrmRoute(
-  points: Array<{ lat: number; lng: number }>,
-): Promise<{ geometry: [number, number][]; duration: number; distance: number }> {
-  const empty = { geometry: [] as [number, number][], duration: 0, distance: 0 };
-  if (points.length < 2) return empty;
-
-  const coords = points.map(p => `${p.lng},${p.lat}`).join(";");
-  const url = `${OSRM}/route/v1/driving/${coords}?overview=full&geometries=geojson`;
-
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-    const data = await res.json();
-    if (data.code !== "Ok" || !data.routes?.[0]) return empty;
-    const r = data.routes[0];
-    return {
-      geometry: r.geometry.coordinates.map(([lng, lat]: number[]) => [lat, lng] as [number, number]),
-      duration: Math.round(r.duration),
-      distance: Math.round(r.distance),
-    };
-  } catch {
-    return empty;
-  }
 }

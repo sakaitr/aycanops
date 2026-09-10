@@ -19,7 +19,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
       "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://cdnjs.cloudflare.com",
       "font-src 'self'",
-      "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org",
+      "connect-src 'self' https://nominatim.openstreetmap.org",
       "frame-ancestors 'none'",
     ].join("; "),
   },

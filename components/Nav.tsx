@@ -99,6 +99,7 @@ const DEFAULT_NAV_CONFIG: NavConfigType = {
         { id: "rota-1", href: "/guzergahlar", label: "Güzergahlar", icon: "IconMap", permission: "routes:read", isActive: true, sortOrder: 16, isCustom: false },
         { id: "rota-2", href: "/acik-guzergahlar", label: "Açık Güzergahlar", icon: "IconAlertTriangle", permission: "routes:read", isActive: true, sortOrder: 17, isCustom: false },
         { id: "rota-3", href: "/rota-planlama", label: "Rota Planlama", icon: "IconCalendar", permission: "routes:optimize", isActive: true, sortOrder: 18, isCustom: false },
+        { id: "rota-6", href: "/vardiya-eslestirme", label: "Vardiya Eşleştirme", icon: "IconClipboard2", permission: "passengers:update", isActive: true, sortOrder: 18.5, isCustom: false },
         { id: "rota-4", href: "/operasyon-haritasi", label: "Operasyon Haritası", icon: "IconMap", permission: "map:read", isActive: true, sortOrder: 19, isCustom: false },
         { id: "rota-5", href: "/guzergah-fiyatlari", label: "Güzergah Fiyatları", icon: "IconCoin", permission: "route_prices:read", isActive: true, sortOrder: 20, isCustom: false },
         { id: "operasyon-firmalar", href: "/firmalar", label: "Firmalar (Müşteriler)", icon: "IconBuilding", permission: "companies:read", isActive: true, sortOrder: 21, isCustom: false },

@@ -56,9 +56,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (validPersonnel.length + validVehicles.length > 98) {
+    // VROOM binlerce durak kaldırır; sadece kötü niyetli/kazara devasa
+    // istekleri sınırla.
+    if (validPersonnel.length > 5000) {
       return NextResponse.json(
-        { ok: false, error: `Çok fazla nokta. Personel + araç toplamı 98'i geçemez (şu an: ${validPersonnel.length + validVehicles.length}).` },
+        { ok: false, error: `Çok fazla personel (${validPersonnel.length}). Tek planda en fazla 5000.` },
         { status: 400 },
       );
     }
