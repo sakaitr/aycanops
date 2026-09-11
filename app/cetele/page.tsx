@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import ComboboxSearch from "@/components/ComboboxSearch";
@@ -103,6 +103,7 @@ export default function CeteleePage() {
   const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [routes, setRoutes] = useState<any[]>([]);
+  const routesRequestIdRef = useRef(0);
   const [routesLoading, setRoutesLoading] = useState(false);
   const [durumFilter, setDurumFilter] = useState("");
 
@@ -123,17 +124,11 @@ export default function CeteleePage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Takvim (matrix) görünümü
-  const [viewMode, setViewMode] = useState<"gunluk" | "takvim">("gunluk");
+  // Takvim (matrix) görünümü — varsayılan görünüm, çetele girişinin ana ekranı
+  const [viewMode, setViewMode] = useState<"gunluk" | "takvim">("takvim");
   const [rangePreset, setRangePreset] = useState<RangePreset>("son1hafta");
   const [customFrom, setCustomFrom] = useState(addDays(todayStr(), -6));
   const [customTo, setCustomTo] = useState(todayStr());
-  const [matrixHareketTipi, setMatrixHareketTipi] = useState("");
-  // Seçili firmanın güzergahlarında tanımlı vardiya adlarının birleşimi (dedup)
-  const availableSlotNames = Array.from(new Set(routes.flatMap((r: any) => (r.time_slots || []).map((s: any) => s.ad))));
-  useEffect(() => {
-    if (!matrixHareketTipi && availableSlotNames.length > 0) setMatrixHareketTipi(availableSlotNames[0]);
-  }, [availableSlotNames.join(",")]);
   const [matrixRows, setMatrixRows] = useState<any[]>([]);
   const [matrixLoading, setMatrixLoading] = useState(false);
 
@@ -149,6 +144,12 @@ export default function CeteleePage() {
   }, []);
 
   async function loadRoutes() {
+    // Firma context'i (localStorage'dan) mount sonrası asenkron doluyor — ilk render'da
+    // selectedCompanyId boş gelip bu efekt "tüm firmalar" için ateşlenebilir, hemen
+    // ardından gerçek firma id'siyle tekrar ateşlenir. İki istek yarışırsa ve boş/geniş
+    // olan geç dönerse doğru (dar) sonucu ezer — bu yüzden sadece EN SON tetiklenen
+    // isteğin cevabı uygulanır, öncekiler sessizce atlanır.
+    const myRequestId = ++routesRequestIdRef.current;
     setRoutesLoading(true);
     try {
       const params = new URLSearchParams();
@@ -156,6 +157,7 @@ export default function CeteleePage() {
       const r = await fetch(`/api/routes?${params}`);
       const d = await r.json();
       if (!d.ok) return;
+      if (myRequestId !== routesRequestIdRef.current) return;
       setRoutes(d.data);
       // Her güzergah için varsayılan vardiya: tek vardiya varsa otomatik, birden
       // fazlaysa ilkini seç (kullanıcı dropdown'dan değiştirebilir) — "kolaylık".
@@ -166,7 +168,7 @@ export default function CeteleePage() {
         }
         return next;
       });
-    } finally { setRoutesLoading(false); }
+    } finally { if (myRequestId === routesRequestIdRef.current) setRoutesLoading(false); }
   }
 
   useEffect(() => {
@@ -188,7 +190,8 @@ export default function CeteleePage() {
       const params = new URLSearchParams();
       params.set("tarih", rangeFrom);
       params.set("tarih_bitis", rangeTo);
-      params.set("hareket_tipi", matrixHareketTipi);
+      params.set("company_id", selectedCompanyId);
+      params.set("limit", "3000");
       const r = await fetch(`/api/cetele?${params}`);
       const d = await r.json();
       if (d.ok) setMatrixRows(d.data);
@@ -198,7 +201,7 @@ export default function CeteleePage() {
   useEffect(() => {
     if (viewMode !== "takvim") return;
     loadMatrix();
-  }, [viewMode, selectedCompanyId, rangeFrom, rangeTo, matrixHareketTipi]);
+  }, [viewMode, selectedCompanyId, rangeFrom, rangeTo]);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -392,14 +395,20 @@ export default function CeteleePage() {
   // Eski (yön ayrımından önceki) kayıtların yon'u NULL — bunlar tüm günü
   // temsil ettiğinden her iki yöne de "işlendi" sayılır, aksi halde eski
   // veri Takvim'de yarım işlenmiş gibi görünür.
+  // "__*" (joker) anahtarı, o rota+günün TÜM hareket_tipi değerlerini birleştirir —
+  // vardiyasız rotalarda geçmiş serbest metin kayıtları (örn. eski "gebze" gibi)
+  // yeni sabit "Genel" etiketiyle tam eşleşmeyebilir, joker olmadan Takvim'in
+  // daraltılmış satırı bu eski kayıtları hiç görmez.
   const matrixLookup: Record<string, { giris?: any; cikis?: any }> = {};
   for (const r of matrixRows) {
     if (!r.route_id) continue;
-    const key = `${r.route_id}__${toLocalDateStr(r.tarih)}`;
-    if (!matrixLookup[key]) matrixLookup[key] = {};
-    if (r.yon === "giris") matrixLookup[key].giris = r;
-    else if (r.yon === "cikis") matrixLookup[key].cikis = r;
-    else { matrixLookup[key].giris = r; matrixLookup[key].cikis = r; }
+    const d = toLocalDateStr(r.tarih);
+    for (const key of [`${r.route_id}__${d}__${r.hareket_tipi}`, `${r.route_id}__${d}__*`]) {
+      if (!matrixLookup[key]) matrixLookup[key] = {};
+      if (r.yon === "giris") matrixLookup[key].giris = r;
+      else if (r.yon === "cikis") matrixLookup[key].cikis = r;
+      else { matrixLookup[key].giris = r; matrixLookup[key].cikis = r; }
+    }
   }
 
   async function submitBulk() {
@@ -479,6 +488,7 @@ export default function CeteleePage() {
               selectedCompanyId={selectedCompanyId}
               routes={routes}
               routesLoading={routesLoading}
+              vehicles={filteredVehicles}
               rangePreset={rangePreset}
               setRangePreset={setRangePreset}
               customFrom={customFrom}
@@ -486,14 +496,8 @@ export default function CeteleePage() {
               customTo={customTo}
               setCustomTo={setCustomTo}
               rangeDates={rangeDates}
-              matrixHareketTipi={matrixHareketTipi}
-              setMatrixHareketTipi={setMatrixHareketTipi}
-              availableSlotNames={availableSlotNames}
               matrixLoading={matrixLoading}
               matrixLookup={matrixLookup}
-              date={date}
-              setDate={setDate}
-              setViewMode={setViewMode}
               canApprove={canApprove}
               reloadMatrix={loadMatrix}
             />
@@ -924,15 +928,27 @@ export default function CeteleePage() {
 
 // ─── Takvim (matrix) görünümü ────────────────────────────────────────────────
 
+// Bir satırın hangi tek'i temsil ettiğini belirler: vardiya tanımlıysa ilk
+// (varsayılan) vardiya, tanımlı değilse sabit "Genel" — route_supplier_prices'ta
+// hareket_tipi=NULL (genel fiyat) her ikisiyle de eşleşir, bu yüzden fiyatlandırma
+// bozulmaz.
+function defaultHareketTipi(route: any): string {
+  const slots = route.time_slots || [];
+  return slots.length > 0 ? slots[0].ad : "Genel";
+}
+
+interface MatrixOverride { vehicle_id: string; plate: string; kalici: boolean }
+
 function CeteleTakvim({
-  selectedCompanyId, routes, routesLoading,
+  selectedCompanyId, routes, routesLoading, vehicles,
   rangePreset, setRangePreset, customFrom, setCustomFrom, customTo, setCustomTo,
-  rangeDates, matrixHareketTipi, setMatrixHareketTipi, availableSlotNames, matrixLoading, matrixLookup,
-  date, setDate, setViewMode, canApprove, reloadMatrix,
+  rangeDates, matrixLoading, matrixLookup,
+  canApprove, reloadMatrix,
 }: {
   selectedCompanyId: string;
   routes: any[];
   routesLoading: boolean;
+  vehicles: any[];
   rangePreset: RangePreset;
   setRangePreset: (p: RangePreset) => void;
   customFrom: string;
@@ -940,48 +956,90 @@ function CeteleTakvim({
   customTo: string;
   setCustomTo: (v: string) => void;
   rangeDates: string[];
-  matrixHareketTipi: string;
-  setMatrixHareketTipi: (v: string) => void;
-  availableSlotNames: string[];
   matrixLoading: boolean;
-  matrixLookup: Record<string, any>;
-  date: string;
-  setDate: (v: string) => void;
-  setViewMode: (v: "gunluk" | "takvim") => void;
+  matrixLookup: Record<string, { giris?: any; cikis?: any }>;
   canApprove: boolean;
   reloadMatrix: () => Promise<void> | void;
 }) {
   const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
   const [showMatrixSummary, setShowMatrixSummary] = useState(false);
   const [matrixBulkSaving, setMatrixBulkSaving] = useState(false);
-  const vardiyaInputRef = useRef<HTMLInputElement>(null);
+  const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
+  const [overrides, setOverrides] = useState<Record<string, MatrixOverride>>({});
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; routeId: string; date: string; hareketTipi: string } | null>(null);
+  const [swapModal, setSwapModal] = useState<{ routeId: string; date: string; hareketTipi: string; mode: "gecici" | "kalici" } | null>(null);
+  const [swapVehicleId, setSwapVehicleId] = useState("");
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const rangeKey = rangeDates.length ? `${rangeDates[0]}_${rangeDates[rangeDates.length - 1]}` : "";
-  useEffect(() => { setSelectedCells(new Set()); }, [matrixHareketTipi, rangeKey, selectedCompanyId]);
+  useEffect(() => { setSelectedCells(new Set()); setOverrides({}); }, [rangeKey, selectedCompanyId]);
 
-  function goToDay(dateStr: string) {
-    setDate(dateStr);
-    setViewMode("gunluk");
-  }
-
-  // Hücre seçilebilir değilse nedenini ayırt eder: araç yoksa gerçekten Günlük'e
-  // gitmek gerekir (Serbest Kayıt), ama sadece vardiya girilmediyse kullanıcıyı
-  // sayfadan atmak yerine vardiya kutusuna yönlendiririz.
-  function handleDeadEndClick(dateStr: string, hasVehicle: boolean) {
-    if (hasVehicle && !matrixHareketTipi) {
-      toast.error("Önce yukarıdaki Vardiya kutusuna bir isim yazın");
-      vardiyaInputRef.current?.focus();
-      return;
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) setContextMenu(null);
     }
-    goToDay(dateStr);
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("contextmenu", handler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("contextmenu", handler);
+    };
+  }, []);
+
+  function toggleExpanded(routeId: string) {
+    setExpandedRoutes(prev => {
+      const next = new Set(prev);
+      if (next.has(routeId)) next.delete(routeId); else next.add(routeId);
+      return next;
+    });
   }
 
-  function toggleCell(routeId: string, dateStr: string, hasVehicle: boolean, processed: boolean) {
+  function cellKey(routeId: string, dateStr: string, hareketTipi: string) {
+    return `${routeId}__${dateStr}__${hareketTipi}`;
+  }
+
+  function effectiveVehicle(route: any, key: string): { vehicle_id: string; plate: string; kalici: boolean } | null {
+    const override = overrides[key];
+    if (override) return override;
+    if (route.vehicle_id) return { vehicle_id: route.vehicle_id, plate: route.vehicle_plate, kalici: false };
+    return null;
+  }
+
+  function openAssign(routeId: string, dateStr: string, hareketTipi: string, mode: "gecici" | "kalici") {
+    setSwapModal({ routeId, date: dateStr, hareketTipi, mode });
+    setSwapVehicleId("");
+  }
+
+  function openContextMenu(e: React.MouseEvent, routeId: string, dateStr: string, hareketTipi: string) {
+    e.preventDefault();
+    if (!canApprove) return;
+    setContextMenu({ x: e.clientX, y: e.clientY, routeId, date: dateStr, hareketTipi });
+  }
+
+  function openSwapFromMenu(mode: "gecici" | "kalici") {
+    if (!contextMenu) return;
+    openAssign(contextMenu.routeId, contextMenu.date, contextMenu.hareketTipi, mode);
+    setContextMenu(null);
+  }
+
+  function applySwap() {
+    if (!swapModal || !swapVehicleId) return;
+    const veh = vehicles.find(v => v.id === swapVehicleId);
+    if (!veh) return;
+    const key = cellKey(swapModal.routeId, swapModal.date, swapModal.hareketTipi);
+    setOverrides(prev => ({ ...prev, [key]: { vehicle_id: veh.id, plate: veh.plate, kalici: swapModal.mode === "kalici" } }));
+    setSelectedCells(prev => new Set(prev).add(key));
+    toast.success(swapModal.mode === "kalici" ? "Araç kalıcı değiştirildi (onaylandığında güzergaha işlenir)" : "Araç bugün için değiştirildi");
+    setSwapModal(null);
+    setSwapVehicleId("");
+  }
+
+  function toggleCell(route: any, dateStr: string, hareketTipi: string, processed: boolean) {
     if (!canApprove) { toast.error("Çetele onaylama yetkiniz yok"); return; }
     if (processed) { toast.error("Bu kayıt zaten işlendi"); return; }
-    if (!hasVehicle) { toast.error("Bu güzergaha atanmış araç yok"); return; }
-    if (!matrixHareketTipi) { toast.error("Bu firmanın güzergahlarında vardiya tanımlı değil — takvimden toplu onay yapılamaz. Güzergahlar sayfasından vardiya ekleyin veya Günlük görünümden Serbest Kayıt kullanın."); return; }
-    const key = `${routeId}__${dateStr}`;
+    const key = cellKey(route.id, dateStr, hareketTipi);
+    const veh = effectiveVehicle(route, key);
+    if (!veh) { openAssign(route.id, dateStr, hareketTipi, "kalici"); return; }
     setSelectedCells(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
@@ -990,31 +1048,28 @@ function CeteleTakvim({
   }
 
   const selectedEntries = Array.from(selectedCells).map(key => {
-    const [routeId, d] = key.split("__");
+    const [routeId, d, hareketTipi] = key.split("__");
     const route = routes.find(r => r.id === routeId);
-    return { key, routeId, date: d, route, plate: route?.vehicle_plate, vehicleId: route?.vehicle_id };
+    const veh = route ? effectiveVehicle(route, key) : null;
+    return { key, routeId, date: d, hareketTipi, route, plate: veh?.plate, vehicleId: veh?.vehicle_id, kalici: veh?.kalici || false };
   }).filter(e => e.route && e.vehicleId);
 
   async function submitMatrixBulk() {
-    if (!matrixHareketTipi) {
-      toast.error("Vardiya seçilmeden onay gönderilemez — güzergahlarda vardiya tanımlı değil.");
-      return;
-    }
     if (selectedEntries.length === 0) {
-      toast.error("Seçili hücre kalmadı — araç ataması olmayan güzergahlar gönderilemez.");
+      toast.error("Seçili hücre kalmadı.");
       return;
     }
     setMatrixBulkSaving(true);
     try {
-      const byDate = new Map<string, { route_id: string; vehicle_id: string; hareket_tipi: string; yon: "giris" | "cikis" }[]>();
+      const byDate = new Map<string, { route_id: string; vehicle_id: string; hareket_tipi: string; yon: "giris" | "cikis"; kalici_degisim?: boolean }[]>();
       for (const e of selectedEntries) {
         if (!byDate.has(e.date)) byDate.set(e.date, []);
         // Takvimden onaylanan hücre "bu gün normal işledi" demek — istisna (tek yön
-        // gitmedi, farklı araç) varsa Günlük görünümden satır bazında işlenmeli.
-        // Bu yüzden hücre başına giriş+çıkış ikisi birden açılır.
+        // gitmedi) varsa Günlük görünümden satır bazında işlenmeli. Bu yüzden hücre
+        // başına giriş+çıkış ikisi birden açılır.
         const list = byDate.get(e.date)!;
-        list.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: matrixHareketTipi, yon: "giris" });
-        list.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: matrixHareketTipi, yon: "cikis" });
+        list.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: e.hareketTipi, yon: "giris", kalici_degisim: e.kalici });
+        list.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: e.hareketTipi, yon: "cikis", kalici_degisim: e.kalici });
       }
       let totalCreated = 0;
       let totalSkipped = 0;
@@ -1042,9 +1097,14 @@ function CeteleTakvim({
       } else {
         toast.success(`${totalCreated} kayıt onaylandı${totalSkipped ? `, ${totalSkipped} zaten vardı` : ""}`);
       }
+      const hadKalici = selectedEntries.some(e => e.kalici);
       setShowMatrixSummary(false);
       setSelectedCells(new Set());
+      setOverrides({});
       await reloadMatrix();
+      // Kalıcı araç değişimi güzergahın vehicle_id'sini sunucuda güncelledi — sayfa
+      // yeniden yüklenmeden route listesi tazelenmezse eski araç görünmeye devam eder.
+      if (hadKalici) window.location.reload();
     } finally { setMatrixBulkSaving(false); }
   }
 
@@ -1053,7 +1113,7 @@ function CeteleTakvim({
   return (
     <div>
       {/* Aralık seçici */}
-      <div className="flex flex-wrap items-center gap-2 mb-3">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {RANGE_PRESET_OPTS.map(o => (
           <button key={o.value} onClick={() => setRangePreset(o.value)}
             className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
@@ -1075,32 +1135,6 @@ function CeteleTakvim({
         )}
       </div>
 
-      {/* Vardiya sekmeleri — güzergahların kendi tanımladığı vardiya adlarının birleşimi */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <span className="text-zinc-400 text-xs font-medium">Vardiya:</span>
-        {availableSlotNames.length === 0 ? (
-          <>
-            <input
-              ref={vardiyaInputRef}
-              value={matrixHareketTipi}
-              onChange={e => setMatrixHareketTipi(e.target.value)}
-              placeholder="örn. Sabah, Ring, Mesai — yazınca hücreler işlenebilir olur"
-              className="bg-zinc-900 border border-zinc-800 text-white text-xs px-2.5 py-1.5 rounded-lg focus:outline-none focus:border-amber-500 w-72"
-            />
-            <span className="text-zinc-600 text-xs">Bu firmanın güzergahlarında tanımlı vardiya yok — burada geçici bir isim girebilirsiniz veya Güzergahlar sayfasından kalıcı ekleyin.</span>
-          </>
-        ) : availableSlotNames.map(name => (
-          <button key={name} onClick={() => setMatrixHareketTipi(name)}
-            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
-              matrixHareketTipi === name
-                ? "bg-zinc-700 border-zinc-600 text-white"
-                : "border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-600"
-            }`}>
-            {name}
-          </button>
-        ))}
-      </div>
-
       {/* Matrix tablo */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
         {routesLoading || matrixLoading ? (
@@ -1114,7 +1148,7 @@ function CeteleTakvim({
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-zinc-800">
-                  <th className="sticky left-0 bg-zinc-900 text-left text-zinc-400 text-xs font-medium px-4 py-2.5 min-w-[180px] z-10">
+                  <th className="sticky left-0 bg-zinc-900 text-left text-zinc-400 text-xs font-medium px-4 py-2.5 min-w-[200px] z-10">
                     Güzergah
                   </th>
                   {rangeDates.map(d => (
@@ -1126,57 +1160,99 @@ function CeteleTakvim({
                 </tr>
               </thead>
               <tbody>
-                {routes.map(route => (
-                  <tr key={route.id} className="border-b border-zinc-800/60 hover:bg-zinc-800/20">
-                    <td className="sticky left-0 bg-zinc-900 text-white text-sm px-4 py-2 truncate max-w-[180px]">
-                      {route.name}
-                    </td>
-                    {rangeDates.map(d => {
-                      const lookup = matrixLookup[`${route.id}__${d}`];
-                      const girisRec = lookup?.giris;
-                      const cikisRec = lookup?.cikis;
-                      const girisDone = !!girisRec && girisRec.durum !== "iptal";
-                      const cikisDone = !!cikisRec && cikisRec.durum !== "iptal";
-                      const bothDone = girisDone && cikisDone;
-                      const anyDone = girisDone || cikisDone;
-                      const plate = girisRec?.plate || cikisRec?.plate || route.vehicle_plate;
-                      const durum = (girisRec || cikisRec)?.durum;
-                      const processed = bothDone; // sadece ikisi de bitmişse hücre kilitlenir
-                      const hasVehicle = !!route.vehicle_id;
-                      const key = `${route.id}__${d}`;
-                      const selected = selectedCells.has(key);
-                      const selectable = canApprove && !processed && hasVehicle && !!matrixHareketTipi;
-                      return (
-                        <td key={d}
-                          onClick={() => { if (selectable) toggleCell(route.id, d, hasVehicle, processed); else if (!processed) handleDeadEndClick(d, hasVehicle); }}
-                          title={
-                            bothDone ? DURUM_BADGE[durum!]?.label
-                            : anyDone ? `Yarım işlendi — ${girisDone ? "çıkış" : "giriş"} eksik, tıkla tamamla`
-                            : selectable ? "Tıkla: seç/kaldır"
-                            : hasVehicle && !matrixHareketTipi ? "Önce Vardiya kutusuna bir isim yazın"
-                            : "Günlük görünümde işlemek için tıkla"
-                          }
-                          className={`text-center px-2 py-2 ${processed && !selectable ? "cursor-default" : "cursor-pointer"} ${selected ? "bg-indigo-950/60" : ""}`}
-                        >
-                          {plate ? (
-                            <span className={`inline-flex items-center gap-1 font-mono text-xs px-1.5 py-0.5 rounded border ${
-                              selected ? "bg-indigo-900 border-indigo-600 text-indigo-100"
-                              : bothDone && durum === "onaylandi" ? "bg-emerald-950 border-emerald-800 text-emerald-300"
-                              : bothDone && durum === "bekliyor" ? "bg-amber-950 border-amber-800 text-amber-300"
-                              : anyDone ? "bg-orange-950 border-orange-800 text-orange-300"
-                              : durum === "iptal" ? "bg-zinc-800 border-zinc-700 text-zinc-600 line-through"
-                              : "bg-zinc-800/60 border-zinc-800 text-zinc-500"
-                            }`}>
-                              {selected && "✓ "}{plate}{anyDone && !bothDone ? " ½" : ""}
-                            </span>
-                          ) : (
-                            <span className="text-zinc-700 text-xs">—</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                {routes.map(route => {
+                  const slots: any[] = route.time_slots || [];
+                  const expandable = slots.length > 1;
+                  const isExpanded = expandable && expandedRoutes.has(route.id);
+                  const rowDefs = isExpanded
+                    ? slots.map((s: any) => ({ hareketTipi: s.ad, label: s.ad, indent: true }))
+                    : [{ hareketTipi: defaultHareketTipi(route), label: route.name, indent: false }];
+
+                  return (
+                    <Fragment key={route.id}>
+                      {isExpanded && (
+                        <tr className="border-b border-zinc-800/40 bg-zinc-900/60">
+                          <td colSpan={rangeDates.length + 1} className="sticky left-0 bg-zinc-900/60 px-4 py-1.5">
+                            <button onClick={() => toggleExpanded(route.id)}
+                              className="flex items-center gap-1.5 text-white text-sm font-medium hover:text-indigo-300 transition-colors">
+                              <span className="text-zinc-500 text-xs">▾</span> {route.name}
+                              <span className="text-zinc-600 text-xs font-normal">({slots.length} vardiya)</span>
+                            </button>
+                          </td>
+                        </tr>
+                      )}
+                      {rowDefs.map(rowDef => (
+                        <tr key={rowDef.hareketTipi} className="border-b border-zinc-800/60 hover:bg-zinc-800/20">
+                          <td className="sticky left-0 bg-zinc-900 text-sm px-4 py-2 truncate max-w-[200px]">
+                            {rowDef.indent ? (
+                              <span className="text-zinc-400 pl-4 block truncate">↳ {rowDef.label}</span>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-white truncate">{rowDef.label}</span>
+                                {expandable && (
+                                  <button onClick={() => toggleExpanded(route.id)}
+                                    title="Tüm vardiyaları göster"
+                                    className="text-zinc-500 hover:text-white text-[10px] px-1.5 py-0.5 rounded border border-zinc-700 shrink-0">
+                                    +{slots.length} vardiya
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          {rangeDates.map(d => {
+                            const key = cellKey(route.id, d, rowDef.hareketTipi);
+                            // Vardiyasız rotanın daraltılmış satırı joker anahtarla okur —
+                            // geçmiş serbest metinli kayıtlar da (bkz. matrixLookup yorumu) görünsün.
+                            const lookupKey = !rowDef.indent && slots.length === 0 ? `${route.id}__${d}__*` : `${route.id}__${d}__${rowDef.hareketTipi}`;
+                            const lookup = matrixLookup[lookupKey];
+                            const girisRec = lookup?.giris;
+                            const cikisRec = lookup?.cikis;
+                            const girisDone = !!girisRec && girisRec.durum !== "iptal";
+                            const cikisDone = !!cikisRec && cikisRec.durum !== "iptal";
+                            const bothDone = girisDone && cikisDone;
+                            const anyDone = girisDone || cikisDone;
+                            const veh = effectiveVehicle(route, key);
+                            const override = overrides[key];
+                            const plate = girisRec?.plate || cikisRec?.plate || veh?.plate;
+                            const durum = (girisRec || cikisRec)?.durum;
+                            const processed = bothDone;
+                            const selected = selectedCells.has(key);
+                            const selectable = canApprove && !processed;
+                            return (
+                              <td key={d}
+                                onClick={() => { if (selectable) toggleCell(route, d, rowDef.hareketTipi, processed); }}
+                                onContextMenu={e => { if (!processed) openContextMenu(e, route.id, d, rowDef.hareketTipi); }}
+                                title={
+                                  bothDone ? DURUM_BADGE[durum!]?.label
+                                  : anyDone ? `Yarım işlendi — ${girisDone ? "çıkış" : "giriş"} eksik, tıkla tamamla`
+                                  : veh ? "Tıkla: seç/kaldır · Sağ tık: araç değiştir"
+                                  : "Araç atanmamış — tıkla ata"
+                                }
+                                className={`text-center px-2 py-2 ${processed ? "cursor-default" : "cursor-pointer"} ${selected ? "bg-indigo-950/60" : ""}`}
+                              >
+                                {plate ? (
+                                  <span className={`inline-flex items-center gap-1 font-mono text-xs px-1.5 py-0.5 rounded border ${
+                                    selected ? "bg-indigo-900 border-indigo-600 text-indigo-100"
+                                    : bothDone && durum === "onaylandi" ? "bg-emerald-950 border-emerald-800 text-emerald-300"
+                                    : bothDone && durum === "bekliyor" ? "bg-amber-950 border-amber-800 text-amber-300"
+                                    : anyDone ? "bg-orange-950 border-orange-800 text-orange-300"
+                                    : durum === "iptal" ? "bg-zinc-800 border-zinc-700 text-zinc-600 line-through"
+                                    : override ? "bg-amber-950 border-amber-800 text-amber-300"
+                                    : "bg-zinc-800/60 border-zinc-800 text-zinc-500"
+                                  }`}>
+                                    {selected && "✓ "}{plate}{anyDone && !bothDone ? " ½" : ""}{override && !anyDone ? (override.kalici ? " ·kalıcı" : " ·bugün") : ""}
+                                  </span>
+                                ) : (
+                                  <span className="text-zinc-700 text-xs hover:text-zinc-500">+ araç</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1188,7 +1264,7 @@ function CeteleTakvim({
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-emerald-900 border border-emerald-800 inline-block" /> Onaylandı</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-amber-900 border border-amber-800 inline-block" /> Bekliyor</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-zinc-800/60 border border-zinc-800 inline-block" /> Planlı (işlenmedi)</span>
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-orange-950 border border-orange-800 inline-block" /> Yarım (tek yön işlendi)</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-orange-950 border border-orange-800 inline-block" /> Yarım</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-zinc-800 border border-zinc-700 inline-block" /> İptal</span>
         </div>
         {canApprove && selectedCells.size > 0 && (
@@ -1202,17 +1278,59 @@ function CeteleTakvim({
         )}
       </div>
 
+      {/* Sağ tık menüsü: araç değiştir */}
+      {contextMenu && (
+        <div ref={contextMenuRef} className="fixed z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}>
+          <button onClick={() => openSwapFromMenu("gecici")} className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800">
+            Bugün için araç değiştir
+          </button>
+          <button onClick={() => openSwapFromMenu("kalici")} className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800">
+            Kalıcı araç değiştir
+          </button>
+        </div>
+      )}
+
+      {/* Araç değiştirme/atama modalı */}
+      {swapModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setSwapModal(null)} />
+          <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-sm mx-4 space-y-4">
+            <h3 className="text-white font-semibold">
+              {swapModal.mode === "kalici" ? "Kalıcı araç değiştir" : "Bugün için araç değiştir"}
+            </h3>
+            <p className="text-zinc-500 text-xs">{formatDateShort(swapModal.date)} · {swapModal.hareketTipi}</p>
+            <ComboboxSearch
+              options={vehicles.map((v: any) => ({ value: v.id, label: `${v.plate} — ${v.brand} ${v.model}` }))}
+              value={swapVehicleId}
+              onChange={setSwapVehicleId}
+              placeholder="Araç seç..."
+              emptyLabel="— Araç Yok —"
+            />
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setSwapModal(null)} className="flex-1 bg-zinc-800 text-zinc-300 text-sm py-2.5 rounded-xl">
+                Vazgeç
+              </button>
+              <button onClick={applySwap} disabled={!swapVehicleId}
+                className="flex-1 bg-white text-zinc-950 font-semibold text-sm py-2.5 rounded-xl disabled:opacity-50">
+                Uygula
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Takvimden toplu onay — özet modalı */}
       {showMatrixSummary && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => !matrixBulkSaving && setShowMatrixSummary(false)} />
           <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-md mx-4 space-y-4">
             <h3 className="text-white font-semibold">Onay Özeti</h3>
-            <p className="text-zinc-500 text-sm">{matrixHareketTipi} · {selectedEntries.length} kayıt</p>
+            <p className="text-zinc-500 text-sm">{selectedEntries.length} kayıt</p>
             <div className="max-h-64 overflow-y-auto space-y-1.5 border border-zinc-800 rounded-xl p-2">
               {selectedEntries.map(e => (
                 <div key={e.key} className="flex items-center justify-between text-sm px-2 py-1.5 rounded-lg bg-zinc-800/50">
-                  <span className="text-zinc-200 truncate">{e.route.name}</span>
+                  <span className="text-zinc-200 truncate">{e.route.name}<span className="text-zinc-500 text-xs"> · {e.hareketTipi}</span></span>
                   <span className="text-zinc-500 text-xs shrink-0 mx-2">{formatDateShort(e.date)}</span>
                   <span className="font-mono text-xs px-1.5 py-0.5 rounded border bg-zinc-800 border-zinc-700 text-zinc-400 shrink-0">
                     {e.plate}
