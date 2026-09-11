@@ -35,7 +35,7 @@ const DURUM_BADGE: Record<string, { label: string; cls: string }> = {
   iptal: { label: "İptal", cls: "bg-zinc-800 border-zinc-700 text-zinc-500" },
 };
 
-const EMPTY_FORM = { vehicle_id: "", route_id: "", hareket_tipi: "", yolcu_sayisi: "", aciklama: "" };
+const EMPTY_FORM = { vehicle_id: "", route_id: "", hareket_tipi: "", yon: "" as "" | "giris" | "cikis", yolcu_sayisi: "", aciklama: "" };
 
 interface VehicleOverride {
   vehicle_id: string;
@@ -543,22 +543,23 @@ export default function CeteleePage() {
                       </select>
                     );
 
-                    if (isAyri) {
-                      return (
-                        <div key={route.id}>
-                          <div className="flex items-center gap-2 px-4 pt-2.5 pb-1">
-                            <span className="text-white text-sm font-medium truncate">{route.name}</span>
-                            {slotPicker}
-                            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-blue-950 border-blue-800 text-blue-300 shrink-0">Ayrı Araç</span>
-                          </div>
-                          {(["giris", "cikis"] as const).map(yon => {
+                    return (
+                      <div key={route.id}>
+                        <div className="flex items-center gap-2 px-4 pt-2.5 pb-1">
+                          <span className="text-white text-sm font-medium truncate">{route.name}</span>
+                          {slotPicker}
+                          {isAyri && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-blue-950 border-blue-800 text-blue-300 shrink-0" title="Giriş ve çıkış için farklı araç atanabilir">Ayrı Araç</span>
+                          )}
+                        </div>
+                        {(["giris", "cikis"] as const).map(yon => {
                             const processed = isProcessed(route.id, yon);
                             const key = rowKey(route.id, yon);
                             const selected = selectedRouteIds.has(key);
                             const veh = effectiveVehicle(route, yon);
                             const override = overrides[key];
                             const openFreeEntryForRoute = () => {
-                              setForm({ ...EMPTY_FORM, route_id: route.id, vehicle_id: veh?.vehicle_id || "" });
+                              setForm({ ...EMPTY_FORM, route_id: route.id, vehicle_id: veh?.vehicle_id || "", yon });
                               setSaveError(null);
                               setShowForm(true);
                             };
@@ -606,61 +607,6 @@ export default function CeteleePage() {
                           })}
                         </div>
                       );
-                    }
-
-                    const processed = isProcessed(route.id);
-                    const selected = selectedRouteIds.has(route.id);
-                    const veh = effectiveVehicle(route);
-                    const override = overrides[route.id];
-                    const openFreeEntryForRoute = () => {
-                      setForm({ ...EMPTY_FORM, route_id: route.id, vehicle_id: veh?.vehicle_id || "" });
-                      setSaveError(null);
-                      setShowForm(true);
-                    };
-                    return (
-                      <div
-                        key={route.id}
-                        onClick={() => noSlots ? openFreeEntryForRoute() : toggleRoute(route.id)}
-                        onContextMenu={e => openContextMenu(e, route.id)}
-                        title={noSlots ? "Bu güzergahta vardiya tanımlı değil — tıklayınca Serbest Kayıt açılır" : undefined}
-                        className={`flex items-center gap-3 px-4 py-2.5 select-none transition-colors cursor-pointer ${
-                          noSlots
-                            ? "hover:bg-amber-950/20"
-                            : processed
-                              ? "opacity-50 cursor-not-allowed bg-zinc-900"
-                              : selected
-                                ? "bg-indigo-950/50"
-                                : "hover:bg-zinc-800/40"
-                        }`}
-                      >
-                        <div className={`w-4 h-4 rounded border shrink-0 flex items-center justify-center ${
-                          selected ? "bg-indigo-500 border-indigo-500" : "border-zinc-700"
-                        }`}>
-                          {selected && <span className="text-white text-[10px] leading-none">✓</span>}
-                        </div>
-                        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                          <span className="text-white text-sm font-medium truncate">{route.name}</span>
-                          {slotPicker}
-                          {veh ? (
-                            <span className={`font-mono text-xs px-1.5 py-0.5 rounded border ${
-                              override ? "bg-amber-950 border-amber-800 text-amber-300" : "bg-zinc-800 border-zinc-700 text-zinc-300"
-                            }`}>
-                              {veh.plate}{override ? (override.kalici ? " · kalıcı" : " · bugün") : ""}
-                            </span>
-                          ) : (
-                            <span className="text-zinc-600 text-xs italic">araç atanmamış</span>
-                          )}
-                          {noSlots && (
-                            <span className="text-amber-500 text-[11px] ml-auto shrink-0">Serbest Kayıt açmak için tıkla →</span>
-                          )}
-                        </div>
-                        {processed && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded border bg-emerald-950 border-emerald-800 text-emerald-300 shrink-0">
-                            İşlendi
-                          </span>
-                        )}
-                      </div>
-                    );
                   })}
                 </div>
               )}
@@ -922,6 +868,16 @@ export default function CeteleePage() {
               })()}
 
               <label className="block">
+                <span className="text-zinc-400 text-xs font-medium mb-1 block">Yön</span>
+                <select value={form.yon} onChange={e => setForm(f => ({ ...f, yon: e.target.value as "" | "giris" | "cikis" }))}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500">
+                  <option value="">— Belirtilmedi —</option>
+                  <option value="giris">Giriş</option>
+                  <option value="cikis">Çıkış</option>
+                </select>
+              </label>
+
+              <label className="block">
                 <span className="text-zinc-400 text-xs font-medium mb-1 block">Yolcu Sayısı</span>
                 <input type="number" min="0" value={form.yolcu_sayisi} onChange={e => setForm(f => ({ ...f, yolcu_sayisi: e.target.value }))}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500" />
@@ -1035,10 +991,15 @@ function CeteleTakvim({
     }
     setMatrixBulkSaving(true);
     try {
-      const byDate = new Map<string, { route_id: string; vehicle_id: string; hareket_tipi: string }[]>();
+      const byDate = new Map<string, { route_id: string; vehicle_id: string; hareket_tipi: string; yon: "giris" | "cikis" }[]>();
       for (const e of selectedEntries) {
         if (!byDate.has(e.date)) byDate.set(e.date, []);
-        byDate.get(e.date)!.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: matrixHareketTipi });
+        // Takvimden onaylanan hücre "bu gün normal işledi" demek — istisna (tek yön
+        // gitmedi, farklı araç) varsa Günlük görünümden satır bazında işlenmeli.
+        // Bu yüzden hücre başına giriş+çıkış ikisi birden açılır.
+        const list = byDate.get(e.date)!;
+        list.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: matrixHareketTipi, yon: "giris" });
+        list.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: matrixHareketTipi, yon: "cikis" });
       }
       let totalCreated = 0;
       let totalSkipped = 0;

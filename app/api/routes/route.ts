@@ -40,9 +40,14 @@ export async function GET(req: NextRequest) {
        LEFT JOIN vehicles v ON v.id = r.vehicle_id
        LEFT JOIN companies c ON c.id = r.company_id
        LEFT JOIN route_supplier_prices ap ON ap.id = (
+         -- Burada tek tek gösterilecek bir tutar olduğundan sadece genel (tek'e
+         -- özel olmayan) fiyat gösterilir — belirli bir vardiya/yöne özel fiyat
+         -- varsa bu sütunda görünmez, /guzergah-fiyatlari'nda tam liste var.
          SELECT rsp.id FROM route_supplier_prices rsp
          WHERE rsp.route_id = r.id
            AND rsp.company_id = r.company_id
+           AND rsp.hareket_tipi IS NULL
+           AND rsp.yon IS NULL
            AND (
              (r.vehicle_id IS NOT NULL AND rsp.vehicle_id = r.vehicle_id)
              OR (v.plate IS NOT NULL AND rsp.plate = v.plate)
@@ -50,7 +55,9 @@ export async function GET(req: NextRequest) {
            )
            AND rsp.valid_from <= CURDATE()
            AND (rsp.valid_to IS NULL OR rsp.valid_to >= CURDATE())
-         ORDER BY rsp.valid_from DESC LIMIT 1
+         ORDER BY (CASE WHEN rsp.vehicle_id IS NOT NULL THEN 0 WHEN rsp.plate IS NOT NULL THEN 1 ELSE 2 END),
+                  rsp.valid_from DESC
+         LIMIT 1
        )
        LEFT JOIN users u ON u.id = r.created_by
        ${companyClause}

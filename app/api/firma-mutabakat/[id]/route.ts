@@ -42,10 +42,15 @@ export async function GET(
              OR (v.plate IS NOT NULL AND rsp.plate = v.plate)
              OR (rsp.vehicle_id IS NULL AND rsp.plate IS NULL)
            )
+           AND (rsp.hareket_tipi IS NULL OR rsp.hareket_tipi = c.hareket_tipi)
+           AND (rsp.yon IS NULL OR rsp.yon = c.yon)
            AND rsp.valid_from <= c.tarih
            AND (rsp.valid_to IS NULL OR rsp.valid_to >= c.tarih)
-         -- En spesifik eşleşme önce, eşitlikte en yeni valid_from (bkz. /api/cetele)
-         ORDER BY (CASE WHEN rsp.vehicle_id IS NOT NULL THEN 0 WHEN rsp.plate IS NOT NULL THEN 1 ELSE 2 END),
+         -- En spesifik eşleşme önce (tek + araç spesifikliği toplanır), eşitlikte
+         -- en yeni valid_from (bkz. /api/cetele)
+         ORDER BY (CASE WHEN rsp.hareket_tipi IS NOT NULL THEN 0 ELSE 1 END)
+                  + (CASE WHEN rsp.yon IS NOT NULL THEN 0 ELSE 1 END)
+                  + (CASE WHEN rsp.vehicle_id IS NOT NULL THEN 0 WHEN rsp.plate IS NOT NULL THEN 1 ELSE 2 END),
                   rsp.valid_from DESC
          LIMIT 1
        )

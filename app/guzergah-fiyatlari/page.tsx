@@ -12,7 +12,7 @@ export default function GuzergahFiyatlariPage() {
   const [routes, setRoutes] = useState<any[]>([]);
   const [prices, setPrices] = useState<any[]>([]);
   const [filter, setFilter] = useState({ company_id: "", route_id: "", plate: "" });
-  const [form, setForm] = useState({ price_amount: "", plate: "", valid_from: new Date().toISOString().slice(0, 10), valid_to: "" });
+  const [form, setForm] = useState({ price_amount: "", plate: "", hareket_tipi: "", yon: "" as "" | "giris" | "cikis", valid_from: new Date().toISOString().slice(0, 10), valid_to: "" });
 
   // Toplu güncelleme
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -81,12 +81,19 @@ export default function GuzergahFiyatlariPage() {
 
   async function createPrice() {
     if (!filter.company_id || !filter.route_id || !form.price_amount || !form.plate.trim()) return alert("Firma, güzergah, plaka ve fiyat zorunlu");
-    const res = await fetch("/api/route-prices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ company_id: filter.company_id, route_id: filter.route_id, plate: form.plate, price_amount: Number(form.price_amount), currency: "TRY", valid_from: form.valid_from, valid_to: form.valid_to || null }) });
+    const res = await fetch("/api/route-prices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      company_id: filter.company_id, route_id: filter.route_id, plate: form.plate,
+      hareket_tipi: form.hareket_tipi || null, yon: form.yon || null,
+      price_amount: Number(form.price_amount), currency: "TRY", valid_from: form.valid_from, valid_to: form.valid_to || null,
+    }) });
     const json = await res.json();
     if (!json.ok) return alert(json.error || "Fiyat kaydedilemedi");
-    setForm({ price_amount: "", plate: "", valid_from: new Date().toISOString().slice(0, 10), valid_to: "" });
+    setForm(f => ({ ...f, price_amount: "", plate: "" }));
     await loadPrices();
   }
+
+  const selectedRoute = routes.find(r => r.id === filter.route_id);
+  const routeSlots: { id: string; ad: string }[] = selectedRoute?.time_slots || [];
 
   return (
     <div className="min-h-screen bg-zinc-950">
@@ -117,7 +124,7 @@ export default function GuzergahFiyatlariPage() {
                       <input type="checkbox" checked={prices.length > 0 && selectedIds.size === prices.length} onChange={toggleSelectAll}
                         className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-800 accent-indigo-500" />
                     </th>
-                    <th className="py-2">Firma</th><th>Güzergah</th><th>Plaka</th><th>Fiyat</th><th>Geçerlilik</th>
+                    <th className="py-2">Firma</th><th>Güzergah</th><th>Tek</th><th>Plaka</th><th>Fiyat</th><th>Geçerlilik</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800 text-zinc-300">
@@ -127,10 +134,14 @@ export default function GuzergahFiyatlariPage() {
                         <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelected(p.id)}
                           className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-800 accent-indigo-500" />
                       </td>
-                      <td className="py-3">{p.company_name}</td><td>{p.route_name}</td><td className="font-mono">{p.plate || p.vehicle_plate || "—"}</td><td className="font-semibold text-white">{Number(p.price_amount).toLocaleString("tr-TR")} {p.currency}</td><td>{new Date(p.valid_from).toLocaleDateString("tr-TR")} → {p.valid_to ? new Date(p.valid_to).toLocaleDateString("tr-TR") : "devam"}</td>
+                      <td className="py-3">{p.company_name}</td><td>{p.route_name}</td>
+                      <td className="text-zinc-500">
+                        {p.hareket_tipi || "genel"}{p.yon ? ` · ${p.yon === "giris" ? "Giriş" : "Çıkış"}` : ""}
+                      </td>
+                      <td className="font-mono">{p.plate || p.vehicle_plate || "—"}</td><td className="font-semibold text-white">{Number(p.price_amount).toLocaleString("tr-TR")} {p.currency}</td><td>{new Date(p.valid_from).toLocaleDateString("tr-TR")} → {p.valid_to ? new Date(p.valid_to).toLocaleDateString("tr-TR") : "devam"}</td>
                     </tr>
                   ))}
-                  {prices.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-zinc-500">Fiyat kaydı yok</td></tr>}
+                  {prices.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-zinc-500">Fiyat kaydı yok</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -188,6 +199,26 @@ export default function GuzergahFiyatlariPage() {
               <label className="block">
                 <span className="text-zinc-400 text-xs font-medium mb-1 block">Plaka</span>
                 <input value={form.plate} onChange={e => setForm(f => ({ ...f, plate: e.target.value.toUpperCase() }))} placeholder="örn. 34 ABC 123" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-[16px] text-white uppercase" />
+              </label>
+              {routeSlots.length > 0 && (
+                <label className="block">
+                  <span className="text-zinc-400 text-xs font-medium mb-1 block">Vardiya</span>
+                  <select value={form.hareket_tipi} onChange={e => setForm(f => ({ ...f, hareket_tipi: e.target.value }))}
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm text-white">
+                    <option value="">— Tüm vardiyalar (genel) —</option>
+                    {routeSlots.map(s => <option key={s.id} value={s.ad}>{s.ad}</option>)}
+                  </select>
+                  <span className="text-zinc-600 text-xs mt-1 block">Belirli bir vardiya seçilirse fiyat sadece o tek için geçerli olur, diğerleri genele düşer.</span>
+                </label>
+              )}
+              <label className="block">
+                <span className="text-zinc-400 text-xs font-medium mb-1 block">Yön</span>
+                <select value={form.yon} onChange={e => setForm(f => ({ ...f, yon: e.target.value as "" | "giris" | "cikis" }))}
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm text-white">
+                  <option value="">Giriş + Çıkış (genel)</option>
+                  <option value="giris">Sadece Giriş</option>
+                  <option value="cikis">Sadece Çıkış</option>
+                </select>
               </label>
               <label className="block">
                 <span className="text-zinc-400 text-xs font-medium mb-1 block">Geçerlilik Başlangıcı</span>

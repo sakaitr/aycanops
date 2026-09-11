@@ -58,10 +58,11 @@ export async function POST(req: NextRequest) {
       const newId = uuidv4();
       await db.prepare(
         `INSERT INTO route_supplier_prices
-           (id, company_id, route_id, supplier_id, vehicle_id, plate, price_amount, currency, valid_from, valid_to, created_by, created_at, updated_at)
-         VALUES (?,?,?,NULL,?,?,?,?,?,NULL,?,?,?)`
+           (id, company_id, route_id, supplier_id, vehicle_id, plate, hareket_tipi, yon, price_amount, currency, valid_from, valid_to, created_by, created_at, updated_at)
+         VALUES (?,?,?,NULL,?,?,?,?,?,?,?,NULL,?,?,?)`
       ).run(
         newId, existing.company_id, existing.route_id, existing.vehicle_id, existing.plate,
+        existing.hareket_tipi, existing.yon,
         yeniFiyat, existing.currency, valid_from, user.id, now, now,
       );
 

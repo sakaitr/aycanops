@@ -89,6 +89,8 @@ export const routePriceCreateSchema = z.object({
   supplier_id: z.string().max(36).optional().nullable(),
   vehicle_id: z.string().max(36).optional().nullable(),
   plate: z.string().max(50).optional().nullable(),
+  hareket_tipi: z.string().max(100).optional().nullable(),
+  yon: z.enum(["giris", "cikis"]).optional().nullable(),
   price_amount: z.coerce.number().positive(),
   currency: z.string().min(3).max(3).default("TRY"),
   valid_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

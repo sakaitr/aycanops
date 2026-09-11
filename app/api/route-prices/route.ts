@@ -12,16 +12,21 @@ function normalizePlate(value: string | null | undefined) {
   return value?.replace(/\s+/g, " ").trim().toLocaleUpperCase("tr-TR") || null;
 }
 
-async function hasOverlap(companyId: string, routeId: string, plate: string | null, vehicleId: string | null, validFrom: string, validTo?: string | null) {
+async function hasOverlap(
+  companyId: string, routeId: string, plate: string | null, vehicleId: string | null,
+  hareketTipi: string | null, yon: string | null, validFrom: string, validTo?: string | null,
+) {
   const rows = await getDb().prepare(
     `SELECT id FROM route_supplier_prices
      WHERE company_id=? AND route_id=?
        AND COALESCE(plate, '') = COALESCE(?, '')
        AND COALESCE(vehicle_id, '') = COALESCE(?, '')
+       AND COALESCE(hareket_tipi, '') = COALESCE(?, '')
+       AND COALESCE(yon, '') = COALESCE(?, '')
        AND valid_from <= COALESCE(?, '9999-12-31')
        AND COALESCE(valid_to, '9999-12-31') >= ?
      LIMIT 1`
-  ).all(companyId, routeId, plate, vehicleId, validTo || null, validFrom);
+  ).all(companyId, routeId, plate, vehicleId, hareketTipi, yon, validTo || null, validFrom);
   return rows.length > 0;
 }
 
@@ -33,7 +38,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const params: unknown[] = [];
     let where = "WHERE 1=1";
-    for (const key of ["company_id", "route_id", "vehicle_id"]) {
+    for (const key of ["company_id", "route_id", "vehicle_id", "hareket_tipi", "yon"]) {
       const value = searchParams.get(key);
       if (value) { where += ` AND rsp.${key} = ?`; params.push(value); }
     }
@@ -65,20 +70,22 @@ export async function POST(req: NextRequest) {
     const data = parsed.data;
     const plate = normalizePlate(data.plate);
     const vehicleId = data.vehicle_id || null;
+    const hareketTipi = data.hareket_tipi?.trim() || null;
+    const yon = data.yon || null;
     if (data.valid_to && data.valid_to < data.valid_from) return NextResponse.json({ ok: false, error: "Bitiş tarihi başlangıçtan önce olamaz" }, { status: 400 });
     if (!plate && !vehicleId) {
       return NextResponse.json({ ok: false, error: "Fiyat için plaka veya araç seçimi zorunlu" }, { status: 400 });
     }
-    if (await hasOverlap(data.company_id, data.route_id, plate, vehicleId, data.valid_from, data.valid_to)) {
-      return NextResponse.json({ ok: false, error: "Bu güzergah ve plaka için tarih aralığında aktif fiyat kaydı var" }, { status: 409 });
+    if (await hasOverlap(data.company_id, data.route_id, plate, vehicleId, hareketTipi, yon, data.valid_from, data.valid_to)) {
+      return NextResponse.json({ ok: false, error: "Bu güzergah, plaka ve tek için tarih aralığında aktif fiyat kaydı var" }, { status: 409 });
     }
     const id = uuidv4();
     const now = nowIso();
     await getDb().prepare(
-      `INSERT INTO route_supplier_prices (id, company_id, route_id, supplier_id, vehicle_id, plate, price_amount, currency, valid_from, valid_to, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, data.company_id, data.route_id, vehicleId, plate, data.price_amount, data.currency, data.valid_from, data.valid_to || null, user.id, now, now);
-    await logAudit({ actorUserId: user.id, action: "route_price.create", entityType: "route_supplier_prices", entityId: id, details: { ...data, plate, vehicle_id: vehicleId } });
+      `INSERT INTO route_supplier_prices (id, company_id, route_id, supplier_id, vehicle_id, plate, hareket_tipi, yon, price_amount, currency, valid_from, valid_to, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, data.company_id, data.route_id, vehicleId, plate, hareketTipi, yon, data.price_amount, data.currency, data.valid_from, data.valid_to || null, user.id, now, now);
+    await logAudit({ actorUserId: user.id, action: "route_price.create", entityType: "route_supplier_prices", entityId: id, details: { ...data, plate, vehicle_id: vehicleId, hareket_tipi: hareketTipi, yon } });
     return NextResponse.json({ ok: true, data: { id } }, { status: 201 });
   } catch (e) { return apiError(e); }
 }
