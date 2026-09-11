@@ -45,6 +45,14 @@ export async function POST(
     const route = await db.prepare(`SELECT id FROM routes WHERE id = ?`).get(id);
     if (!route) return NextResponse.json({ ok: false, error: "Güzergah bulunamadı" }, { status: 404 });
 
+    // Aynı isimde ikinci vardiya, çeteledeki hareket_tipi ile fiyattaki hareket_tipi
+    // eşleşmesini belirsizleştirir (ikisi de aynı ad'ı taşıyabilir, hangisi asıl
+    // belli olmaz) — DB'de de UNIQUE(route_id, ad) var (bkz. migration 111).
+    const dup = await db.prepare(
+      `SELECT id FROM route_time_slots WHERE route_id = ? AND is_active = 1 AND ad = ?`
+    ).get(id, ad);
+    if (dup) return NextResponse.json({ ok: false, error: "Bu isimde bir vardiya zaten var" }, { status: 409 });
+
     const countRow = await db.prepare(`SELECT COUNT(*) AS total FROM route_time_slots WHERE route_id = ? AND is_active = 1`).get<{ total: number }>(id);
 
     const slotId = uuidv4();

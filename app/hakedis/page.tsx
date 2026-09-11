@@ -90,8 +90,20 @@ export default function HakedisPage() {
         fetch(`/api/cetele?tarih=${form.donem_baslangic}&tarih_bitis=${form.donem_bitis}&durum=onaylandi&limit=500`).then(r => r.json()),
       ]);
       if (!araclarRes.ok || !ceteleRes.ok) { setAvailableCetele([]); return; }
-      const vehicleIds = new Set(araclarRes.data.map((a: any) => a.vehicle_id));
-      const filtered = ceteleRes.data.filter((c: any) => vehicleIds.has(c.vehicle_id) && !c.hakedis_id);
+      // Aracın o günün tarihinde bu işletene atanmış olması gerekir — sadece
+      // "bu araç bu işletende geçmişte hiç bulunmuş mu" yetmez, çünkü araç
+      // sonradan başka bir işletene geçmiş olabilir (sunucu tarafı da aynı
+      // kontrolü yapıyor, burası sadece ön izleme — işaretli görünen bir
+      // satır sunucuda reddedilmesin diye).
+      const owned = (vehicleId: string, tarih: string) => {
+        const d = String(tarih).slice(0, 10);
+        return araclarRes.data.some((a: any) =>
+          a.vehicle_id === vehicleId &&
+          String(a.baslangic_tarihi).slice(0, 10) <= d &&
+          (!a.bitis_tarihi || String(a.bitis_tarihi).slice(0, 10) >= d)
+        );
+      };
+      const filtered = ceteleRes.data.filter((c: any) => !c.hakedis_id && owned(c.vehicle_id, c.tarih));
       setAvailableCetele(filtered);
       setSelectedCeteleIds(new Set(filtered.map((c: any) => c.id)));
     } finally { setCeteleLoading(false); }
@@ -117,7 +129,16 @@ export default function HakedisPage() {
       });
       const d = await res.json();
       if (!d.ok) { setSaveError(d.error || "Kayıt hatası"); return; }
-      toast.success("Hakediş oluşturuldu");
+      const excluded = [...(d.data.already_linked || []), ...(d.data.not_owned || [])];
+      if (excluded.length > 0) {
+        toast.error(
+          `Hakediş oluşturuldu ama ${excluded.length} çetele hariç tutuldu` +
+          (d.data.already_linked?.length ? ` — ${d.data.already_linked.length} zaten başka hakedişte` : "") +
+          (d.data.not_owned?.length ? `${d.data.already_linked?.length ? "," : ""} ${d.data.not_owned.length} bu tarihte bu işletene ait değil` : "")
+        );
+      } else {
+        toast.success("Hakediş oluşturuldu");
+      }
       setShowForm(false);
       setForm({ ...EMPTY_FORM });
       load();
@@ -337,7 +358,7 @@ export default function HakedisPage() {
                           <input type="checkbox" checked={selectedCeteleIds.has(c.id)} onChange={() => toggleCetele(c.id)}
                             className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-800 accent-indigo-500" />
                           <span className="text-zinc-300 font-mono">{c.plate}</span>
-                          <span className="text-zinc-500">{c.route_name || c.hareket_tipi}</span>
+                          <span className="text-zinc-500">{c.route_name || c.hareket_tipi}{c.yon ? ` · ${c.yon === "giris" ? "Giriş" : "Çıkış"}` : ""}</span>
                           <span className="text-zinc-600">{formatDate(c.tarih)}</span>
                           <span className={`ml-auto font-medium ${Number(c.birim_ucret) > 0 ? "text-emerald-400" : "text-zinc-600"}`}>
                             {Number(c.birim_ucret) > 0 ? formatCurrency(c.birim_ucret) : "fiyat tanımlı değil"}

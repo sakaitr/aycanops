@@ -381,12 +381,18 @@ export default function CeteleePage() {
     return { key, route, yon: yon || null };
   }).filter(e => e.route);
 
-  // Takvim: route_id + tarih (YYYY-MM-DD) → çetele kaydı
-  const matrixLookup: Record<string, any> = {};
+  // Takvim: route_id + tarih (YYYY-MM-DD) → { giris, cikis } çetele kaydı.
+  // Eski (yön ayrımından önceki) kayıtların yon'u NULL — bunlar tüm günü
+  // temsil ettiğinden her iki yöne de "işlendi" sayılır, aksi halde eski
+  // veri Takvim'de yarım işlenmiş gibi görünür.
+  const matrixLookup: Record<string, { giris?: any; cikis?: any }> = {};
   for (const r of matrixRows) {
     if (!r.route_id) continue;
     const key = `${r.route_id}__${toLocalDateStr(r.tarih)}`;
-    matrixLookup[key] = r;
+    if (!matrixLookup[key]) matrixLookup[key] = {};
+    if (r.yon === "giris") matrixLookup[key].giris = r;
+    else if (r.yon === "cikis") matrixLookup[key].cikis = r;
+    else { matrixLookup[key].giris = r; matrixLookup[key].cikis = r; }
   }
 
   async function submitBulk() {
@@ -1117,10 +1123,16 @@ function CeteleTakvim({
                       {route.name}
                     </td>
                     {rangeDates.map(d => {
-                      const record = matrixLookup[`${route.id}__${d}`];
-                      const plate = record?.plate || route.vehicle_plate;
-                      const durum = record?.durum;
-                      const processed = !!record;
+                      const lookup = matrixLookup[`${route.id}__${d}`];
+                      const girisRec = lookup?.giris;
+                      const cikisRec = lookup?.cikis;
+                      const girisDone = !!girisRec && girisRec.durum !== "iptal";
+                      const cikisDone = !!cikisRec && cikisRec.durum !== "iptal";
+                      const bothDone = girisDone && cikisDone;
+                      const anyDone = girisDone || cikisDone;
+                      const plate = girisRec?.plate || cikisRec?.plate || route.vehicle_plate;
+                      const durum = (girisRec || cikisRec)?.durum;
+                      const processed = bothDone; // sadece ikisi de bitmişse hücre kilitlenir
                       const hasVehicle = !!route.vehicle_id;
                       const key = `${route.id}__${d}`;
                       const selected = selectedCells.has(key);
@@ -1129,7 +1141,8 @@ function CeteleTakvim({
                         <td key={d}
                           onClick={() => { if (selectable) toggleCell(route.id, d, hasVehicle, processed); else if (!processed) handleDeadEndClick(d, hasVehicle); }}
                           title={
-                            durum ? DURUM_BADGE[durum]?.label
+                            bothDone ? DURUM_BADGE[durum!]?.label
+                            : anyDone ? `Yarım işlendi — ${girisDone ? "çıkış" : "giriş"} eksik, tıkla tamamla`
                             : selectable ? "Tıkla: seç/kaldır"
                             : hasVehicle && !matrixHareketTipi ? "Önce Vardiya kutusuna bir isim yazın"
                             : "Günlük görünümde işlemek için tıkla"
@@ -1139,12 +1152,13 @@ function CeteleTakvim({
                           {plate ? (
                             <span className={`inline-flex items-center gap-1 font-mono text-xs px-1.5 py-0.5 rounded border ${
                               selected ? "bg-indigo-900 border-indigo-600 text-indigo-100"
-                              : durum === "onaylandi" ? "bg-emerald-950 border-emerald-800 text-emerald-300"
-                              : durum === "bekliyor" ? "bg-amber-950 border-amber-800 text-amber-300"
+                              : bothDone && durum === "onaylandi" ? "bg-emerald-950 border-emerald-800 text-emerald-300"
+                              : bothDone && durum === "bekliyor" ? "bg-amber-950 border-amber-800 text-amber-300"
+                              : anyDone ? "bg-orange-950 border-orange-800 text-orange-300"
                               : durum === "iptal" ? "bg-zinc-800 border-zinc-700 text-zinc-600 line-through"
                               : "bg-zinc-800/60 border-zinc-800 text-zinc-500"
                             }`}>
-                              {selected && "✓ "}{plate}
+                              {selected && "✓ "}{plate}{anyDone && !bothDone ? " ½" : ""}
                             </span>
                           ) : (
                             <span className="text-zinc-700 text-xs">—</span>
@@ -1165,6 +1179,7 @@ function CeteleTakvim({
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-emerald-900 border border-emerald-800 inline-block" /> Onaylandı</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-amber-900 border border-amber-800 inline-block" /> Bekliyor</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-zinc-800/60 border border-zinc-800 inline-block" /> Planlı (işlenmedi)</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-orange-950 border border-orange-800 inline-block" /> Yarım (tek yön işlendi)</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-zinc-800 border border-zinc-700 inline-block" /> İptal</span>
         </div>
         {canApprove && selectedCells.size > 0 && (

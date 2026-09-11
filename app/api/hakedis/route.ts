@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
     const ceteleTutarlar: { cetele_id: string; tutar: number }[] = [];
     let ceteleToplam = 0;
     let alreadyLinked: string[] = [];
+    let notOwned: string[] = [];
 
     // Bir çetele satırı yalnızca 1 hakedişe bağlanabilir (aksi halde aynı günün
     // işçiliği 2 ayrı hakedişten ödenir). DB'de UNIQUE(cetele_id) de var (bkz.
@@ -86,6 +87,29 @@ export async function POST(req: NextRequest) {
       alreadyLinked = linkedRows.map((r) => r.cetele_id);
       if (alreadyLinked.length > 0) {
         ceteleIds = requestedCeteleIds.filter((id) => !alreadyLinked.includes(id));
+      }
+    }
+
+    // Çeteledeki aracın, o günün TARİHİNDE bu işletene atanmış olması gerekir —
+    // aksi halde bir araç işleten değiştirdiğinde eski işletenin hakedişi,
+    // artık başka bir işletene ait bir günü de içerebilir (isleten:update'in
+    // /araclar listesi tüm geçmişi döndürüyor, tarihe göre süzmüyor).
+    if (ceteleIds.length > 0) {
+      const placeholders0 = ceteleIds.map(() => "?").join(",");
+      const ownedRows = await db.prepare(
+        `SELECT c.id FROM cetele c
+         WHERE c.id IN (${placeholders0})
+           AND EXISTS (
+             SELECT 1 FROM arac_isleten ai
+             WHERE ai.vehicle_id = c.vehicle_id AND ai.isleten_id = ?
+               AND ai.baslangic_tarihi <= c.tarih
+               AND (ai.bitis_tarihi IS NULL OR ai.bitis_tarihi >= c.tarih)
+           )`
+      ).all<{ id: string }>(...ceteleIds, body.isleten_id);
+      const ownedSet = new Set(ownedRows.map((r) => r.id));
+      notOwned = ceteleIds.filter((cid) => !ownedSet.has(cid));
+      if (notOwned.length > 0) {
+        ceteleIds = ceteleIds.filter((cid) => ownedSet.has(cid));
       }
     }
 
@@ -165,6 +189,7 @@ export async function POST(req: NextRequest) {
         id, brut_tutar: brut,
         cetele_toplam: Math.round(ceteleToplam * 100) / 100,
         already_linked: alreadyLinked,
+        not_owned: notOwned,
       },
     }, { status: 201 });
   } catch (e) { return apiError(e); }
