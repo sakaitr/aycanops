@@ -1013,10 +1013,12 @@ function CeteleTakvim({
     setSwapVehicleId("");
   }
 
-  // Sağ tık: kayıt varsa (recordIds dolu) İptal Et, yoksa araç değiştirme seçenekleri.
-  // Artık işlenmiş hücrelerde de çalışır — doğrudan takvimden düzeltme yapılabilsin diye.
+  // Kayıt varsa (recordIds dolu) İptal Et, yoksa araç değiştirme seçenekleri. Hem sağ
+  // tıktan hem de hücredeki "⋮" butonundan (sol tık, trackpad'de sağ tık her zaman
+  // çalışmayabiliyor) açılabilir — ikisi de aynı menüyü açar.
   function openContextMenu(e: React.MouseEvent, routeId: string, dateStr: string, hareketTipi: string, yon: CellYon, recordIds: string[]) {
     e.preventDefault();
+    e.stopPropagation();
     if (!canApprove) return;
     setContextMenu({ x: e.clientX, y: e.clientY, routeId, date: dateStr, hareketTipi, yon, recordIds });
   }
@@ -1262,11 +1264,11 @@ function CeteleTakvim({
                                   rowDef.yon === "both"
                                     ? (bothDone ? DURUM_BADGE[durum!]?.label
                                        : anyDone ? `Yarım işlendi — ${girisDone ? "çıkış" : "giriş"} eksik, tıkla tamamla`
-                                       : veh ? "Tıkla: seç/kaldır · Sağ tık: aksiyonlar" : "Araç atanmamış — tıkla ata")
-                                    : (processed ? `${DURUM_BADGE[durum!]?.label} — sağ tık: iptal et`
-                                       : veh ? "Tıkla: seç/kaldır · Sağ tık: aksiyonlar" : "Araç atanmamış — tıkla ata")
+                                       : veh ? "Tıkla: seç/kaldır · ⋮ / sağ tık: aksiyonlar" : "Araç atanmamış — tıkla ata")
+                                    : (processed ? `${DURUM_BADGE[durum!]?.label} — ⋮ / sağ tık: iptal et`
+                                       : veh ? "Tıkla: seç/kaldır · ⋮ / sağ tık: aksiyonlar" : "Araç atanmamış — tıkla ata")
                                 }
-                                className={`text-center px-2 py-2 ${processed ? "cursor-default" : "cursor-pointer"} ${selected ? "bg-indigo-950/60" : ""}`}
+                                className={`relative group text-center px-2 py-2 ${processed ? "cursor-default" : "cursor-pointer"} ${selected ? "bg-indigo-950/60" : ""}`}
                               >
                                 {plate ? (
                                   <span className={`inline-flex items-center gap-1 font-mono text-xs px-1.5 py-0.5 rounded border ${
@@ -1282,6 +1284,17 @@ function CeteleTakvim({
                                   </span>
                                 ) : (
                                   <span className="text-zinc-700 text-xs hover:text-zinc-500">+ araç</span>
+                                )}
+                                {/* Sağ tık her cihazda (özellikle trackpad'de) çalışmayabiliyor —
+                                    aynı menüyü açan, her zaman görünür/tıklanabilir yedek buton. */}
+                                {canApprove && (
+                                  <button
+                                    onClick={e => openContextMenu(e, route.id, d, rowDef.hareketTipi, rowDef.yon, recordIds)}
+                                    title="Aksiyonlar"
+                                    className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center text-zinc-500 hover:text-white hover:bg-zinc-700 rounded-bl opacity-40 hover:opacity-100 transition-opacity text-[10px] leading-none"
+                                  >
+                                    ⋮
+                                  </button>
                                 )}
                               </td>
                             );
