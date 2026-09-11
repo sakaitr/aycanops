@@ -938,6 +938,8 @@ function defaultHareketTipi(route: any): string {
 }
 
 interface MatrixOverride { vehicle_id: string; plate: string; kalici: boolean }
+type CellYon = "giris" | "cikis" | "both";
+const YON_LABEL: Record<"giris" | "cikis", string> = { giris: "Giriş", cikis: "Çıkış" };
 
 function CeteleTakvim({
   selectedCompanyId, routes, routesLoading, vehicles,
@@ -964,10 +966,11 @@ function CeteleTakvim({
   const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
   const [showMatrixSummary, setShowMatrixSummary] = useState(false);
   const [matrixBulkSaving, setMatrixBulkSaving] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<Record<string, MatrixOverride>>({});
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; routeId: string; date: string; hareketTipi: string } | null>(null);
-  const [swapModal, setSwapModal] = useState<{ routeId: string; date: string; hareketTipi: string; mode: "gecici" | "kalici" } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; routeId: string; date: string; hareketTipi: string; yon: CellYon; recordIds: string[] } | null>(null);
+  const [swapModal, setSwapModal] = useState<{ routeId: string; date: string; hareketTipi: string; yon: CellYon; mode: "gecici" | "kalici" } | null>(null);
   const [swapVehicleId, setSwapVehicleId] = useState("");
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
@@ -994,8 +997,8 @@ function CeteleTakvim({
     });
   }
 
-  function cellKey(routeId: string, dateStr: string, hareketTipi: string) {
-    return `${routeId}__${dateStr}__${hareketTipi}`;
+  function cellKey(routeId: string, dateStr: string, hareketTipi: string, yon: CellYon) {
+    return `${routeId}__${dateStr}__${hareketTipi}__${yon}`;
   }
 
   function effectiveVehicle(route: any, key: string): { vehicle_id: string; plate: string; kalici: boolean } | null {
@@ -1005,28 +1008,50 @@ function CeteleTakvim({
     return null;
   }
 
-  function openAssign(routeId: string, dateStr: string, hareketTipi: string, mode: "gecici" | "kalici") {
-    setSwapModal({ routeId, date: dateStr, hareketTipi, mode });
+  function openAssign(routeId: string, dateStr: string, hareketTipi: string, yon: CellYon, mode: "gecici" | "kalici") {
+    setSwapModal({ routeId, date: dateStr, hareketTipi, yon, mode });
     setSwapVehicleId("");
   }
 
-  function openContextMenu(e: React.MouseEvent, routeId: string, dateStr: string, hareketTipi: string) {
+  // Sağ tık: kayıt varsa (recordIds dolu) İptal Et, yoksa araç değiştirme seçenekleri.
+  // Artık işlenmiş hücrelerde de çalışır — doğrudan takvimden düzeltme yapılabilsin diye.
+  function openContextMenu(e: React.MouseEvent, routeId: string, dateStr: string, hareketTipi: string, yon: CellYon, recordIds: string[]) {
     e.preventDefault();
     if (!canApprove) return;
-    setContextMenu({ x: e.clientX, y: e.clientY, routeId, date: dateStr, hareketTipi });
+    setContextMenu({ x: e.clientX, y: e.clientY, routeId, date: dateStr, hareketTipi, yon, recordIds });
   }
 
   function openSwapFromMenu(mode: "gecici" | "kalici") {
     if (!contextMenu) return;
-    openAssign(contextMenu.routeId, contextMenu.date, contextMenu.hareketTipi, mode);
+    openAssign(contextMenu.routeId, contextMenu.date, contextMenu.hareketTipi, contextMenu.yon, mode);
     setContextMenu(null);
+  }
+
+  async function cancelFromMenu() {
+    if (!contextMenu || contextMenu.recordIds.length === 0) return;
+    const reason = window.prompt("İptal nedeni (opsiyonel):");
+    if (reason === null) { setContextMenu(null); return; }
+    const ids = contextMenu.recordIds;
+    setContextMenu(null);
+    setCancelling(true);
+    try {
+      for (const id of ids) {
+        await fetch(`/api/cetele/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "iptal", geri_alma_nedeni: reason || null }),
+        });
+      }
+      toast.success("İptal edildi");
+      await reloadMatrix();
+    } finally { setCancelling(false); }
   }
 
   function applySwap() {
     if (!swapModal || !swapVehicleId) return;
     const veh = vehicles.find(v => v.id === swapVehicleId);
     if (!veh) return;
-    const key = cellKey(swapModal.routeId, swapModal.date, swapModal.hareketTipi);
+    const key = cellKey(swapModal.routeId, swapModal.date, swapModal.hareketTipi, swapModal.yon);
     setOverrides(prev => ({ ...prev, [key]: { vehicle_id: veh.id, plate: veh.plate, kalici: swapModal.mode === "kalici" } }));
     setSelectedCells(prev => new Set(prev).add(key));
     toast.success(swapModal.mode === "kalici" ? "Araç kalıcı değiştirildi (onaylandığında güzergaha işlenir)" : "Araç bugün için değiştirildi");
@@ -1034,12 +1059,12 @@ function CeteleTakvim({
     setSwapVehicleId("");
   }
 
-  function toggleCell(route: any, dateStr: string, hareketTipi: string, processed: boolean) {
+  function toggleCell(route: any, dateStr: string, hareketTipi: string, yon: CellYon, processed: boolean) {
     if (!canApprove) { toast.error("Çetele onaylama yetkiniz yok"); return; }
-    if (processed) { toast.error("Bu kayıt zaten işlendi"); return; }
-    const key = cellKey(route.id, dateStr, hareketTipi);
+    if (processed) { toast.error("Bu kayıt zaten işlendi — sağ tık ile iptal edebilirsiniz"); return; }
+    const key = cellKey(route.id, dateStr, hareketTipi, yon);
     const veh = effectiveVehicle(route, key);
-    if (!veh) { openAssign(route.id, dateStr, hareketTipi, "kalici"); return; }
+    if (!veh) { openAssign(route.id, dateStr, hareketTipi, yon, "kalici"); return; }
     setSelectedCells(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
@@ -1048,10 +1073,10 @@ function CeteleTakvim({
   }
 
   const selectedEntries = Array.from(selectedCells).map(key => {
-    const [routeId, d, hareketTipi] = key.split("__");
+    const [routeId, d, hareketTipi, yon] = key.split("__") as [string, string, string, CellYon];
     const route = routes.find(r => r.id === routeId);
     const veh = route ? effectiveVehicle(route, key) : null;
-    return { key, routeId, date: d, hareketTipi, route, plate: veh?.plate, vehicleId: veh?.vehicle_id, kalici: veh?.kalici || false };
+    return { key, routeId, date: d, hareketTipi, yon, route, plate: veh?.plate, vehicleId: veh?.vehicle_id, kalici: veh?.kalici || false };
   }).filter(e => e.route && e.vehicleId);
 
   async function submitMatrixBulk() {
@@ -1064,12 +1089,16 @@ function CeteleTakvim({
       const byDate = new Map<string, { route_id: string; vehicle_id: string; hareket_tipi: string; yon: "giris" | "cikis"; kalici_degisim?: boolean }[]>();
       for (const e of selectedEntries) {
         if (!byDate.has(e.date)) byDate.set(e.date, []);
-        // Takvimden onaylanan hücre "bu gün normal işledi" demek — istisna (tek yön
-        // gitmedi) varsa Günlük görünümden satır bazında işlenmeli. Bu yüzden hücre
-        // başına giriş+çıkış ikisi birden açılır.
         const list = byDate.get(e.date)!;
-        list.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: e.hareketTipi, yon: "giris", kalici_degisim: e.kalici });
-        list.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: e.hareketTipi, yon: "cikis", kalici_degisim: e.kalici });
+        if (e.yon === "both") {
+          // Daraltılmış satır "bu gün normal işledi" demek — istisna (tek yön
+          // gitmedi) varsa genişletip yön bazlı işlenmeli. Bu yüzden hücre
+          // başına giriş+çıkış ikisi birden açılır.
+          list.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: e.hareketTipi, yon: "giris", kalici_degisim: e.kalici });
+          list.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: e.hareketTipi, yon: "cikis", kalici_degisim: e.kalici });
+        } else {
+          list.push({ route_id: e.routeId, vehicle_id: e.vehicleId!, hareket_tipi: e.hareketTipi, yon: e.yon, kalici_degisim: e.kalici });
+        }
       }
       let totalCreated = 0;
       let totalSkipped = 0;
@@ -1162,11 +1191,14 @@ function CeteleTakvim({
               <tbody>
                 {routes.map(route => {
                   const slots: any[] = route.time_slots || [];
-                  const expandable = slots.length > 1;
-                  const isExpanded = expandable && expandedRoutes.has(route.id);
-                  const rowDefs = isExpanded
-                    ? slots.map((s: any) => ({ hareketTipi: s.ad, label: s.ad, indent: true }))
-                    : [{ hareketTipi: defaultHareketTipi(route), label: route.name, indent: false }];
+                  const isExpanded = expandedRoutes.has(route.id);
+                  const vardiyaNames = slots.length > 0 ? slots.map((s: any) => s.ad) : [defaultHareketTipi(route)];
+                  const rowDefs: { hareketTipi: string; yon: CellYon; label: string; indent: boolean }[] = isExpanded
+                    ? vardiyaNames.flatMap((vt: string) => ([
+                        { hareketTipi: vt, yon: "giris" as CellYon, label: slots.length > 0 ? `${vt} · Giriş` : "Giriş", indent: true },
+                        { hareketTipi: vt, yon: "cikis" as CellYon, label: slots.length > 0 ? `${vt} · Çıkış` : "Çıkış", indent: true },
+                      ]))
+                    : [{ hareketTipi: defaultHareketTipi(route), yon: "both" as CellYon, label: route.name, indent: false }];
 
                   return (
                     <Fragment key={route.id}>
@@ -1176,34 +1208,35 @@ function CeteleTakvim({
                             <button onClick={() => toggleExpanded(route.id)}
                               className="flex items-center gap-1.5 text-white text-sm font-medium hover:text-indigo-300 transition-colors">
                               <span className="text-zinc-500 text-xs">▾</span> {route.name}
-                              <span className="text-zinc-600 text-xs font-normal">({slots.length} vardiya)</span>
+                              {slots.length > 1 && <span className="text-zinc-600 text-xs font-normal">({slots.length} vardiya)</span>}
                             </button>
                           </td>
                         </tr>
                       )}
                       {rowDefs.map(rowDef => (
-                        <tr key={rowDef.hareketTipi} className="border-b border-zinc-800/60 hover:bg-zinc-800/20">
+                        <tr key={`${rowDef.hareketTipi}__${rowDef.yon}`} className="border-b border-zinc-800/60 hover:bg-zinc-800/20">
                           <td className="sticky left-0 bg-zinc-900 text-sm px-4 py-2 truncate max-w-[200px]">
                             {rowDef.indent ? (
                               <span className="text-zinc-400 pl-4 block truncate">↳ {rowDef.label}</span>
                             ) : (
                               <div className="flex items-center gap-1.5">
                                 <span className="text-white truncate">{rowDef.label}</span>
-                                {expandable && (
-                                  <button onClick={() => toggleExpanded(route.id)}
-                                    title="Tüm vardiyaları göster"
-                                    className="text-zinc-500 hover:text-white text-[10px] px-1.5 py-0.5 rounded border border-zinc-700 shrink-0">
-                                    +{slots.length} vardiya
-                                  </button>
-                                )}
+                                <button onClick={() => toggleExpanded(route.id)}
+                                  title="Giriş/Çıkış ve vardiyaları ayrı göster"
+                                  className="text-zinc-500 hover:text-white text-[10px] px-1.5 py-0.5 rounded border border-zinc-700 shrink-0">
+                                  {slots.length > 1 ? `${slots.length} vardiya` : "Giriş/Çıkış"}
+                                </button>
                               </div>
                             )}
                           </td>
                           {rangeDates.map(d => {
-                            const key = cellKey(route.id, d, rowDef.hareketTipi);
+                            const key = cellKey(route.id, d, rowDef.hareketTipi, rowDef.yon);
                             // Vardiyasız rotanın daraltılmış satırı joker anahtarla okur —
                             // geçmiş serbest metinli kayıtlar da (bkz. matrixLookup yorumu) görünsün.
-                            const lookupKey = !rowDef.indent && slots.length === 0 ? `${route.id}__${d}__*` : `${route.id}__${d}__${rowDef.hareketTipi}`;
+                            // Vardiyasız rota her satırda (daraltılmış VEYA genişletilmiş Giriş/Çıkış)
+                            // jokerden okur — sabit "Genel" etiketi eski serbest metin kayıtlarıyla
+                            // (örn. "gebze") tam eşleşmez, tek gerçek vardiya bağlamı olmadığından.
+                            const lookupKey = slots.length === 0 ? `${route.id}__${d}__*` : `${route.id}__${d}__${rowDef.hareketTipi}`;
                             const lookup = matrixLookup[lookupKey];
                             const girisRec = lookup?.giris;
                             const cikisRec = lookup?.cikis;
@@ -1211,36 +1244,41 @@ function CeteleTakvim({
                             const cikisDone = !!cikisRec && cikisRec.durum !== "iptal";
                             const bothDone = girisDone && cikisDone;
                             const anyDone = girisDone || cikisDone;
+                            const legRec = rowDef.yon === "giris" ? girisRec : rowDef.yon === "cikis" ? cikisRec : null;
+                            const legDone = rowDef.yon === "giris" ? girisDone : rowDef.yon === "cikis" ? cikisDone : null;
                             const veh = effectiveVehicle(route, key);
                             const override = overrides[key];
-                            const plate = girisRec?.plate || cikisRec?.plate || veh?.plate;
-                            const durum = (girisRec || cikisRec)?.durum;
-                            const processed = bothDone;
+                            const durum = rowDef.yon === "both" ? (girisRec || cikisRec)?.durum : legRec?.durum;
+                            const plate = rowDef.yon === "both" ? (girisRec?.plate || cikisRec?.plate || veh?.plate) : (legRec?.plate || veh?.plate);
+                            const processed = rowDef.yon === "both" ? bothDone : !!legDone;
+                            const recordIds = (rowDef.yon === "both" ? [girisRec?.id, cikisRec?.id] : [legRec?.id]).filter(Boolean) as string[];
                             const selected = selectedCells.has(key);
                             const selectable = canApprove && !processed;
                             return (
                               <td key={d}
-                                onClick={() => { if (selectable) toggleCell(route, d, rowDef.hareketTipi, processed); }}
-                                onContextMenu={e => { if (!processed) openContextMenu(e, route.id, d, rowDef.hareketTipi); }}
+                                onClick={() => { if (selectable) toggleCell(route, d, rowDef.hareketTipi, rowDef.yon, processed); }}
+                                onContextMenu={e => openContextMenu(e, route.id, d, rowDef.hareketTipi, rowDef.yon, recordIds)}
                                 title={
-                                  bothDone ? DURUM_BADGE[durum!]?.label
-                                  : anyDone ? `Yarım işlendi — ${girisDone ? "çıkış" : "giriş"} eksik, tıkla tamamla`
-                                  : veh ? "Tıkla: seç/kaldır · Sağ tık: araç değiştir"
-                                  : "Araç atanmamış — tıkla ata"
+                                  rowDef.yon === "both"
+                                    ? (bothDone ? DURUM_BADGE[durum!]?.label
+                                       : anyDone ? `Yarım işlendi — ${girisDone ? "çıkış" : "giriş"} eksik, tıkla tamamla`
+                                       : veh ? "Tıkla: seç/kaldır · Sağ tık: aksiyonlar" : "Araç atanmamış — tıkla ata")
+                                    : (processed ? `${DURUM_BADGE[durum!]?.label} — sağ tık: iptal et`
+                                       : veh ? "Tıkla: seç/kaldır · Sağ tık: aksiyonlar" : "Araç atanmamış — tıkla ata")
                                 }
                                 className={`text-center px-2 py-2 ${processed ? "cursor-default" : "cursor-pointer"} ${selected ? "bg-indigo-950/60" : ""}`}
                               >
                                 {plate ? (
                                   <span className={`inline-flex items-center gap-1 font-mono text-xs px-1.5 py-0.5 rounded border ${
                                     selected ? "bg-indigo-900 border-indigo-600 text-indigo-100"
-                                    : bothDone && durum === "onaylandi" ? "bg-emerald-950 border-emerald-800 text-emerald-300"
-                                    : bothDone && durum === "bekliyor" ? "bg-amber-950 border-amber-800 text-amber-300"
-                                    : anyDone ? "bg-orange-950 border-orange-800 text-orange-300"
+                                    : durum === "onaylandi" && (rowDef.yon === "both" ? bothDone : legDone) ? "bg-emerald-950 border-emerald-800 text-emerald-300"
+                                    : durum === "bekliyor" && (rowDef.yon === "both" ? bothDone : legDone) ? "bg-amber-950 border-amber-800 text-amber-300"
+                                    : rowDef.yon === "both" && anyDone ? "bg-orange-950 border-orange-800 text-orange-300"
                                     : durum === "iptal" ? "bg-zinc-800 border-zinc-700 text-zinc-600 line-through"
                                     : override ? "bg-amber-950 border-amber-800 text-amber-300"
                                     : "bg-zinc-800/60 border-zinc-800 text-zinc-500"
                                   }`}>
-                                    {selected && "✓ "}{plate}{anyDone && !bothDone ? " ½" : ""}{override && !anyDone ? (override.kalici ? " ·kalıcı" : " ·bugün") : ""}
+                                    {selected && "✓ "}{plate}{rowDef.yon === "both" && anyDone && !bothDone ? " ½" : ""}{override && !processed ? (override.kalici ? " ·kalıcı" : " ·bugün") : ""}
                                   </span>
                                 ) : (
                                   <span className="text-zinc-700 text-xs hover:text-zinc-500">+ araç</span>
@@ -1278,16 +1316,25 @@ function CeteleTakvim({
         )}
       </div>
 
-      {/* Sağ tık menüsü: araç değiştir */}
+      {/* Sağ tık menüsü: kayıt varsa iptal, yoksa araç değiştirme seçenekleri */}
       {contextMenu && (
-        <div ref={contextMenuRef} className="fixed z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl py-1 min-w-[160px]"
+        <div ref={contextMenuRef} className="fixed z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl py-1 min-w-[180px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}>
-          <button onClick={() => openSwapFromMenu("gecici")} className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800">
-            Bugün için araç değiştir
-          </button>
-          <button onClick={() => openSwapFromMenu("kalici")} className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800">
-            Kalıcı araç değiştir
-          </button>
+          {contextMenu.recordIds.length > 0 ? (
+            <button onClick={cancelFromMenu} disabled={cancelling}
+              className="w-full text-left px-3 py-2 text-sm text-red-300 hover:bg-red-950/50 disabled:opacity-50">
+              {cancelling ? "İptal ediliyor..." : "İptal Et"}
+            </button>
+          ) : (
+            <>
+              <button onClick={() => openSwapFromMenu("gecici")} className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800">
+                Bugün için araç değiştir
+              </button>
+              <button onClick={() => openSwapFromMenu("kalici")} className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800">
+                Kalıcı araç değiştir
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -1299,7 +1346,7 @@ function CeteleTakvim({
             <h3 className="text-white font-semibold">
               {swapModal.mode === "kalici" ? "Kalıcı araç değiştir" : "Bugün için araç değiştir"}
             </h3>
-            <p className="text-zinc-500 text-xs">{formatDateShort(swapModal.date)} · {swapModal.hareketTipi}</p>
+            <p className="text-zinc-500 text-xs">{formatDateShort(swapModal.date)} · {swapModal.hareketTipi}{swapModal.yon !== "both" ? ` · ${YON_LABEL[swapModal.yon]}` : ""}</p>
             <ComboboxSearch
               options={vehicles.map((v: any) => ({ value: v.id, label: `${v.plate} — ${v.brand} ${v.model}` }))}
               value={swapVehicleId}
@@ -1330,7 +1377,7 @@ function CeteleTakvim({
             <div className="max-h-64 overflow-y-auto space-y-1.5 border border-zinc-800 rounded-xl p-2">
               {selectedEntries.map(e => (
                 <div key={e.key} className="flex items-center justify-between text-sm px-2 py-1.5 rounded-lg bg-zinc-800/50">
-                  <span className="text-zinc-200 truncate">{e.route.name}<span className="text-zinc-500 text-xs"> · {e.hareketTipi}</span></span>
+                  <span className="text-zinc-200 truncate">{e.route.name}<span className="text-zinc-500 text-xs"> · {e.hareketTipi}{e.yon !== "both" ? ` · ${YON_LABEL[e.yon as "giris" | "cikis"]}` : ""}</span></span>
                   <span className="text-zinc-500 text-xs shrink-0 mx-2">{formatDateShort(e.date)}</span>
                   <span className="font-mono text-xs px-1.5 py-0.5 rounded border bg-zinc-800 border-zinc-700 text-zinc-400 shrink-0">
                     {e.plate}
