@@ -75,6 +75,35 @@ export default function RotaPlanlamaPage() {
     await loadPlans(companyId);
   }
 
+  const [optimizing, setOptimizing] = useState<string | null>(null);
+
+  async function optimizePlan(id: string) {
+    const depot = window.prompt(
+      "Depo / firma adresi (araçların başlayıp biteceği nokta). Boş bırakırsan güzergahlardaki firma konumu denenir:",
+      "",
+    );
+    if (depot === null) return; // iptal
+    setOptimizing(id);
+    try {
+      const d = await fetch(`/api/route-plans/${id}/optimize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(depot.trim() ? { depot_address: depot.trim() } : {}),
+      }).then(r => r.json());
+      if (!d.ok) return alert(d.error || "Optimize edilemedi");
+      const o = d.data;
+      alert(
+        `Optimize edildi (${o.engine}).\n` +
+          `Önce: ${o.oncesi.arac_sayisi} araç, ${o.oncesi.km} km\n` +
+          `Sonra: ${o.sonrasi.arac_sayisi} araç, ${o.sonrasi.km} km\n` +
+          `Atanmamış yolcu: ${o.atanmamis.length}`,
+      );
+      await loadPlans(companyId);
+    } finally {
+      setOptimizing(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950">
       <Nav user={user} />
@@ -150,6 +179,9 @@ export default function RotaPlanlamaPage() {
                       <td className="px-4 py-3 text-zinc-400">v{plan.version_no || 1}</td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-2">
+                          <button onClick={() => optimizePlan(plan.id)} disabled={optimizing === plan.id} className="rounded-lg border border-violet-700 px-3 py-1.5 text-xs font-semibold text-violet-200 hover:bg-violet-950 disabled:opacity-50">
+                            {optimizing === plan.id ? "Optimize ediliyor..." : "Optimize et"}
+                          </button>
                           <button onClick={() => publishPlan(plan.id, false)} className="rounded-lg border border-sky-700 px-3 py-1.5 text-xs font-semibold text-sky-200 hover:bg-sky-950">Yayınla</button>
                           <button onClick={() => publishPlan(plan.id, true)} className="rounded-lg border border-green-700 px-3 py-1.5 text-xs font-semibold text-green-200 hover:bg-green-950">Aktifleştir</button>
                         </div>
