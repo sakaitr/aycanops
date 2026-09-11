@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { routeCreateSchema } from "@/lib/schemas";
+import { ensureCompanyVehicle } from "@/lib/company-vehicles";
 
 export async function GET(req: NextRequest) {
   try {
@@ -122,6 +123,7 @@ export async function POST(req: NextRequest) {
     ).run(id, name, code || null, direction || "both", capacity ?? null, schedule_mode || "fixed", shift_name || null, morning_departure || null, morning_arrival || null,
       evening_departure || null, evening_arrival || null, stops_json ? JSON.stringify(stops_json) : null,
       vehicle_id || null, vehicle_assignment_status || (vehicle_id ? "fixed" : "searching"), company_id || null, null, driver_name || null, driver_phone || null, notes || null, user.id, now, now);
+    await ensureCompanyVehicle(company_id, vehicle_id);
     return NextResponse.json({ ok: true, data: { id } });
   } catch (e) {
     return NextResponse.json({ ok: false, error: "Sunucu hatası" }, { status: 500 });

@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
+import { ensureCompanyVehicle } from "@/lib/company-vehicles";
 
 interface BulkEntry {
   route_id: string;
@@ -63,6 +64,8 @@ export async function POST(req: NextRequest) {
       if (entry.kalici_degisim) {
         await db.prepare(`UPDATE routes SET vehicle_id = ?, updated_at = ? WHERE id = ?`)
           .run(entry.vehicle_id, now, entry.route_id);
+        const r = await db.prepare(`SELECT company_id FROM routes WHERE id = ?`).get<{ company_id: string | null }>(entry.route_id);
+        await ensureCompanyVehicle(r?.company_id, entry.vehicle_id);
       }
 
       const id = uuidv4();

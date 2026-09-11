@@ -6,6 +6,7 @@ import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
 import type { ResultSetHeader } from "mysql2/promise";
 import { v4 as uuidv4 } from "uuid";
+import { ensureCompanyVehicle } from "@/lib/company-vehicles";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -76,6 +77,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (body.stops_json !== undefined) { sets.push("stops_json = ?"); vals.push(JSON.stringify(body.stops_json)); }
     if (body.route_geometry !== undefined) { sets.push("route_geometry = ?"); vals.push(body.route_geometry ? JSON.stringify(body.route_geometry) : null); }
     if (sets.length > 0) await db.prepare(`UPDATE routes SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`).run(...vals, now, id);
+    if (body.vehicle_id) await ensureCompanyVehicle(targetCompanyId, body.vehicle_id);
 
     if (body.vehicle_assignment_status === "fixed" && body.vehicle_id) {
       await db.prepare("UPDATE open_routes SET status='closed', vehicle_id=?, closed_at=?, updated_at=? WHERE route_id=? AND status='open'").run(body.vehicle_id, now, now, id);
