@@ -5,6 +5,7 @@ import Nav from "@/components/Nav";
 import ComboboxSearch from "@/components/ComboboxSearch";
 import { toast } from "@/lib/toast";
 import { hasPermission } from "@/lib/permissions";
+import { computeHakedisTutarlari } from "@/lib/hakedis-calc";
 
 function formatCurrency(v: number | string | null | undefined) {
   const n = Number(v ?? 0);
@@ -149,9 +150,7 @@ export default function HakedisPage() {
   const brut = ceteleFiyatliMi ? ceteleToplam : parseFloat(form.brut_tutar || "0");
   const kdvOrani = parseFloat(form.kdv_orani || "0");
   const tevkifatOrani = parseFloat(form.tevkifat_orani || "0");
-  const kdvTutari = Math.round(brut * kdvOrani) / 100;
-  const tevkifatTutari = Math.round(brut * tevkifatOrani) / 100;
-  const netTutar = Math.round((brut + kdvTutari - tevkifatTutari) * 100) / 100;
+  const { kdvTutari, tevkifatTutari, netTutar } = computeHakedisTutarlari(brut, kdvOrani, tevkifatOrani);
 
   const toplamNet = rows.reduce((sum, r) => sum + Number(r.net_tutar || 0), 0);
 

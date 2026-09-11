@@ -36,15 +36,17 @@ export async function GET(req: NextRequest) {
       `SELECT COUNT(*) as total FROM isleten i ${where}`
     ).get<{ total: number }>(...params);
 
+    // arac_sayisi ve cari_bakiye ayrı 1-e-çok ilişkiler — ikisini aynı GROUP BY'da
+    // JOIN'lemek fan-out'a yol açıp cari_bakiye'yi araç sayısıyla çarpıyordu.
+    // Korele alt sorgu olarak ayrıldı, her biri kendi tablosunu tek başına toplar.
     const rows = await db.prepare(
       `SELECT i.*,
-              COUNT(DISTINCT ai.vehicle_id) AS arac_sayisi,
-              COALESCE(SUM(ic.para_girisi) - SUM(ic.para_cikisi), 0) AS cari_bakiye
+              (SELECT COUNT(DISTINCT ai.vehicle_id) FROM arac_isleten ai
+                WHERE ai.isleten_id = i.id AND ai.bitis_tarihi IS NULL) AS arac_sayisi,
+              (SELECT COALESCE(SUM(ic.para_girisi) - SUM(ic.para_cikisi), 0) FROM isleten_cari ic
+                WHERE ic.isleten_id = i.id) AS cari_bakiye
        FROM isleten i
-       LEFT JOIN arac_isleten ai ON ai.isleten_id = i.id AND ai.bitis_tarihi IS NULL
-       LEFT JOIN isleten_cari ic ON ic.isleten_id = i.id
        ${where}
-       GROUP BY i.id
        ORDER BY i.unvan ASC
        LIMIT ? OFFSET ?`
     ).all(...params, limit, offset);

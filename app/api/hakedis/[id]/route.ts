@@ -5,6 +5,8 @@ import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
+import { computeHakedisTutarlari } from "@/lib/hakedis-calc";
+import { syncHareket, updateHareketOdeme } from "@/lib/finans-hareket";
 
 function fmtDate(d: string) {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Istanbul" }).format(new Date(d));
@@ -95,6 +97,25 @@ export async function PUT(
         "hakedis", id, "hakedis", user.id, now,
       );
 
+      // Tek deftere de yazılır (bkz. migration 087 — "her belge türü buraya bir
+      // satır yazar", hakediş bu güne kadar hiç yazmıyordu). tutar = brüt+KDV
+      // (tevkifat öncesi gerçek maliyet); odenen_tutar (odendi adımında)
+      // tevkifat sonrası işletene fiilen giden nakittir — tevkifat vergi
+      // dairesine gider, işletene değil.
+      await syncHareket("hakedis", id, {
+        tur: "gider",
+        tarih: existing.donem_bitis,
+        tutar: Number(existing.brut_tutar) + Number(existing.kdv_tutari),
+        net_tutar: Number(existing.brut_tutar),
+        kdv_tutari: Number(existing.kdv_tutari),
+        cari_id: existing.isleten_id,
+        kategori_id: "kat-g-hakedis",
+        vehicle_id: existing.vehicle_id,
+        durum: "onaylandi",
+        aciklama: `Hakediş: ${fmtDate(existing.donem_baslangic)} — ${fmtDate(existing.donem_bitis)}`,
+        created_by: user.id,
+      });
+
       return NextResponse.json({ ok: true });
     }
 
@@ -118,6 +139,9 @@ export async function PUT(
         "odeme", id, "hakedis", user.id, now,
       );
 
+      // Tek defterdeki ödeme durumunu tazele (tutar onayla adımında zaten yazıldı)
+      await updateHareketOdeme("hakedis", id, "odendi", Number(existing.net_tutar));
+
       return NextResponse.json({ ok: true });
     }
 
@@ -140,9 +164,7 @@ export async function PUT(
     const brut = parseFloat(body.brut_tutar ?? existing.brut_tutar);
     const kdvOrani = parseFloat(body.kdv_orani ?? existing.kdv_orani);
     const tevkifatOrani = parseFloat(body.tevkifat_orani ?? existing.tevkifat_orani);
-    const kdvTutari = Math.round(brut * kdvOrani) / 100;
-    const tevkifatTutari = Math.round(brut * tevkifatOrani) / 100;
-    const netTutar = Math.round((brut + kdvTutari - tevkifatTutari) * 100) / 100;
+    const { kdvTutari, tevkifatTutari, netTutar } = computeHakedisTutarlari(brut, kdvOrani, tevkifatOrani);
 
     await db.prepare(
       `UPDATE hakedis SET

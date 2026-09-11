@@ -441,6 +441,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly PermissionKey[]> 
     "hakedis:update",
     "hakedis:approve",
     "hakedis:reject",
+    "hakedis:pay",
     "firma_mutabakat:read",
     "firma_mutabakat:create",
     "firma_mutabakat:update",

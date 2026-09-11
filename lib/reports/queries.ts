@@ -809,7 +809,10 @@ export async function r23_karZararRapor(companyIds: string[], dateFrom?: string,
                OR (v.plate IS NOT NULL AND rsp.plate = v.plate)
                OR (rsp.vehicle_id IS NULL AND rsp.plate IS NULL))
           AND rsp.valid_from <= ce.tarih AND (rsp.valid_to IS NULL OR rsp.valid_to >= ce.tarih)
-        ORDER BY rsp.valid_from DESC LIMIT 1
+        -- En spesifik eşleşme önce, eşitlikte en yeni valid_from (bkz. /api/cetele)
+        ORDER BY (CASE WHEN rsp.vehicle_id IS NOT NULL THEN 0 WHEN rsp.plate IS NOT NULL THEN 1 ELSE 2 END),
+                 rsp.valid_from DESC
+        LIMIT 1
       )
       WHERE ce.durum = 'onaylandi' AND ce.tarih >= ? AND ce.tarih <= ?
       GROUP BY r.company_id

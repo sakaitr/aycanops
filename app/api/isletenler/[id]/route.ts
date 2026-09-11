@@ -18,15 +18,17 @@ export async function GET(
     const { id } = await params;
     const db = getDb();
 
+    // bkz. /api/isletenler route.ts — arac_sayisi/cari_bakiye'yi aynı GROUP BY'da
+    // JOIN'lemek fan-out'tan bakiyeyi araç sayısıyla çarpıyordu, korele alt
+    // sorgulara ayrıldı.
     const isleten = await db.prepare(
       `SELECT i.*,
-              COALESCE(SUM(ic.para_girisi) - SUM(ic.para_cikisi), 0) AS cari_bakiye,
-              COUNT(DISTINCT ai.vehicle_id) AS arac_sayisi
+              (SELECT COALESCE(SUM(ic.para_girisi) - SUM(ic.para_cikisi), 0) FROM isleten_cari ic
+                WHERE ic.isleten_id = i.id) AS cari_bakiye,
+              (SELECT COUNT(DISTINCT ai.vehicle_id) FROM arac_isleten ai
+                WHERE ai.isleten_id = i.id AND ai.bitis_tarihi IS NULL) AS arac_sayisi
        FROM isleten i
-       LEFT JOIN isleten_cari ic ON ic.isleten_id = i.id
-       LEFT JOIN arac_isleten ai ON ai.isleten_id = i.id AND ai.bitis_tarihi IS NULL
-       WHERE i.id = ?
-       GROUP BY i.id`
+       WHERE i.id = ?`
     ).get(id);
 
     if (!isleten) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });

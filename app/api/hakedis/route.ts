@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
+import { computeHakedisTutarlari } from "@/lib/hakedis-calc";
 
 export async function GET(req: NextRequest) {
   try {
@@ -67,9 +68,26 @@ export async function POST(req: NextRequest) {
 
     // Bağlanacak çetele kayıtlarının, güzergah fiyatından çözümlenen kazancını hesapla.
     // Bir araca çeteleden iş işlenmişse, bu tutar otomatik olarak hakedişin brütüne yansır.
-    const ceteleIds: string[] = Array.isArray(body.cetele_ids) ? body.cetele_ids : [];
+    const requestedCeteleIds: string[] = Array.isArray(body.cetele_ids) ? body.cetele_ids : [];
     const ceteleTutarlar: { cetele_id: string; tutar: number }[] = [];
     let ceteleToplam = 0;
+    let alreadyLinked: string[] = [];
+
+    // Bir çetele satırı yalnızca 1 hakedişe bağlanabilir (aksi halde aynı günün
+    // işçiliği 2 ayrı hakedişten ödenir). DB'de UNIQUE(cetele_id) de var (bkz.
+    // migration 109) — burası sadece temiz bir hata mesajı için, gerçek koruma
+    // o constraint.
+    let ceteleIds = requestedCeteleIds;
+    if (requestedCeteleIds.length > 0) {
+      const placeholders = requestedCeteleIds.map(() => "?").join(",");
+      const linkedRows = await db.prepare(
+        `SELECT cetele_id FROM hakedis_cetele WHERE cetele_id IN (${placeholders})`
+      ).all<{ cetele_id: string }>(...requestedCeteleIds);
+      alreadyLinked = linkedRows.map((r) => r.cetele_id);
+      if (alreadyLinked.length > 0) {
+        ceteleIds = requestedCeteleIds.filter((id) => !alreadyLinked.includes(id));
+      }
+    }
 
     if (ceteleIds.length > 0) {
       const placeholders = ceteleIds.map(() => "?").join(",");
@@ -90,7 +108,10 @@ export async function POST(req: NextRequest) {
              )
              AND rsp.valid_from <= c.tarih
              AND (rsp.valid_to IS NULL OR rsp.valid_to >= c.tarih)
-           ORDER BY rsp.valid_from DESC LIMIT 1
+           -- En spesifik eşleşme önce, eşitlikte en yeni valid_from (bkz. /api/cetele)
+           ORDER BY (CASE WHEN rsp.vehicle_id IS NOT NULL THEN 0 WHEN rsp.plate IS NOT NULL THEN 1 ELSE 2 END),
+                    rsp.valid_from DESC
+           LIMIT 1
          )
          WHERE c.id IN (${placeholders})`
       ).all<{ cetele_id: string; birim_ucret: number }>(...ceteleIds);
@@ -110,9 +131,7 @@ export async function POST(req: NextRequest) {
       : parseFloat(body.brut_tutar || "0");
     const kdvOrani = parseFloat(body.kdv_orani ?? "20");
     const tevkifatOrani = parseFloat(body.tevkifat_orani ?? "0");
-    const kdvTutari = Math.round(brut * kdvOrani) / 100;
-    const tevkifatTutari = Math.round(brut * tevkifatOrani) / 100;
-    const netTutar = Math.round((brut + kdvTutari - tevkifatTutari) * 100) / 100;
+    const { kdvTutari, tevkifatTutari, netTutar } = computeHakedisTutarlari(brut, kdvOrani, tevkifatOrani);
 
     await db.prepare(
       `INSERT INTO hakedis
@@ -135,6 +154,13 @@ export async function POST(req: NextRequest) {
       ).run(uuidv4(), id, ct.cetele_id, ct.tutar, now);
     }
 
-    return NextResponse.json({ ok: true, data: { id, brut_tutar: brut, cetele_toplam: Math.round(ceteleToplam * 100) / 100 } }, { status: 201 });
+    return NextResponse.json({
+      ok: true,
+      data: {
+        id, brut_tutar: brut,
+        cetele_toplam: Math.round(ceteleToplam * 100) / 100,
+        already_linked: alreadyLinked,
+      },
+    }, { status: 201 });
   } catch (e) { return apiError(e); }
 }

@@ -84,8 +84,11 @@ export async function POST(
     const now = nowIso();
     const tarih = body.tarih || now.split("T")[0];
 
-    // hakedis ve kesinti = para_girisi (işletene borçlanıyoruz), ödeme = para_cikisi
-    const isGiris = ["hakedis", "avans"].includes(body.islem_turu);
+    // Sadece hakedis borcu artırır (para_girisi). avans/kesinti/ödeme hepsi borcu
+    // azaltır (para_cikisi) — avans nakit olarak önceden çıkar, kesinti borçtan
+    // düşülür, ödeme zaten nakit çıkışıdır. Önceden avans da para_girisi
+    // sayılıyordu, bu borcu ters yönde büyütüyordu.
+    const isGiris = body.islem_turu === "hakedis";
     const para_girisi = isGiris ? tutar : 0;
     const para_cikisi = !isGiris ? tutar : 0;
 

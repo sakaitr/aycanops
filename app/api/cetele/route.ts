@@ -81,7 +81,12 @@ export async function GET(req: NextRequest) {
            )
            AND rsp.valid_from <= c.tarih
            AND (rsp.valid_to IS NULL OR rsp.valid_to >= c.tarih)
-         ORDER BY rsp.valid_from DESC LIMIT 1
+         -- En spesifik eşleşme önce (araca özel > plakaya özel > genel),
+         -- eşitlikte en yeni valid_from — aksi halde sonradan girilen genel
+         -- fiyat, önceden tanımlı araca özel fiyatı sessizce ezebiliyordu.
+         ORDER BY (CASE WHEN rsp.vehicle_id IS NOT NULL THEN 0 WHEN rsp.plate IS NOT NULL THEN 1 ELSE 2 END),
+                  rsp.valid_from DESC
+         LIMIT 1
        )
        ${where}
        ORDER BY c.tarih DESC, v.plate ASC
