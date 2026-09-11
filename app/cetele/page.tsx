@@ -1023,10 +1023,27 @@ function CeteleTakvim({
     setContextMenu({ x: e.clientX, y: e.clientY, routeId, date: dateStr, hareketTipi, yon, recordIds });
   }
 
-  function openSwapFromMenu(mode: "gecici" | "kalici") {
+  // Araç değiştir artık işlenmiş hücrede de çalışır: önce mevcut kaydı (varsa)
+  // sessizce iptal eder, sonra yeni aracı seçmesi için atama modalını açar —
+  // önceden önce ayrı "İptal Et" sonra tekrar tıklayıp atama gerekiyordu.
+  async function openSwapFromMenu(mode: "gecici" | "kalici") {
     if (!contextMenu) return;
-    openAssign(contextMenu.routeId, contextMenu.date, contextMenu.hareketTipi, contextMenu.yon, mode);
+    const { routeId, date, hareketTipi, yon, recordIds } = contextMenu;
     setContextMenu(null);
+    if (recordIds.length > 0) {
+      setCancelling(true);
+      try {
+        for (const id of recordIds) {
+          await fetch(`/api/cetele/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "iptal", geri_alma_nedeni: "Araç değiştirildi" }),
+          });
+        }
+        await reloadMatrix();
+      } finally { setCancelling(false); }
+    }
+    openAssign(routeId, date, hareketTipi, yon, mode);
   }
 
   async function cancelFromMenu() {
@@ -1265,7 +1282,7 @@ function CeteleTakvim({
                                     ? (bothDone ? DURUM_BADGE[durum!]?.label
                                        : anyDone ? `Yarım işlendi — ${girisDone ? "çıkış" : "giriş"} eksik, tıkla tamamla`
                                        : veh ? "Tıkla: seç/kaldır · ⋮ / sağ tık: aksiyonlar" : "Araç atanmamış — tıkla ata")
-                                    : (processed ? `${DURUM_BADGE[durum!]?.label} — ⋮ / sağ tık: iptal et`
+                                    : (processed ? `${DURUM_BADGE[durum!]?.label} — ⋮ / sağ tık: iptal veya araç değiştir`
                                        : veh ? "Tıkla: seç/kaldır · ⋮ / sağ tık: aksiyonlar" : "Araç atanmamış — tıkla ata")
                                 }
                                 className={`relative group text-center px-2 py-2 ${processed ? "cursor-default" : "cursor-pointer"} ${selected ? "bg-indigo-950/60" : ""}`}
@@ -1329,22 +1346,25 @@ function CeteleTakvim({
         )}
       </div>
 
-      {/* Sağ tık menüsü: kayıt varsa iptal, yoksa araç değiştirme seçenekleri */}
+      {/* Aksiyon menüsü: araç değiştirme her zaman var (kayıt varsa önce sessizce
+          iptal edip yeniden atar), İptal Et sadece iptal edilecek kayıt varsa görünür */}
       {contextMenu && (
-        <div ref={contextMenuRef} className="fixed z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl py-1 min-w-[180px]"
+        <div ref={contextMenuRef} className="fixed z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl py-1 min-w-[190px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}>
-          {contextMenu.recordIds.length > 0 ? (
-            <button onClick={cancelFromMenu} disabled={cancelling}
-              className="w-full text-left px-3 py-2 text-sm text-red-300 hover:bg-red-950/50 disabled:opacity-50">
-              {cancelling ? "İptal ediliyor..." : "İptal Et"}
-            </button>
-          ) : (
+          <button onClick={() => openSwapFromMenu("gecici")} disabled={cancelling}
+            className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50">
+            Tek seferlik araç değiştir
+          </button>
+          <button onClick={() => openSwapFromMenu("kalici")} disabled={cancelling}
+            className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50">
+            Kalıcı araç değiştir
+          </button>
+          {contextMenu.recordIds.length > 0 && (
             <>
-              <button onClick={() => openSwapFromMenu("gecici")} className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800">
-                Bugün için araç değiştir
-              </button>
-              <button onClick={() => openSwapFromMenu("kalici")} className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800">
-                Kalıcı araç değiştir
+              <div className="my-1 border-t border-zinc-800" />
+              <button onClick={cancelFromMenu} disabled={cancelling}
+                className="w-full text-left px-3 py-2 text-sm text-red-300 hover:bg-red-950/50 disabled:opacity-50">
+                {cancelling ? "İşleniyor..." : "İptal Et"}
               </button>
             </>
           )}
