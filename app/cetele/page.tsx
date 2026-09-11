@@ -292,10 +292,17 @@ export default function CeteleePage() {
     return yon ? `${routeId}::${yon}` : routeId;
   }
 
-  // Bugün, her güzergahın kendi seçili vardiyası (+ yön) için işlenmiş mi (iptal hariç)
+  // Bugün, her güzergahın kendi seçili vardiyası (+ yön) için işlenmiş mi (iptal hariç).
+  // Vardiya tanımlı olmayan güzergahlarda rowSlot hiç dolmaz (loadRoutes sadece
+  // time_slots varsa dolduruyor) — önceden bu durumda hep "işlenmedi" dönüyordu,
+  // yani Takvim'den veya Serbest Kayıt'tan gerçekten onaylanmış bir kayıt olsa
+  // bile Günlük ızgarası hiç değişmiş görünmüyordu. Vardiya yoksa hareket_tipi
+  // zaten serbest metin, o yüzden sadece rota+yön'e göre eşleştir.
   function isProcessed(routeId: string, yon: "giris" | "cikis" | null = null): boolean {
     const slot = rowSlot[routeId];
-    if (!slot) return false;
+    if (!slot) {
+      return rows.some(r => r.route_id === routeId && (r.yon || null) === yon && r.durum !== "iptal");
+    }
     return rows.some(r => r.route_id === routeId && r.hareket_tipi === slot && (r.yon || null) === yon && r.durum !== "iptal");
   }
 
@@ -574,10 +581,10 @@ export default function CeteleePage() {
                                 key={key}
                                 onClick={() => noSlots ? openFreeEntryForRoute() : toggleRoute(route.id, yon)}
                                 onContextMenu={e => openContextMenu(e, route.id, yon)}
-                                title={noSlots ? "Bu güzergahta vardiya tanımlı değil — tıklayınca Serbest Kayıt açılır" : undefined}
+                                title={noSlots ? (processed ? "Bugün için kayıt var — tıklayınca ek kayıt açılır" : "Bu güzergahta vardiya tanımlı değil — tıklayınca Serbest Kayıt açılır") : undefined}
                                 className={`flex items-center gap-3 px-4 pl-8 py-2 select-none transition-colors cursor-pointer ${
                                   noSlots
-                                    ? "hover:bg-amber-950/20"
+                                    ? processed ? "bg-emerald-950/20 hover:bg-emerald-950/30" : "hover:bg-amber-950/20"
                                     : processed
                                       ? "opacity-50 cursor-not-allowed bg-zinc-900"
                                       : selected
@@ -600,12 +607,14 @@ export default function CeteleePage() {
                                 ) : (
                                   <span className="text-zinc-600 text-xs italic">araç atanmamış</span>
                                 )}
-                                {noSlots && (
-                                  <span className="text-amber-500 text-[11px] ml-auto shrink-0">Serbest Kayıt açmak için tıkla →</span>
-                                )}
                                 {processed && (
                                   <span className="text-[10px] px-1.5 py-0.5 rounded border bg-emerald-950 border-emerald-800 text-emerald-300 shrink-0 ml-auto">
                                     İşlendi
+                                  </span>
+                                )}
+                                {noSlots && (
+                                  <span className="text-amber-500 text-[11px] shrink-0">
+                                    {processed ? "+ ek kayıt" : "Serbest Kayıt açmak için tıkla →"}
                                   </span>
                                 )}
                               </div>
