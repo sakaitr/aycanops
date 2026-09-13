@@ -8,7 +8,7 @@ import { logAudit } from "@/lib/audit";
 import { RequestError } from "@/lib/request-error";
 import { transactionStore } from "@/lib/transaction-store";
 import { assertCompanyAccess } from "@/lib/company-access";
-import { validatePlanForPublication, type RoutePlan } from "@/lib/route-plan-validation";
+import { validatePlanForPublication, assertNoResourceConflict, type RoutePlan } from "@/lib/route-plan-validation";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -42,6 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (plan.status === "active" && target === "published") throw new RequestError("Aktif plan geri yayın durumuna alınamaz; arşivleyin", 409);
         const evidence = await validatePlanForPublication(db, plan);
         if (target === "active") {
+          await assertNoResourceConflict(db, plan, evidence.routes.map(r => r.route));
           const previous = await db.prepare("SELECT * FROM route_plans WHERE id<>? AND status='active' AND company_id=? AND shift_id <=> ? AND direction=? FOR UPDATE")
             .all<RoutePlan>(id, plan.company_id, plan.shift_id, plan.direction);
           for (const old of previous) {
