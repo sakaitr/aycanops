@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { vehicleCreateSchema } from "@/lib/schemas";
 import { apiError } from "@/lib/api-error";
+import { assertCompanyAccess } from "@/lib/company-access";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,19 +15,38 @@ export async function GET(req: NextRequest) {
     if (!hasPermission(user, "vehicles:read"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
     const { searchParams } = new URL(req.url);
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
-    const limit = Math.min(9999, Math.max(1, parseInt(searchParams.get("limit") || "100")));
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
+    const limit = Math.min(9999, Math.max(1, parseInt(searchParams.get("limit") || "100") || 100));
     const offset = (page - 1) * limit;
     const db = getDb();
 
-    const countRow = await db.prepare("SELECT COUNT(*) as total FROM vehicles").get() as { total: number };
+    const companyId = searchParams.get("company_id");
+    if (companyId) assertCompanyAccess(user, companyId);
+    const allowed: string[] | null = user.allowed_companies === null ? null : JSON.parse(user.allowed_companies);
+    const scopedCompanies = companyId ? [companyId] : allowed;
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (scopedCompanies !== null) {
+      conditions.push(`EXISTS (SELECT 1 FROM company_vehicles cv WHERE (cv.vehicle_id = v.id OR (cv.vehicle_id IS NULL AND cv.plate = v.plate))
+        AND cv.is_active = 1 AND cv.company_id IN (${scopedCompanies.map(() => "?").join(",") || "NULL"}))`);
+      params.push(...scopedCompanies);
+    }
+    const q = searchParams.get("q")?.trim();
+    if (q) { conditions.push("(v.plate LIKE ? OR v.driver_name LIKE ?)"); params.push(`%${q}%`, `%${q}%`); }
+    const selectedId = searchParams.get("id");
+    if (selectedId) { conditions.push("v.id = ?"); params.push(selectedId); }
+    const status = searchParams.get("status");
+    if (status) { conditions.push("v.status_code = ?"); params.push(status); }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const countRow = await db.prepare(`SELECT COUNT(*) as total FROM vehicles v ${where}`).get(...params) as { total: number };
     const total = countRow.total;
 
     const data = await db.prepare(
       `SELECT v.*, u.full_name as creator_name FROM vehicles v
        LEFT JOIN users u ON u.id = v.created_by
+       ${where}
        ORDER BY v.plate ASC LIMIT ? OFFSET ?`
-    ).all(limit, offset) as any[];
+    ).all(...params, String(limit), String(offset)) as any[];
 
     const plates = data.map((v: any) => v.plate);
     const vehicleIds = data.map((v: any) => v.id);
@@ -37,8 +57,9 @@ export async function GET(req: NextRequest) {
          FROM company_vehicles cv
          JOIN companies c ON c.id = cv.company_id
          WHERE cv.is_active = 1 AND cv.plate IN (${plates.map(() => "?").join(",")})
+         ${allowed !== null ? `AND cv.company_id IN (${allowed.map(() => "?").join(",") || "NULL"})` : ""}
          ORDER BY c.name ASC`
-      ).all(...plates) as any[];
+      ).all(...plates, ...(allowed ?? [])) as any[];
     }
 
     // Min document expiry per vehicle
@@ -72,7 +93,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
     const raw = await req.json();
     const parsed = vehicleCreateSchema.safeParse(raw);
-    if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    if (!parsed.success) return NextResponse.json({ ok: false, error: "Araç bilgilerini kontrol edin", fieldErrors: parsed.error.flatten().fieldErrors }, { status: 400 });
     const { plate, type, capacity, brand, model, year, driver_id, driver_name, driver_phone, route_name, status_code, notes, ruhsat_sahibi_id } = parsed.data;
     const db = getDb();
     const now = nowIso();
@@ -80,7 +101,7 @@ export async function POST(req: NextRequest) {
     await db.prepare(
       `INSERT INTO vehicles (id, supplier_id, plate, type, capacity, brand, model, year, driver_id, driver_name, driver_phone, route_name, status_code, notes, ruhsat_sahibi_id, created_by, created_at, updated_at)
        VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, plate.toUpperCase(), type || "minibus", capacity || 14, brand || null, model || null, year || null,
+    ).run(id, plate.toUpperCase(), type || "minibus", capacity ?? 14, brand || null, model || null, year || null,
       driver_id || null, driver_name || null, driver_phone || null, route_name || null, status_code || "active", notes || null,
       ruhsat_sahibi_id || null, user.id, now, now);
     // If driver is assigned, record in driver_assignments

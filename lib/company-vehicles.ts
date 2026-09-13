@@ -1,6 +1,8 @@
 import { getDb } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
+import type { PoolConnection } from "mysql2/promise";
+import { transactionStore } from "@/lib/transaction-store";
 
 /**
  * Bir araç bir güzergaha atanınca, o güzergahın firmasında da "hizmet veriyor"
@@ -11,9 +13,9 @@ import { nowIso } from "@/lib/time";
  * firmaya hizmet verebildiğinden var olan satırları asla silmez/değiştirmez,
  * sadece eksikse ekler.
  */
-export async function ensureCompanyVehicle(companyId: string | null | undefined, vehicleId: string | null | undefined) {
+export async function ensureCompanyVehicle(companyId: string | null | undefined, vehicleId: string | null | undefined, conn?: PoolConnection) {
   if (!companyId || !vehicleId) return;
-  const db = getDb();
+  const db = conn ? transactionStore(conn) : getDb();
 
   const vehicle = await db.prepare(`SELECT plate FROM vehicles WHERE id = ?`).get<{ plate: string }>(vehicleId);
   if (!vehicle) return;

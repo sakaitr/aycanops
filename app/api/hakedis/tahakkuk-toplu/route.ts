@@ -4,6 +4,9 @@ import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
+import { validateStoredHakedis } from "@/lib/financial-validation";
+import { transactionStore } from "@/lib/transaction-store";
+import { logAudit } from "@/lib/audit";
 
 // Birden fazla taslak hakedişi tek seferde tahakkuk durumuna geçirir.
 export async function POST(req: NextRequest) {
@@ -23,13 +26,22 @@ export async function POST(req: NextRequest) {
     const skipped: { id: string; reason: string }[] = [];
 
     for (const id of ids) {
-      const existing = await db.prepare(`SELECT id, durum FROM hakedis WHERE id = ?`).get<{ id: string; durum: string }>(id);
-      if (!existing) { skipped.push({ id, reason: "Bulunamadı" }); continue; }
-      if (existing.durum !== "taslak") { skipped.push({ id, reason: "Taslak değil" }); continue; }
+      const reason = await db.transaction(async conn => {
+      const tx = transactionStore(conn);
+      const existing = await tx.prepare(`SELECT * FROM hakedis WHERE id = ? FOR UPDATE`).get<{ id: string; durum: string } & Record<string, unknown>>(id);
+      if (!existing) return "Bulunamadı";
+      if (existing.durum !== "taslak") return "Taslak değil";
+      try { validateStoredHakedis(existing); }
+      catch (e) { return e instanceof Error ? e.message : "Hesap kontrol edilemedi"; }
 
-      await db.prepare(`UPDATE hakedis SET durum = 'tahakkuk', tahakkuk_tarihi = ?, updated_at = ? WHERE id = ?`)
+      await tx.prepare(`UPDATE hakedis SET durum = 'tahakkuk', tahakkuk_tarihi = ?, updated_at = ? WHERE id = ?`)
         .run(now, now, id);
-      updated++;
+      await logAudit({ actorUserId: user.id, action: "hakedis.tahakkuk", entityType: "hakedis", entityId: id,
+        details: { before: existing, after: { ...existing, durum: "tahakkuk", tahakkuk_tarihi: now, updated_at: now }, source: "bulk" } }, conn);
+      return null;
+      });
+      if (reason) skipped.push({ id, reason });
+      else updated++;
     }
 
     return NextResponse.json({ ok: true, data: { updated, skipped } });

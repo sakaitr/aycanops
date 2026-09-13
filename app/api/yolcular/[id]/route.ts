@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
-import { apiError } from "@/lib/api-error";
+import { safeApiError as apiError } from "@/lib/api-error";
+import { optionalId, paymentPlanId } from "@/lib/passenger-relations";
 import { nowIso } from "@/lib/time";
 
 type Params = { params: Promise<{ id: string }> };
@@ -55,6 +56,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Ad Soyad gerekli" }, { status: 400 });
     }
 
+    const planId = await paymentPlanId(db, odeme_plani_id);
     await db.prepare(`
       UPDATE passengers SET
         full_name = ?, phone = ?, email = ?, id_number = ?, type = ?,
@@ -65,10 +67,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
       WHERE id = ?
     `).run(
       full_name.trim(), phone ?? null, email ?? null, id_number ?? null, type ?? "yolcu",
-      company_id ?? null, pickup_address ?? null, pickup_lat ?? null, pickup_lng ?? null,
-      dropoff_address ?? null, route_id ?? null, notes ?? null,
+      optionalId(company_id), pickup_address ?? null, pickup_lat ?? null, pickup_lng ?? null,
+      dropoff_address ?? null, optionalId(route_id), notes ?? null,
       status ?? "aktif",
-      sinif ?? null, sube ?? null, barkod_no ?? null, odeme_plani_id ?? null,
+      sinif ?? null, sube ?? null, barkod_no?.trim() || null, planId,
       sozlesme_durumu ?? "yok", hizmet_durumu ?? "aktif",
       nowIso(), id
     );

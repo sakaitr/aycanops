@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "./time";
 import { getDb } from "./db";
+import type { PoolConnection } from "mysql2/promise";
+import { transactionStore } from "./transaction-store";
 
 export async function logAudit(params: {
   actorUserId: string;
@@ -8,8 +10,8 @@ export async function logAudit(params: {
   entityType: string;
   entityId?: string | null;
   details?: Record<string, unknown> | null;
-}) {
-  const db = getDb();
+}, conn?: PoolConnection) {
+  const db = conn ? transactionStore(conn) : getDb();
   const id = uuidv4();
   const createdAt = nowIso();
   const detailsJson = params.details ? JSON.stringify(params.details) : null;

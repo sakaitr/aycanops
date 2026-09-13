@@ -8,6 +8,7 @@ import BulkActionBar from "@/components/BulkActionBar";
 import { SkeletonLine } from "@/components/Skeleton";
 import { IconUsers, IconSearch, IconX } from "@/components/Icons";
 import { toast } from "@/lib/toast";
+import { errorText } from "@/lib/error-text";
 import { useListState } from "@/hooks/useListState";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -113,6 +114,7 @@ export default function YolcularPage() {
   const [editTarget, setEditTarget] = useState<Passenger | null>(null);
   const [form, setForm] = useState({ ...EMPTY });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   // Bulk add state
@@ -203,6 +205,7 @@ export default function YolcularPage() {
   }
 
   function openNew() {
+    setSaveError(null);
     setEditTarget(null);
     setForm({ ...EMPTY });
     setServisDegisiklikleri([]);
@@ -211,6 +214,7 @@ export default function YolcularPage() {
   }
 
   function openEdit(p: Passenger) {
+    setSaveError(null);
     setEditTarget(p);
     setForm({
       full_name: p.full_name,
@@ -246,19 +250,24 @@ export default function YolcularPage() {
   }
 
   async function handleSave() {
+    if (saving) return;
     if (!form.full_name?.trim()) return;
+    setSaveError(null);
     setSaving(true);
     try {
       const url = editTarget ? `/api/yolcular/${editTarget.id}` : "/api/yolcular";
       const method = editTarget ? "PUT" : "POST";
-      await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, company_id: form.company_id || null }),
+        body: JSON.stringify({ ...form, company_id: form.company_id || null, route_id: form.route_id || null, odeme_plani_id: form.odeme_plani_id || null, barkod_no: form.barkod_no.trim() || null }),
       });
+      const result = await response.json();
+      if (!response.ok || !result.ok) { setSaveError(errorText(result.error, "Kayıt işlemi tamamlanamadı")); return; }
       closeModal();
       await load();
-    } finally {
+    } catch { setSaveError("Bağlantı hatası. Girdileriniz korundu; tekrar deneyin"); }
+    finally {
       setSaving(false);
     }
   }
@@ -623,6 +632,7 @@ export default function YolcularPage() {
             </div>
 
             <div className="px-6 py-5 space-y-4">
+              {saveError && <p role="alert" className="text-red-400 text-sm">{saveError}</p>}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-[var(--t-400)] mb-1.5">Ad Soyad *</label>

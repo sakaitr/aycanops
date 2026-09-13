@@ -6,6 +6,9 @@ import { v4 as uuidv4 } from "uuid";
 import { nowIso, todayIstanbul } from "@/lib/time";
 import { companyVehicleCreateSchema } from "@/lib/schemas";
 import { apiError } from "@/lib/api-error";
+import { assertMasterDeletable } from "@/lib/deletion-guards";
+import { RequestError } from "@/lib/request-error";
+import type { RowDataPacket } from "mysql2/promise";
 
 async function canManageCompanyVehicles(user: { id: string; role: any }, companyId: string, db: ReturnType<typeof getDb>) {
   if (hasPermission(user, "companies:update")) return true;
@@ -176,6 +179,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const url = new URL(req.url);
     const vehicleId = url.searchParams.get("vehicleId");
     const hard = url.searchParams.get("hard") === "true";
+    if (user.allowed_companies && !JSON.parse(user.allowed_companies).includes(id))
+      return NextResponse.json({ ok: false, error: "Bu firmaya erişim yetkiniz yok" }, { status: 403 });
     if (!vehicleId) return NextResponse.json({ ok: false, error: "vehicleId gerekli" }, { status: 400 });
     const now = nowIso();
 
@@ -183,18 +188,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       // Kalıcı silme yalnızca yonetici+ için
       if (!hasPermission(user, "vehicles:deactivate"))
         return NextResponse.json({ ok: false, error: "Kalıcı silmek için yönetici yetkisi gerekli" }, { status: 403 });
-      const cvRow: any = await db.prepare("SELECT vehicle_id, plate FROM company_vehicles WHERE id = ? AND company_id = ?").get(vehicleId, id);
-      if (!cvRow) return NextResponse.json({ ok: false, error: "Araç bulunamadı" }, { status: 404 });
-      await db.prepare("DELETE FROM company_vehicles WHERE id = ? AND company_id = ?").run(vehicleId, id);
-      if (cvRow.vehicle_id) {
-        const otherRefs: any = await db.prepare("SELECT COUNT(*) as cnt FROM company_vehicles WHERE vehicle_id = ?").get(cvRow.vehicle_id);
-        if ((otherRefs?.cnt ?? 0) === 0) {
-          await db.prepare("DELETE FROM driver_assignments WHERE vehicle_id = ?").run(cvRow.vehicle_id);
-          await db.prepare("DELETE FROM vehicle_documents WHERE vehicle_id = ?").run(cvRow.vehicle_id);
-          await db.prepare("DELETE FROM vehicle_maintenance WHERE vehicle_id = ?").run(cvRow.vehicle_id);
-          await db.prepare("DELETE FROM vehicles WHERE id = ?").run(cvRow.vehicle_id);
+      await db.transaction(async (conn) => {
+        const [rows] = await conn.execute<RowDataPacket[]>("SELECT vehicle_id FROM company_vehicles WHERE id = ? AND company_id = ? FOR UPDATE", [vehicleId, id]);
+        if (!rows[0]) throw new RequestError("Araç bulunamadı", 404);
+        const masterId = rows[0].vehicle_id;
+        // Historical company lists also depend on this relationship.
+        if (masterId) await assertMasterDeletable(conn, "vehicles", masterId);
+        await conn.execute("DELETE FROM company_vehicles WHERE id = ? AND company_id = ?", [vehicleId, id]);
+        if (masterId) {
+          const [refs] = await conn.execute<RowDataPacket[]>("SELECT id FROM company_vehicles WHERE vehicle_id = ? LIMIT 1 FOR UPDATE", [masterId]);
+          if (!refs.length) await conn.execute("DELETE FROM vehicles WHERE id = ?", [masterId]);
         }
-      }
+      });
     } else {
       const result = await db.prepare("UPDATE company_vehicles SET is_active = 0, updated_at = ? WHERE id = ? AND company_id = ?").run(now, vehicleId, id);
       if (result.affectedRows === 0) return NextResponse.json({ ok: false, error: "Araç bulunamadı" }, { status: 404 });

@@ -6,6 +6,7 @@ import { apiError } from "@/lib/api-error";
 import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { lockEditablePlan } from "@/lib/route-plan-lock";
 import { geocodeAddress } from "@/lib/geocode";
 import { planRoutes, type PlanPersonnel, type PlanVehicle } from "@/lib/planner";
 
@@ -150,6 +151,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     };
 
     await db.transaction(async (conn) => {
+      await lockEditablePlan(conn, id, plan);
       await conn.execute(
         `INSERT INTO route_plan_versions (id, route_plan_id, version_no, snapshot_json, created_by, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
@@ -210,8 +212,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
         ri += 1;
       }
-    });
-
     await logAudit({
       actorUserId: user.id,
       action: "route_plan.optimize",
@@ -223,6 +223,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         atanmamis: metrics.atanmamis,
         km: Math.round(result.total_distance / 100) / 10,
       },
+    }, conn);
     });
 
     return NextResponse.json({

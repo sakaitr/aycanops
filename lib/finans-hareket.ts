@@ -13,6 +13,8 @@
 
 import { getDb } from "@/lib/db";
 import { nowIso } from "@/lib/time";
+import type { PoolConnection } from "mysql2/promise";
+import { transactionStore } from "@/lib/transaction-store";
 
 export type HareketKaynakTip = "fatura" | "masraf" | "kasa" | "hakedis" | "manuel" | "gider";
 
@@ -66,9 +68,10 @@ export type HareketInput = {
 export async function syncHareket(
   kaynakTip: HareketKaynakTip,
   kaynakId: string,
-  input: HareketInput
+  input: HareketInput,
+  conn?: PoolConnection
 ): Promise<void> {
-  const db = getDb();
+  const db = conn ? transactionStore(conn) : getDb();
   const id = hareketId(kaynakTip, kaynakId);
   const now = nowIso();
   const kur = input.kur ?? 1;
@@ -135,9 +138,10 @@ export async function updateHareketOdeme(
   kaynakTip: HareketKaynakTip,
   kaynakId: string,
   odemeDurumu: string,
-  odenenTutar: number
+  odenenTutar: number,
+  conn?: PoolConnection
 ): Promise<void> {
-  await getDb()
+  await (conn ? transactionStore(conn) : getDb())
     .prepare(
       `UPDATE finans_hareket SET odeme_durumu = ?, odenen_tutar = ?, updated_at = ?
        WHERE kaynak_tip = ? AND kaynak_id = ?`

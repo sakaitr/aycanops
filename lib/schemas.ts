@@ -91,7 +91,8 @@ export const routePriceCreateSchema = z.object({
   plate: z.string().max(50).optional().nullable(),
   hareket_tipi: z.string().max(100).optional().nullable(),
   yon: z.enum(["giris", "cikis"]).optional().nullable(),
-  price_amount: z.coerce.number().positive(),
+  price_amount: z.union([z.number(), z.string().regex(/^\d+(\.\d{1,2})?$/)])
+    .pipe(z.coerce.number().finite().min(0).max(9999999999.99)),
   currency: z.string().min(3).max(3).default("TRY"),
   valid_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   valid_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),

@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { vehicleUpdateSchema } from "@/lib/schemas";
+import { assertMasterDeletable } from "@/lib/deletion-guards";
+import { apiError } from "@/lib/api-error";
 
 export async function GET(
   req: NextRequest,
@@ -39,7 +41,7 @@ export async function PUT(
     const { id } = await params;
     const raw = await req.json();
     const parsed = vehicleUpdateSchema.safeParse(raw);
-    if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    if (!parsed.success) return NextResponse.json({ ok: false, error: "Araç bilgilerini kontrol edin", fieldErrors: parsed.error.flatten().fieldErrors }, { status: 400 });
     const body = parsed.data;
     const db = getDb();
     const now = nowIso();
@@ -96,9 +98,10 @@ export async function DELETE(
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
     const { id } = await params;
     const db = getDb();
-    await db.prepare("DELETE FROM vehicles WHERE id = ?").run(id);
+    await db.transaction(async (conn) => {
+      await assertMasterDeletable(conn, "vehicles", id);
+      await conn.execute("DELETE FROM vehicles WHERE id = ?", [id]);
+    });
     return NextResponse.json({ ok: true });
-  } catch (e) {
-    return NextResponse.json({ ok: false, error: "Sunucu hatası" }, { status: 500 });
-  }
+  } catch (e) { return apiError(e); }
 }

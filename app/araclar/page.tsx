@@ -1,5 +1,6 @@
 ﻿"use client";
 import { toast } from "@/lib/toast";
+import { errorText } from "@/lib/error-text";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
@@ -141,7 +142,9 @@ export default function AraclarPage() {
   }
 
   async function save() {
+    if (saving) return;
     if (!form.plate.trim()) return;
+    if (!Number.isInteger(form.capacity) || form.capacity < 0) { setSaveError("Kapasite 0 veya daha büyük bir tam sayı olmalıdır"); return; }
     if (!editing && !form.company_id) { setSaveError("Firma seçilmeden araç kaydedilemez"); return; }
     setSaving(true); setSaveError(null);
     try {
@@ -167,8 +170,9 @@ export default function AraclarPage() {
           const updated = (await fetch(`/api/vehicles?limit=9999`).then(r => r.json()).catch(() => ({ data: [] }))).data?.find((v: any) => v.id === editing.id);
           if (updated) setSelectedVehicle(updated);
         }
-      } else setSaveError(d.error || "Kaydetme başarısız");
-    } finally { setSaving(false); }
+      } else setSaveError(errorText(d.fieldErrors ?? d.error, "Kaydetme başarısız"));
+    } catch { setSaveError("Bağlantı hatası. Girdileriniz korundu; tekrar deneyin"); }
+    finally { setSaving(false); }
   }
 
   async function saveDoc(vehicleId: string) {
@@ -316,7 +320,7 @@ export default function AraclarPage() {
               className="bg-zinc-900 border border-zinc-800 text-white text-sm pl-8 pr-4 py-2 rounded-lg focus:outline-none focus:border-zinc-600 placeholder-zinc-600 font-mono w-40" />
           </div>
           <select value={list.filters.company} onChange={e => list.setFilter("company", e.target.value)}
-            className="bg-zinc-900 border border-zinc-800 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-600">
+            className="min-w-0 max-w-full w-full sm:w-auto bg-zinc-900 border border-zinc-800 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-600">
             <option value="">Tüm Firmalar</option>
             {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -481,7 +485,7 @@ export default function AraclarPage() {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Kapasite</label>
-                  <input type="number" value={form.capacity} onChange={e => setForm(f => ({ ...f, capacity: +e.target.value }))}
+                  <input type="number" min="0" step="1" value={form.capacity} onChange={e => setForm(f => ({ ...f, capacity: +e.target.value }))}
                     className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none focus:border-zinc-500" />
                 </div>
                 <div>

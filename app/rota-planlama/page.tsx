@@ -32,6 +32,24 @@ export default function RotaPlanlamaPage() {
   const [direction, setDirection] = useState("morning");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [shifts, setShifts] = useState<Array<{ id: number; shift_name: string; expected_time: string }>>([]);
+  const [shiftId, setShiftId] = useState("");
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [changingPlan, setChangingPlan] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setShiftId("");
+    setShifts([]);
+    if (companyId) {
+      fetch(`/api/company-shifts?company_id=${encodeURIComponent(companyId)}`, { signal: controller.signal })
+        .then(r => r.json()).then(d => {
+          if (!d.ok) throw new Error("Vardiyalar yüklenemedi");
+          setShifts(d.data || []);
+        }).catch(e => { if (e.name !== "AbortError") setPlanError("Vardiyalar yüklenemedi"); });
+    }
+    return () => controller.abort();
+  }, [companyId]);
 
   async function loadPlans(nextCompanyId = companyId) {
     setLoading(true);
@@ -55,7 +73,7 @@ export default function RotaPlanlamaPage() {
       const d = await fetch("/api/route-plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, company_id: companyId || null, direction }),
+        body: JSON.stringify({ name, company_id: companyId || null, shift_id: shiftId || null, direction }),
       }).then(r => r.json());
       if (!d.ok) return alert(d.error || "Plan oluşturulamadı");
       setName("");
@@ -65,14 +83,22 @@ export default function RotaPlanlamaPage() {
     }
   }
 
-  async function publishPlan(id: string, activate = false) {
+  async function publishPlan(id: string, activate = false, archive = false) {
+    if (changingPlan) return;
+    const reason = archive ? window.prompt("Arşivleme gerekçesi:") : null;
+    if (archive && !reason?.trim()) return;
+    setChangingPlan(id);
+    setPlanError(null);
+    try {
     const d = await fetch(`/api/route-plans/${id}/publish`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ activate }),
+      body: JSON.stringify({ activate, archive, reason }),
     }).then(r => r.json());
-    if (!d.ok) return alert(d.error || "Plan durumu güncellenemedi");
+    if (!d.ok) { setPlanError(typeof d.error === "string" ? d.error : "Plan durumu güncellenemedi"); return; }
     await loadPlans(companyId);
+    } catch { setPlanError("Bağlantı hatası; plan listesini yenileyip durumu kontrol edin"); }
+    finally { setChangingPlan(null); }
   }
 
   const [optimizing, setOptimizing] = useState<string | null>(null);
@@ -115,6 +141,7 @@ export default function RotaPlanlamaPage() {
             <p className="mt-1 text-sm text-zinc-500">Plan oluştur, versiyonla, yayınla ve aktif planı kontrol et.</p>
           </div>
           <select
+            aria-label="Plan firması"
             value={companyId}
             onChange={e => { setCompanyId(e.target.value); loadPlans(e.target.value); }}
             className="rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-violet-600"
@@ -126,6 +153,14 @@ export default function RotaPlanlamaPage() {
 
         <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
           <h2 className="text-sm font-semibold text-white">Yeni plan</h2>
+          <label className="mt-3 block text-xs text-zinc-400">
+            Plan vardiyası
+            <select aria-label="Plan vardiyası" value={shiftId} onChange={e => setShiftId(e.target.value)}
+              className="mt-1 block w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white">
+              <option value="">Vardiya seçin (yayın için gerekli)</option>
+              {shifts.map(s => <option key={s.id} value={String(s.id)}>{s.shift_name} · {s.expected_time}</option>)}
+            </select>
+          </label>
           <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_180px_auto]">
             <input
               value={name}
@@ -144,6 +179,7 @@ export default function RotaPlanlamaPage() {
           </div>
         </section>
 
+        {planError && <p role="alert" className="mb-4 text-sm text-red-400">{planError}</p>}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70">
           <div className="border-b border-zinc-800 px-4 py-3">
             <h2 className="text-sm font-semibold text-white">Planlar</h2>
@@ -182,8 +218,11 @@ export default function RotaPlanlamaPage() {
                           <button onClick={() => optimizePlan(plan.id)} disabled={optimizing === plan.id} className="rounded-lg border border-violet-700 px-3 py-1.5 text-xs font-semibold text-violet-200 hover:bg-violet-950 disabled:opacity-50">
                             {optimizing === plan.id ? "Optimize ediliyor..." : "Optimize et"}
                           </button>
-                          <button onClick={() => publishPlan(plan.id, false)} className="rounded-lg border border-sky-700 px-3 py-1.5 text-xs font-semibold text-sky-200 hover:bg-sky-950">Yayınla</button>
-                          <button onClick={() => publishPlan(plan.id, true)} className="rounded-lg border border-green-700 px-3 py-1.5 text-xs font-semibold text-green-200 hover:bg-green-950">Aktifleştir</button>
+                          {["draft", "published"].includes(plan.status) && <>
+                            <button disabled={!!changingPlan} onClick={() => publishPlan(plan.id, false)} className="rounded-lg border border-sky-700 px-3 py-1.5 text-xs font-semibold text-sky-200 hover:bg-sky-950">Yayınla</button>
+                            <button disabled={!!changingPlan} onClick={() => publishPlan(plan.id, true)} className="rounded-lg border border-green-700 px-3 py-1.5 text-xs font-semibold text-green-200 hover:bg-green-950">Aktifleştir</button>
+                          </>}
+                          {plan.status !== "archived" && <button disabled={!!changingPlan} onClick={() => publishPlan(plan.id, false, true)} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-zinc-800">Arşivle</button>}
                         </div>
                       </td>
                     </tr>

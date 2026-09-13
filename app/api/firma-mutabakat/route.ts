@@ -1,3 +1,9 @@
+import { RequestError } from "@/lib/request-error";
+import { dateOnly } from "@/lib/financial-validation";
+import { transactionStore } from "@/lib/transaction-store";
+import { settlementServices, pricedTotal } from "@/lib/cetele-pricing";
+import { assertCompanyAccess } from "@/lib/company-access";
+import { logAudit } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -5,6 +11,7 @@ import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
+import { appendFinancialSnapshot } from "@/lib/financial-snapshots";
 
 export async function GET(req: NextRequest) {
   try {
@@ -57,69 +64,28 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
     if (!hasPermission(user, "firma_mutabakat:create"))
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
-
     const body = await req.json();
-    const company_id: string = body.company_id;
-    const donem: string = body.donem; // ayın herhangi bir günü, örn "2026-07-01"
-    if (!company_id) return NextResponse.json({ ok: false, error: "Firma seçiniz" }, { status: 400 });
-    if (!donem) return NextResponse.json({ ok: false, error: "Dönem zorunludur" }, { status: 400 });
-
-    const db = getDb();
-
-    const existing = await db.prepare(
-      `SELECT id FROM firma_mutabakat WHERE company_id = ? AND donem = ?`
-    ).get<{ id: string }>(company_id, donem.slice(0, 8) + "01");
-    if (existing) return NextResponse.json({ ok: false, error: "Bu firma için bu dönemde zaten mutabakat var" }, { status: 400 });
-
-    // O firmanın güzergahlarında, o ay içinde onaylı işlenen çetele kayıtlarının
-    // güzergah fiyatından hesaplanan toplamı — mutabakatın gelir tutarı.
-    const donemBaslangic = donem.slice(0, 8) + "01";
-    const totalRow = await db.prepare(
-      `SELECT COALESCE(SUM(csp.price_amount), 0) AS toplam
-       FROM cetele c
-       JOIN routes r ON r.id = c.route_id
-       LEFT JOIN vehicles v ON v.id = c.vehicle_id
-       LEFT JOIN route_supplier_prices csp ON csp.id = (
-         SELECT rsp.id FROM route_supplier_prices rsp
-         WHERE rsp.route_id = c.route_id
-           AND rsp.company_id = r.company_id
-           AND (
-             (c.vehicle_id IS NOT NULL AND rsp.vehicle_id = c.vehicle_id)
-             OR (v.plate IS NOT NULL AND rsp.plate = v.plate)
-             OR (rsp.vehicle_id IS NULL AND rsp.plate IS NULL)
-           )
-           AND (rsp.hareket_tipi IS NULL OR rsp.hareket_tipi = c.hareket_tipi)
-           AND (rsp.yon IS NULL OR rsp.yon = c.yon)
-           AND rsp.valid_from <= c.tarih
-           AND (rsp.valid_to IS NULL OR rsp.valid_to >= c.tarih)
-         -- En spesifik eşleşme önce (tek + araç spesifikliği toplanır), eşitlikte
-         -- en yeni valid_from (bkz. /api/cetele)
-         ORDER BY (CASE WHEN rsp.hareket_tipi IS NOT NULL THEN 0 ELSE 1 END)
-                  + (CASE WHEN rsp.yon IS NOT NULL THEN 0 ELSE 1 END)
-                  + (CASE WHEN rsp.vehicle_id IS NOT NULL THEN 0 WHEN rsp.plate IS NOT NULL THEN 1 ELSE 2 END),
-                  rsp.valid_from DESC
-         LIMIT 1
-       )
-       WHERE r.company_id = ?
-         AND c.durum = 'onaylandi'
-         AND c.tarih >= ?
-         AND c.tarih < DATE_ADD(?, INTERVAL 1 MONTH)`
-    ).get<{ toplam: number }>(company_id, donemBaslangic, donemBaslangic);
-
-    const id = uuidv4();
-    const now = nowIso();
-    const tutar = Number(totalRow?.toplam ?? 0);
-
-    await db.prepare(
-      `INSERT INTO firma_mutabakat
-         (id, company_id, donem, tutar, para_birimi, durum, gonderilis_tarihi, aciklama, created_by, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
-    ).run(
-      id, company_id, donemBaslangic, tutar, "TRY",
-      "bekliyor", now, body.aciklama || null,
-      user.id, now, now,
-    );
-
-    return NextResponse.json({ ok: true, data: { id, tutar } }, { status: 201 });
+    if (!body.company_id) throw new RequestError("Firma seçiniz");
+    assertCompanyAccess(user, body.company_id);
+    const period = dateOnly(body.donem).slice(0, 8) + "01";
+    const data = await getDb().transaction(async conn => {
+      const db = transactionStore(conn);
+      const company = await db.prepare("SELECT id FROM companies WHERE id = ? FOR UPDATE").get(body.company_id);
+      if (!company) throw new RequestError("Firma bulunamadı", 404);
+      const existing = await db.prepare("SELECT id FROM firma_mutabakat WHERE company_id = ? AND donem = ? FOR UPDATE").get(body.company_id, period);
+      if (existing) throw new RequestError("Bu firma için bu dönemde zaten mutabakat var");
+      const services = await settlementServices(db, body.company_id, period);
+      const tutar = pricedTotal(services);
+      const id = uuidv4(), now = nowIso();
+      await db.prepare(`INSERT INTO firma_mutabakat
+        (id, company_id, donem, tutar, para_birimi, durum, gonderilis_tarihi, aciklama, created_by, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(id, body.company_id, period, tutar, "TRY", "bekliyor", now, body.aciklama || null, user.id, now, now);
+      await appendFinancialSnapshot(conn, "firma_mutabakat", id, "create", user.id,
+        { company_id: body.company_id, period, tutar, currency: "TRY", services });
+      await logAudit({ actorUserId: user.id, action: "firma_mutabakat.create", entityType: "firma_mutabakat", entityId: id,
+        details: { company_id: body.company_id, period, tutar, currency: "TRY", services } }, conn);
+      return { id, tutar };
+    });
+    return NextResponse.json({ ok: true, data }, { status: 201 });
   } catch (e) { return apiError(e); }
 }

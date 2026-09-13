@@ -6,6 +6,8 @@ import { apiError } from "@/lib/api-error";
 import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { assertCompanyAccess } from "@/lib/company-access";
+import { RequestError } from "@/lib/request-error";
 
 function parseJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -46,11 +48,16 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
     if (!hasPermission(user, "routes:optimize")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
     const body = await req.json();
+    assertCompanyAccess(user, body.company_id || null);
     const name = String(body.name || "").trim();
     if (!name) return NextResponse.json({ ok: false, error: "Plan adı zorunludur" }, { status: 400 });
     const id = uuidv4();
     const now = nowIso();
     const db = getDb();
+    if (body.shift_id) {
+      const shift = await db.prepare("SELECT id FROM company_shifts WHERE id=? AND company_id=? AND active=1").get(body.shift_id, body.company_id || null);
+      if (!shift) throw new RequestError("Vardiya seçilen firmaya ait ve aktif olmalıdır", 409);
+    }
     await db.prepare(`INSERT INTO route_plans (id, company_id, shift_id, name, direction, status, metrics_json, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`)
       .run(id, body.company_id || null, body.shift_id || null, name, body.direction || "morning", body.metrics ? JSON.stringify(body.metrics) : null, user.id, now, now);
     if (body.seed_from_routes !== false) {

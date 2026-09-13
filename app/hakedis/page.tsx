@@ -6,6 +6,8 @@ import ComboboxSearch from "@/components/ComboboxSearch";
 import { toast } from "@/lib/toast";
 import { hasPermission } from "@/lib/permissions";
 import { computeHakedisTutarlari } from "@/lib/hakedis-calc";
+import { validatePeriod, financialNumber } from "@/lib/financial-validation";
+import { errorText } from "@/lib/error-text";
 
 function formatCurrency(v: number | string | null | undefined) {
   const n = Number(v ?? 0);
@@ -46,6 +48,7 @@ export default function HakedisPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [availableCetele, setAvailableCetele] = useState<any[]>([]);
   const [ceteleLoading, setCeteleLoading] = useState(false);
+  const [ceteleLoadError, setCeteleLoadError] = useState<string | null>(null);
   const [selectedCeteleIds, setSelectedCeteleIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -75,21 +78,25 @@ export default function HakedisPage() {
   // İşleten + dönem seçildiğinde, o işletenin araçlarına ait onaylı ve henüz
   // hiçbir hakedişe bağlanmamış çetele kayıtlarını getirir.
   useEffect(() => {
-    if (!form.isleten_id || !form.donem_baslangic || !form.donem_bitis) {
-      setAvailableCetele([]); setSelectedCeteleIds(new Set());
+    setAvailableCetele([]); setSelectedCeteleIds(new Set()); setCeteleLoadError(null);
+    if (!form.isleten_id || !form.donem_baslangic || !form.donem_bitis || form.donem_baslangic > form.donem_bitis) {
+      setCeteleLoading(false);
       return;
     }
-    loadAvailableCetele();
+    const controller = new AbortController();
+    loadAvailableCetele(controller.signal);
+    return () => controller.abort();
   }, [form.isleten_id, form.donem_baslangic, form.donem_bitis]);
 
-  async function loadAvailableCetele() {
+  async function loadAvailableCetele(signal: AbortSignal) {
     setCeteleLoading(true);
     try {
       const [araclarRes, ceteleRes] = await Promise.all([
-        fetch(`/api/isletenler/${form.isleten_id}/araclar`).then(r => r.json()),
-        fetch(`/api/cetele?tarih=${form.donem_baslangic}&tarih_bitis=${form.donem_bitis}&durum=onaylandi&limit=500`).then(r => r.json()),
+        fetch(`/api/isletenler/${form.isleten_id}/araclar`, { signal }).then(r => r.json()),
+        fetch(`/api/cetele?tarih=${form.donem_baslangic}&tarih_bitis=${form.donem_bitis}&durum=onaylandi&limit=500`, { signal }).then(r => r.json()),
       ]);
-      if (!araclarRes.ok || !ceteleRes.ok) { setAvailableCetele([]); return; }
+      if (signal.aborted) return;
+      if (!araclarRes.ok || !ceteleRes.ok) throw new Error("Hizmet kayıtları yüklenemedi");
       // Aracın o günün tarihinde bu işletene atanmış olması gerekir — sadece
       // "bu araç bu işletende geçmişte hiç bulunmuş mu" yetmez, çünkü araç
       // sonradan başka bir işletene geçmiş olabilir (sunucu tarafı da aynı
@@ -106,7 +113,8 @@ export default function HakedisPage() {
       const filtered = ceteleRes.data.filter((c: any) => !c.hakedis_id && owned(c.vehicle_id, c.tarih));
       setAvailableCetele(filtered);
       setSelectedCeteleIds(new Set(filtered.map((c: any) => c.id)));
-    } finally { setCeteleLoading(false); }
+    } catch { if (!signal.aborted) setCeteleLoadError("Hizmet kayıtları yüklenemedi. Dönemi yeniden seçerek tekrar deneyin"); }
+    finally { if (!signal.aborted) setCeteleLoading(false); }
   }
 
   function toggleCetele(id: string) {
@@ -118,8 +126,16 @@ export default function HakedisPage() {
   }
 
   async function save() {
+    if (saving || ceteleLoading) return;
     if (!form.isleten_id) { setSaveError("İşleten seçiniz"); return; }
     if (!form.donem_baslangic || !form.donem_bitis) { setSaveError("Dönem başlangıç/bitiş zorunludur"); return; }
+    try {
+      validatePeriod(form.donem_baslangic, form.donem_bitis);
+      financialNumber(form.brut_tutar || 0, "Brüt tutar");
+      financialNumber(form.kdv_orani, "KDV oranı", 100);
+      financialNumber(form.tevkifat_orani, "Tevkifat oranı", 100);
+    } catch (e) { setSaveError(e instanceof Error ? e.message : "Girdileri kontrol edin"); return; }
+    if (ceteleLoadError || invalidPriceCount) { setSaveError(ceteleLoadError || "Seçili hizmetlerin fiyatlarını ve para birimini kontrol edin"); return; }
     setSaving(true); setSaveError(null);
     try {
       const res = await fetch("/api/hakedis", {
@@ -128,7 +144,7 @@ export default function HakedisPage() {
         body: JSON.stringify({ ...form, cetele_ids: Array.from(selectedCeteleIds) }),
       });
       const d = await res.json();
-      if (!d.ok) { setSaveError(d.error || "Kayıt hatası"); return; }
+      if (!d.ok) { setSaveError(errorText(d.error, "Kayıt hatası")); return; }
       const excluded = [...(d.data.already_linked || []), ...(d.data.not_owned || [])];
       if (excluded.length > 0) {
         toast.error(
@@ -142,7 +158,8 @@ export default function HakedisPage() {
       setShowForm(false);
       setForm({ ...EMPTY_FORM });
       load();
-    } finally { setSaving(false); }
+    } catch { setSaveError("Kayıt işlemi tamamlanamadı. Girdileriniz korundu"); }
+    finally { setSaving(false); }
   }
 
   async function doAction(id: string, action: string, confirmMsg?: string) {
@@ -167,7 +184,9 @@ export default function HakedisPage() {
   const ceteleToplam = availableCetele
     .filter((c: any) => selectedCeteleIds.has(c.id))
     .reduce((sum: number, c: any) => sum + (Number(c.birim_ucret) || 0), 0);
-  const ceteleFiyatliMi = selectedCeteleIds.size > 0 && ceteleToplam > 0;
+  const invalidPriceCount = availableCetele.filter(c => selectedCeteleIds.has(c.id) &&
+    (c.birim_ucret == null || !Number.isFinite(Number(c.birim_ucret)) || Number(c.birim_ucret) < 0 || c.birim_ucret_para_birimi !== "TRY")).length;
+  const ceteleFiyatliMi = selectedCeteleIds.size > 0;
   const brut = ceteleFiyatliMi ? ceteleToplam : parseFloat(form.brut_tutar || "0");
   const kdvOrani = parseFloat(form.kdv_orani || "0");
   const tevkifatOrani = parseFloat(form.tevkifat_orani || "0");
@@ -324,7 +343,7 @@ export default function HakedisPage() {
                 </label>
                 <label className="block">
                   <span className="text-zinc-400 text-xs font-medium mb-1 block">Dönem Bitiş *</span>
-                  <input type="date" value={form.donem_bitis} onChange={e => setForm(f => ({ ...f, donem_bitis: e.target.value }))}
+                  <input type="date" min={form.donem_baslangic} value={form.donem_bitis} onChange={e => setForm(f => ({ ...f, donem_bitis: e.target.value }))}
                     className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500 [color-scheme:dark]" />
                 </label>
               </div>
@@ -361,7 +380,7 @@ export default function HakedisPage() {
                           <span className="text-zinc-500">{c.route_name || c.hareket_tipi}{c.yon ? ` · ${c.yon === "giris" ? "Giriş" : "Çıkış"}` : ""}</span>
                           <span className="text-zinc-600">{formatDate(c.tarih)}</span>
                           <span className={`ml-auto font-medium ${Number(c.birim_ucret) > 0 ? "text-emerald-400" : "text-zinc-600"}`}>
-                            {Number(c.birim_ucret) > 0 ? formatCurrency(c.birim_ucret) : "fiyat tanımlı değil"}
+                            {c.birim_ucret != null ? `${Number(c.birim_ucret).toLocaleString("tr-TR")} ${c.birim_ucret_para_birimi || "?"}` : "fiyat tanımlı değil"}
                           </span>
                         </label>
                       ))}
@@ -370,10 +389,12 @@ export default function HakedisPage() {
                       Seçili çetelelerin toplamı: <span className="text-white font-semibold">{formatCurrency(ceteleToplam)}</span>
                       {ceteleFiyatliMi
                         ? " — brüt tutara otomatik yansır"
-                        : " — seçili çetelelerde tanımlı güzergah fiyatı yok, brüt tutarı elle girin"}
+                        : " — hizmet seçilmedi; manuel brüt tutar kullanılacak"}
                     </p>
+                    {invalidPriceCount > 0 && <p role="alert" className="text-red-400 text-xs">{invalidPriceCount} hizmette fiyat eksik veya para birimi uyumsuz. Kaydetmeden önce fiyatı düzeltin.</p>}
                     </>
                   )}
+                  {ceteleLoadError && <p role="alert" className="text-red-400 text-xs mt-2">{ceteleLoadError}</p>}
                 </div>
               )}
 
@@ -395,7 +416,7 @@ export default function HakedisPage() {
                       className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500" />
                   </label>
                   <label className="block">
-                    <span className="text-zinc-400 text-xs font-medium mb-1 block">Tevkifat Oranı (%)</span>
+                    <span className="text-zinc-400 text-xs font-medium mb-1 block">KDV Tevkifat Oranı (%)</span>
                     <input type="number" min="0" max="100" step="0.01" value={form.tevkifat_orani} onChange={e => setForm(f => ({ ...f, tevkifat_orani: e.target.value }))}
                       className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-zinc-500" />
                   </label>
@@ -420,7 +441,7 @@ export default function HakedisPage() {
                 className="flex-1 bg-zinc-800 text-zinc-300 font-medium text-sm py-2.5 rounded-xl hover:bg-zinc-700 transition-colors">
                 İptal
               </button>
-              <button onClick={save} disabled={saving || !form.isleten_id || !form.donem_baslangic || !form.donem_bitis}
+              <button onClick={save} disabled={saving || ceteleLoading || !!ceteleLoadError || invalidPriceCount > 0 || !form.isleten_id || !form.donem_baslangic || !form.donem_bitis || form.donem_baslangic > form.donem_bitis}
                 className="flex-1 bg-white text-zinc-950 font-semibold text-sm py-2.5 rounded-xl hover:bg-zinc-200 disabled:opacity-50 transition-colors">
                 {saving ? "Kaydediliyor..." : "Taslak Olarak Kaydet"}
               </button>

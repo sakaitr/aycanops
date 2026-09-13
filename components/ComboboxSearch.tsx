@@ -14,6 +14,12 @@ interface ComboboxSearchProps {
   emptyLabel?: string;
   className?: string;
   disabled?: boolean;
+  onSearch?: (query: string) => void;
+  loading?: boolean;
+  error?: string | null;
+  onLoadMore?: () => void;
+  onRetry?: () => void;
+  valueLabel?: string;
 }
 
 export default function ComboboxSearch({
@@ -24,15 +30,21 @@ export default function ComboboxSearch({
   emptyLabel = "— Seçin —",
   className = "",
   disabled = false,
+  onSearch,
+  loading = false,
+  error,
+  onLoadMore,
+  onRetry,
+  valueLabel,
 }: ComboboxSearchProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const selectedLabel = options.find((o) => o.value === value)?.label || "";
+  const selectedLabel = options.find((o) => o.value === value)?.label || valueLabel || "";
 
-  const filtered = query.trim()
+  const filtered = !onSearch && query.trim()
     ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
     : options;
 
@@ -51,6 +63,7 @@ export default function ComboboxSearch({
     if (disabled) return;
     setOpen(true);
     setQuery("");
+    onSearch?.("");
     setTimeout(() => inputRef.current?.focus(), 10);
   }
 
@@ -86,12 +99,12 @@ export default function ComboboxSearch({
           ref={inputRef}
           type="text"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => { setQuery(e.target.value); onSearch?.(e.target.value); }}
           placeholder={placeholder}
           className="w-full bg-zinc-800 border border-zinc-500 text-white text-sm px-3 py-2.5 rounded-lg focus:outline-none"
           onKeyDown={(e) => {
             if (e.key === "Escape") { setOpen(false); setQuery(""); }
-            if (e.key === "Enter" && filtered.length === 1) handleSelect(filtered[0]);
+            if (e.key === "Enter" && !loading && !error && filtered.length === 1) handleSelect(filtered[0]);
           }}
         />
       )}
@@ -106,7 +119,7 @@ export default function ComboboxSearch({
           >
             {emptyLabel}
           </button>
-          {filtered.length === 0 ? (
+          {error ? <div role="alert" className="px-3 py-3 text-red-400 text-sm">{error} {onRetry && <button type="button" onClick={onRetry}>Tekrar dene</button>}</div> : loading ? <p role="status" className="px-3 py-3 text-zinc-400 text-sm">Yükleniyor...</p> : filtered.length === 0 ? (
             <p className="px-3 py-3 text-zinc-600 text-sm">Sonuç bulunamadı</p>
           ) : (
             filtered.map((opt) => (
@@ -124,6 +137,7 @@ export default function ComboboxSearch({
               </button>
             ))
           )}
+          {!loading && !error && onLoadMore && <button type="button" onClick={onLoadMore} className="w-full px-3 py-2 text-sm text-sky-300">Daha fazla yükle</button>}
         </div>
       )}
     </div>

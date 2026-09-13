@@ -10,10 +10,11 @@ import ComboboxSearch from "@/components/ComboboxSearch";
 import { AutoChart } from "@/components/ReportCharts";
 import { REPORT_CATALOG, REPORT_CATEGORIES, type ReportDef } from "@/lib/reports/catalog";
 import type { ReportResult } from "@/lib/reports/queries";
+import { todayIstanbul } from "@/lib/time";
 
 // â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function today() { return new Date().toISOString().split("T")[0]; }
-function monthAgo() { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().split("T")[0]; }
+function today() { return todayIstanbul(); }
+function monthAgo() { const d = new Date(today() + "T00:00:00Z"); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().split("T")[0]; }
 function downloadBlob(b64: string, filename: string, mime: string) {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
@@ -88,7 +89,10 @@ function KpiPanel({ kpi, loading, onRefresh }: { kpi: any; loading: boolean; onR
           <p className="text-xs text-zinc-500">{fleet?.active ?? 0} / {fleet?.total ?? 0} araç aktif</p>
         </div>
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col items-center gap-2">
-          <GaugeRing percent={sla?.percent ?? 0} color="#60a5fa" />
+          {sla?.total > 0 && sla?.percent != null ? <GaugeRing percent={sla.percent} color="#60a5fa" /> :
+            <div className="flex h-24 w-24 items-center justify-center rounded-full border-8 border-zinc-800 text-center text-xs text-zinc-400">
+              {sla?.data_status === "unavailable" ? "Veri alınamadı" : sla?.data_status === "not_authorized" ? "Yetki gerekli" : "Veri yok"}
+            </div>}
           <p className="text-sm font-semibold text-white">SLA Uyum Oranı</p>
           <p className="text-xs text-zinc-500">{sla?.on_time ?? 0} / {sla?.total ?? 0} zamanında çözüm (30g)</p>
         </div>
@@ -793,7 +797,7 @@ function GunlukRaporPanel({
   date: string; setDate: (d: string) => void;
   data: any; loading: boolean; onLoad: (d: string) => void;
 }) {
-  const todayVal = new Date().toISOString().split("T")[0];
+  const todayVal = todayIstanbul();
 
   function handleDateChange(d: string) { setDate(d); }
   function handleLoad() { onLoad(date); }

@@ -6,6 +6,7 @@ import { apiError } from "@/lib/api-error";
 import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { lockEditablePlan } from "@/lib/route-plan-lock";
 
 type RoutePayload = {
   id?: string;
@@ -113,6 +114,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const routes = Array.isArray(body.routes) ? body.routes as RoutePayload[] : [];
 
     await db.transaction(async (conn) => {
+      await lockEditablePlan(conn, id, current);
       await conn.execute(
         `INSERT INTO route_plan_versions (id, route_plan_id, version_no, snapshot_json, created_by, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
@@ -162,9 +164,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           }
         }
       }
+      await logAudit({ actorUserId: user.id, action: "route_plan.update", entityType: "route_plan", entityId: id,
+        details: { version_no: nextVersion, route_count: routes.length, before: current } }, conn);
     });
-
-    await logAudit({ actorUserId: user.id, action: "route_plan.update", entityType: "route_plan", entityId: id, details: { version_no: nextVersion, route_count: routes.length } });
     const updated = await loadPlan(db, id);
     return NextResponse.json({ ok: true, data: updated });
   } catch (e) {

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Nav from "@/components/Nav";
 import BulkActionBar from "@/components/BulkActionBar";
 import ComboboxSearch from "@/components/ComboboxSearch";
+import VehicleSelect, { type SelectableVehicle } from "@/components/VehicleSelect";
 import { useListState } from "@/hooks/useListState";
 import { useGlobalCompany } from "@/contexts/CompanyContext";
 import { toast } from "@/lib/toast";
@@ -41,7 +42,6 @@ export default function GuzergahlarPage() {
   const [unlinkedLoading, setUnlinkedLoading] = useState(false);
   const [promoting, setPromoting] = useState<string | null>(null);
   const [showUnlinked, setShowUnlinked] = useState(false);
-  const [vehicles, setVehicles] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [atamaGecmisi, setAtamaGecmisi] = useState<any[]>([]);
@@ -82,7 +82,6 @@ export default function GuzergahlarPage() {
       else router.replace("/login");
     }).catch(() => { router.replace("/login"); });
     loadCompanies();
-    loadVehicles();
     fetch("/api/suruculer?limit=500").then(r => r.json()).then(d => { if (d.ok) setDrivers(d.data); });
   }, []);
 
@@ -238,12 +237,6 @@ export default function GuzergahlarPage() {
     if (d.ok) setCompanies(d.data);
   }
 
-  async function loadVehicles() {
-    const res = await fetch("/api/vehicles");
-    const d = await res.json();
-    if (d.ok) setVehicles(d.data.filter((v: any) => v.status_code === "active"));
-  }
-
   async function loadRoutes() {
     setLoading(true);
     try {
@@ -272,8 +265,7 @@ export default function GuzergahlarPage() {
     setShowForm(true);
   }
 
-  function onVehicleChange(vehicleId: string) {
-    const v = vehicles.find(v => v.id === vehicleId);
+  function onVehicleChange(vehicleId: string, v?: SelectableVehicle) {
     setForm(f => ({
       ...f,
       vehicle_id: vehicleId,
@@ -341,8 +333,7 @@ export default function GuzergahlarPage() {
 
   async function saveRoutePrice() {
     if (!detailRoute || !priceForm.price_amount.trim()) return;
-    const vehicle = vehicles.find(v => v.id === detailRoute.vehicle_id);
-    const plate = (priceForm.plate || detailRoute.vehicle_plate || vehicle?.plate || "").trim();
+    const plate = (priceForm.plate || detailRoute.vehicle_plate || "").trim();
     if (!plate) { alert("Fiyat için plaka zorunlu"); return; }
     setSavingPrice(true);
     try {
@@ -927,12 +918,10 @@ export default function GuzergahlarPage() {
 
             <div>
               <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Araç *</label>
-              <ComboboxSearch
-                options={vehicles.map(v => ({ value: v.id, label: `${v.plate}${v.driver_name ? ` · ${v.driver_name}` : ""}` }))}
+              <VehicleSelect
+                companyId={atamaForm.company_id || detailRoute?.company_id || selectedCompany}
                 value={atamaForm.vehicle_id}
                 onChange={val => setAtamaForm(f => ({ ...f, vehicle_id: val }))}
-                emptyLabel="— Araç seç —"
-                placeholder="Plaka ara..."
               />
             </div>
 
@@ -1084,12 +1073,11 @@ export default function GuzergahlarPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Atanan Araç</label>
-                <ComboboxSearch
-                  options={vehicles.map(v => ({ value: v.id, label: `${v.plate}${v.driver_name ? ` · ${v.driver_name}` : ""}` }))}
+                <VehicleSelect
+                  companyId={selectedCompany || editing?.company_id}
+                  selectedLabel={editing?.vehicle_plate}
                   value={form.vehicle_id}
-                  onChange={val => onVehicleChange(val)}
-                  emptyLabel="— Araç seç —"
-                  placeholder="Plaka veya şöför ara..."
+                  onChange={onVehicleChange}
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

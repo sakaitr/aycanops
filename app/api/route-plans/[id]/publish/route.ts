@@ -5,49 +5,58 @@ import { apiError } from "@/lib/api-error";
 import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { logAudit } from "@/lib/audit";
+import { RequestError } from "@/lib/request-error";
+import { transactionStore } from "@/lib/transaction-store";
+import { assertCompanyAccess } from "@/lib/company-access";
+import { validatePlanForPublication, type RoutePlan } from "@/lib/route-plan-validation";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
     if (!user) return NextResponse.json({ ok: false, error: "Yetkisiz" }, { status: 401 });
-    if (!hasPermission(user, "routes:publish")) return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
-
+    if (!hasPermission(user, "routes:publish")) throw new RequestError("Yetersiz yetki", 403);
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
-    const targetStatus = body.activate === true ? "active" : "published";
-    const db = getDb();
-    const plan = await db.prepare("SELECT * FROM route_plans WHERE id = ? LIMIT 1").get<any>(id);
-    if (!plan) return NextResponse.json({ ok: false, error: "Plan bulunamadı" }, { status: 404 });
-    if (plan.company_id && user.allowed_companies) {
-      const allowed: string[] = JSON.parse(user.allowed_companies);
-      if (!allowed.includes(plan.company_id)) {
-        return NextResponse.json({ ok: false, error: "Bu firmaya erişim yetkiniz yok" }, { status: 403 });
+    const body = await req.json();
+    const target = body.archive === true ? "archived" : body.activate === true ? "active" : "published";
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    if (target === "archived" && !reason) throw new RequestError("Arşivleme gerekçesi gerekli");
+    const initial = await getDb().prepare("SELECT company_id FROM route_plans WHERE id=?").get<{ company_id: string | null }>(id);
+    if (!initial) throw new RequestError("Plan bulunamadı", 404);
+    assertCompanyAccess(user, initial.company_id);
+    return await getDb().transaction(async conn => {
+      const db = transactionStore(conn);
+      // Serialize company activations before locking competing plans.
+      const company = await db.prepare("SELECT is_active FROM companies WHERE id=? FOR UPDATE")
+        .get<{ is_active: number }>(initial.company_id);
+      const plan = await db.prepare("SELECT * FROM route_plans WHERE id=? FOR UPDATE").get<RoutePlan>(id);
+      if (!plan) throw new RequestError("Plan bulunamadı", 404);
+      if (plan.company_id !== initial.company_id) throw new RequestError("Plan değişti; yeniden yükleyin", 409);
+      if (!["draft", "published", "active"].includes(plan.status)) throw new RequestError("Bu durumdaki plan değiştirilemez", 409);
+      const now = nowIso();
+      if (target === "archived") {
+        await db.prepare("UPDATE route_plans SET status='archived', updated_at=? WHERE id=?").run(now, id);
+        await logAudit({ actorUserId: user.id, action: "route_plan.archive", entityType: "route_plan", entityId: id,
+          details: { before: plan, after: { ...plan, status: target, updated_at: now }, reason } }, conn);
+      } else {
+        if (!company || Number(company.is_active) !== 1) throw new RequestError("Yayın için aktif firma gerekli", 409);
+        if (plan.status === "active" && target === "published") throw new RequestError("Aktif plan geri yayın durumuna alınamaz; arşivleyin", 409);
+        const evidence = await validatePlanForPublication(db, plan);
+        if (target === "active") {
+          const previous = await db.prepare("SELECT * FROM route_plans WHERE id<>? AND status='active' AND company_id=? AND shift_id <=> ? AND direction=? FOR UPDATE")
+            .all<RoutePlan>(id, plan.company_id, plan.shift_id, plan.direction);
+          for (const old of previous) {
+            await db.prepare("UPDATE route_plans SET status='archived', updated_at=? WHERE id=?").run(now, old.id);
+            await logAudit({ actorUserId: user.id, action: "route_plan.archive", entityType: "route_plan", entityId: old.id,
+              details: { before: old, after: { ...old, status: "archived", updated_at: now }, reason: "Yeni plan aktifleştirildi", replacement_id: id } }, conn);
+          }
+        }
+        await db.prepare("UPDATE route_plans SET status=?, published_by=?, published_at=?, updated_at=? WHERE id=?")
+          .run(target, user.id, now, now, id);
+        await logAudit({ actorUserId: user.id, action: target === "active" ? "route_plan.activate" : "route_plan.publish",
+          entityType: "route_plan", entityId: id, details: { before: plan,
+            after: { ...plan, status: target, published_by: user.id, published_at: now, updated_at: now }, evidence } }, conn);
       }
-    }
-    if (!["draft", "published", "active"].includes(String(plan.status))) return NextResponse.json({ ok: false, error: "Plan yayınlanamaz" }, { status: 400 });
-
-    const routeCount = await db.prepare("SELECT COUNT(*) AS total FROM route_plan_routes WHERE route_plan_id = ?").get<{ total: number }>(id);
-    if ((routeCount?.total ?? 0) === 0) return NextResponse.json({ ok: false, error: "Yayınlamak için en az bir plan rotası gerekli" }, { status: 400 });
-
-    const now = nowIso();
-    await db.transaction(async (conn) => {
-      if (targetStatus === "active") {
-        await conn.execute(
-          `UPDATE route_plans SET status='archived', updated_at=?
-           WHERE id <> ? AND status='active'
-             AND (company_id <=> ?) AND (shift_id <=> ?) AND direction = ?`,
-          [now, id, plan.company_id || null, plan.shift_id || null, plan.direction || "morning"]
-        );
-      }
-      await conn.execute(
-        "UPDATE route_plans SET status=?, published_by=?, published_at=?, updated_at=? WHERE id=?",
-        [targetStatus, user.id, now, now, id]
-      );
+      return NextResponse.json({ ok: true, data: { id, status: target } });
     });
-
-    await logAudit({ actorUserId: user.id, action: targetStatus === "active" ? "route_plan.activate" : "route_plan.publish", entityType: "route_plan", entityId: id, details: { previous_status: plan.status, version_no: plan.version_no } });
-    return NextResponse.json({ ok: true, data: { id, status: targetStatus, published_at: now } });
-  } catch (e) {
-    return apiError(e);
-  }
+  } catch (e) { return apiError(e); }
 }

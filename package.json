@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:unit": "node --test tests/hakedis-calc.test.cjs tests/financial-validation.test.cjs",
+    "test:api": "node --test tests/financial-api.integration.test.cjs",
+    "test:ui": "node --test tests/ui-regressions.cjs",
     "dev": "next dev",
     "build": "next build --webpack",
     "build:web": "next build --webpack",

@@ -7,6 +7,8 @@ import { logAudit } from "@/lib/audit";
 import type { ResultSetHeader } from "mysql2/promise";
 import { v4 as uuidv4 } from "uuid";
 import { ensureCompanyVehicle } from "@/lib/company-vehicles";
+import { assertMasterDeletable } from "@/lib/deletion-guards";
+import { apiError } from "@/lib/api-error";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -127,16 +129,16 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
     const now = nowIso();
     const result = await db.transaction(async (conn) => {
+      await assertMasterDeletable(conn, "routes", id);
       const [passengers] = await conn.execute<ResultSetHeader>("UPDATE passengers SET route_id = NULL, updated_at = ? WHERE route_id = ?", [now, id]);
       const [companyVehicles] = await conn.execute<ResultSetHeader>("UPDATE company_vehicles SET route_id = NULL, route_name = NULL WHERE route_id = ?", [id]);
-      const [planRoutes] = await conn.execute<ResultSetHeader>("UPDATE route_plan_routes SET route_id = NULL, updated_at = ? WHERE route_id = ?", [now, id]);
       await conn.execute("UPDATE geofences SET route_id = NULL, updated_at = ? WHERE route_id = ?", [now, id]);
       const [deleted] = await conn.execute<ResultSetHeader>("DELETE FROM routes WHERE id = ?", [id]);
       return {
         deleted: deleted?.affectedRows ?? 0,
         unassigned_passengers: passengers?.affectedRows ?? 0,
         unlinked_company_vehicles: companyVehicles?.affectedRows ?? 0,
-        unlinked_plan_routes: planRoutes?.affectedRows ?? 0,
+        unlinked_plan_routes: 0,
       };
     });
 
@@ -149,7 +151,5 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     });
 
     return NextResponse.json({ ok: true, data: result });
-  } catch (e) {
-    return NextResponse.json({ ok: false, error: "Sunucu hatası" }, { status: 500 });
-  }
+  } catch (e) { return apiError(e); }
 }

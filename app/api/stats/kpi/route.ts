@@ -37,6 +37,7 @@ export async function GET() {
 
     // ── 2. SLA Uyumu ───────────────────────────────────────────────────
     let slaTotal = 0, slaOnTime = 0;
+    let slaStatus = "not_authorized";
     if (isAtLeast(user.role, "yonetici")) {
       const r = await q<{total:number; on_time:number}>(`
         SELECT
@@ -48,8 +49,9 @@ export async function GET() {
       `, today);
       slaTotal  = Number(r?.total  || 0);
       slaOnTime = Number(r?.on_time || 0);
+      slaStatus = r?.total == null ? "unavailable" : slaTotal > 0 ? "available" : "no_data";
     }
-    const slaPercent = slaTotal > 0 ? Math.round((slaOnTime / slaTotal) * 100) : 100;
+    const slaPercent = slaStatus === "available" ? Math.round((slaOnTime / slaTotal) * 100) : null;
 
     // ── 3. Denetim Geçme Oranı (Inspection Pass Rate - last 30 days) ────
     const inspTotal = (await q<{c:number}>("SELECT COUNT(*) as c FROM inspections WHERE inspection_date >= DATE_SUB(?,INTERVAL 30 DAY)", today)).c || 0;
@@ -101,7 +103,7 @@ export async function GET() {
 
     // ── 8. Son 30 gün araç giriş trendi (sparkline) ────────────────────
     const arrivalSparkRows = await qa<{day:string;count:number}>(`
-      SELECT arrival_date as day, COUNT(*) as count
+      SELECT DATE_FORMAT(arrival_date, '%Y-%m-%d') as day, COUNT(*) as count
       FROM vehicle_arrivals
       WHERE arrival_date >= DATE_SUB(?, INTERVAL 29 DAY)
       GROUP BY arrival_date
@@ -109,8 +111,9 @@ export async function GET() {
     `, today);
     const arrivalSpark: number[] = [];
     for (let i = 29; i >= 0; i--) {
-      const dt = new Date(today + "T00:00:00+03:00");
-      dt.setDate(dt.getDate() - i);
+      // Arithmetic on calendar dates, not midnight instants converted from Istanbul to UTC.
+      const dt = new Date(today + "T00:00:00Z");
+      dt.setUTCDate(dt.getUTCDate() - i);
       const key = dt.toISOString().slice(0, 10);
       const found = arrivalSparkRows.find(r => r.day === key);
       arrivalSpark.push(found ? Number(found.count) : 0);
@@ -138,7 +141,7 @@ export async function GET() {
       ok: true,
       data: {
         fleet: { active: activeVehicles, total: totalVehicles, percent: fleetPercent },
-        sla:   { on_time: slaOnTime, total: slaTotal, percent: slaPercent },
+        sla:   { on_time: slaOnTime, total: slaTotal, percent: slaPercent, data_status: slaStatus },
         inspection: { pass: inspPass, total: inspTotal, percent: inspPercent },
         maintenance: { overdue: maintenanceOverdue, due_soon: maintenanceSoon, this_month: maintenanceThisMonth, cost: Number(maintenanceCost) },
         arrivals: { today: arrivalsToday, yesterday: arrivalsYesterday, trend: arrivalTrend, spark: arrivalSpark },

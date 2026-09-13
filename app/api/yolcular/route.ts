@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
-import { apiError } from "@/lib/api-error";
+import { safeApiError as apiError } from "@/lib/api-error";
+import { optionalId, paymentPlanId } from "@/lib/passenger-relations";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { geocodeAddress } from "@/lib/geocode";
@@ -147,6 +148,7 @@ export async function POST(req: NextRequest) {
     const db = getDb();
     const now = nowIso();
     const id = uuidv4();
+    const planId = await paymentPlanId(db, odeme_plani_id);
     const coords = await resolvePassengerCoords(pickup_address, pickup_lat, pickup_lng);
 
     await db.prepare(`
@@ -157,12 +159,12 @@ export async function POST(req: NextRequest) {
          created_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, company_id ?? null, full_name.trim(),
+      id, optionalId(company_id), full_name.trim(),
       phone ?? null, email ?? null, id_number ?? null, type,
       pickup_address ?? null, coords.lat, coords.lng, dropoff_address ?? null,
-      route_id ?? null, notes ?? null,
+      optionalId(route_id), notes ?? null,
       status,
-      sinif ?? null, sube ?? null, barkod_no ?? null, odeme_plani_id ?? null, sozlesme_durumu, hizmet_durumu,
+      sinif ?? null, sube ?? null, barkod_no?.trim() || null, planId, sozlesme_durumu, hizmet_durumu,
       user.id, now, now
     );
 

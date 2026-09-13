@@ -1,6 +1,8 @@
 import ExcelJS from "exceljs";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "@/lib/db";
+import { assertMasterDeletable } from "@/lib/deletion-guards";
+import type { ResultSetHeader } from "mysql2/promise";
 import { nowIso } from "@/lib/time";
 import { geocodeAddress } from "@/lib/geocode";
 
@@ -505,10 +507,16 @@ export async function rollbackImportJob(jobId: string, userId: string) {
       continue;
     }
     try {
-      const result = await db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(row.target_id);
+      const result = await db.transaction(async (conn) => {
+        if (job.module === "vehicles" || job.module === "routes") {
+          await assertMasterDeletable(conn, job.module, row.target_id);
+        }
+        const [deleted] = await conn.execute<ResultSetHeader>(`DELETE FROM ${table} WHERE id = ?`, [row.target_id]);
+        await conn.execute("UPDATE import_job_rows SET status='rolled_back', updated_at=? WHERE id=?", [now, row.id]);
+        return deleted;
+      });
       if (result.affectedRows > 0) rolledBack++;
       else skipped++;
-      await db.prepare("UPDATE import_job_rows SET status='rolled_back', updated_at=? WHERE id=?").run(now, row.id);
     } catch (error) {
       errors++;
       await db.prepare("UPDATE import_job_rows SET status='rollback_error', errors_json=?, updated_at=? WHERE id=?").run(JSON.stringify([error instanceof Error ? error.message : "Geri alma başarısız"]), now, row.id);

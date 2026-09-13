@@ -5,6 +5,11 @@ import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso, todayIstanbul } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
+import { CETELE_PRICE_JOIN } from "@/lib/cetele-pricing";
+import { transactionStore } from "@/lib/transaction-store";
+import { assertCompanyAccess } from "@/lib/company-access";
+import { RequestError } from "@/lib/request-error";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
   try {
@@ -70,28 +75,7 @@ export async function GET(req: NextRequest) {
        LEFT JOIN routes r ON r.id = c.route_id
        LEFT JOIN users onaylayan_u ON onaylayan_u.id = c.onaylayan
        LEFT JOIN hakedis_cetele hc ON hc.cetele_id = c.id
-       LEFT JOIN route_supplier_prices csp ON csp.id = (
-         SELECT rsp.id FROM route_supplier_prices rsp
-         WHERE rsp.route_id = c.route_id
-           AND rsp.company_id = r.company_id
-           AND (
-             (c.vehicle_id IS NOT NULL AND rsp.vehicle_id = c.vehicle_id)
-             OR (v.plate IS NOT NULL AND rsp.plate = v.plate)
-             OR (rsp.vehicle_id IS NULL AND rsp.plate IS NULL)
-           )
-           AND (rsp.hareket_tipi IS NULL OR rsp.hareket_tipi = c.hareket_tipi)
-           AND (rsp.yon IS NULL OR rsp.yon = c.yon)
-           AND rsp.valid_from <= c.tarih
-           AND (rsp.valid_to IS NULL OR rsp.valid_to >= c.tarih)
-         -- En spesifik eşleşme önce (tek + araç spesifikliği toplanır), eşitlikte
-         -- en yeni valid_from — aksi halde sonradan girilen genel fiyat, önceden
-         -- tanımlı teke/araca özel fiyatı sessizce ezebiliyordu.
-         ORDER BY (CASE WHEN rsp.hareket_tipi IS NOT NULL THEN 0 ELSE 1 END)
-                  + (CASE WHEN rsp.yon IS NOT NULL THEN 0 ELSE 1 END)
-                  + (CASE WHEN rsp.vehicle_id IS NOT NULL THEN 0 WHEN rsp.plate IS NOT NULL THEN 1 ELSE 2 END),
-                  rsp.valid_from DESC
-         LIMIT 1
-       )
+       ${CETELE_PRICE_JOIN}
        ${where}
        ORDER BY c.tarih DESC, v.plate ASC
        LIMIT ?`
@@ -113,33 +97,50 @@ export async function POST(req: NextRequest) {
     if (!body.tarih) return NextResponse.json({ ok: false, error: "Tarih zorunludur" }, { status: 400 });
     if (!body.hareket_tipi) return NextResponse.json({ ok: false, error: "Hareket tipi zorunludur" }, { status: 400 });
 
-    const db = getDb();
+    return await getDb().transaction(async (conn) => {
+      const db = transactionStore(conn);
+      if (body.route_id) {
+        const route = await db.prepare("SELECT company_id FROM routes WHERE id = ? FOR UPDATE")
+          .get<{ company_id: string | null }>(body.route_id);
+        if (!route) throw new RequestError("Güzergah bulunamadı", 404);
+        assertCompanyAccess(user, route.company_id);
+      }
 
-    if (user.allowed_companies) {
-      const allowed: string[] = JSON.parse(user.allowed_companies);
-      const access = await db.prepare(
-        `SELECT 1 FROM company_vehicles cv WHERE cv.vehicle_id = ? AND cv.company_id IN (${allowed.map(() => "?").join(",") || "NULL"})`
-      ).get(body.vehicle_id, ...allowed);
-      if (!access) return NextResponse.json({ ok: false, error: "Bu araca erişim yetkiniz yok" }, { status: 403 });
-    }
+      if (user.allowed_companies) {
+        const allowed: string[] = JSON.parse(user.allowed_companies);
+        const access = await db.prepare(
+          `SELECT 1 FROM company_vehicles cv WHERE cv.vehicle_id = ? AND cv.company_id IN (${allowed.map(() => "?").join(",") || "NULL"})`
+        ).get(body.vehicle_id, ...allowed);
+        if (!access) return NextResponse.json({ ok: false, error: "Bu araca erişim yetkiniz yok" }, { status: 403 });
+      }
 
-    const id = uuidv4();
-    const now = nowIso();
+      const id = uuidv4();
+      const now = nowIso();
 
-    const yon = body.yon === "giris" || body.yon === "cikis" ? body.yon : null;
+      const yon = body.yon === "giris" || body.yon === "cikis" ? body.yon : null;
+      if (body.route_id) {
+        const existing = await db.prepare(`SELECT id FROM cetele WHERE route_id = ? AND tarih = ?
+          AND hareket_tipi = ? AND (yon <=> ?) AND durum != 'iptal' FOR UPDATE`)
+          .get<{ id: string }>(body.route_id, body.tarih, body.hareket_tipi, yon);
+        if (existing) throw new RequestError("Bu hizmet için zaten çetele kaydı var", 409);
+      }
 
-    await db.prepare(
-      `INSERT INTO cetele
-         (id, vehicle_id, route_id, tarih, hareket_tipi, yon, durum, yolcu_sayisi,
-          aciklama, created_by, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-    ).run(
-      id, body.vehicle_id, body.route_id || null, body.tarih, body.hareket_tipi, yon,
-      "bekliyor", body.yolcu_sayisi || null,
-      body.aciklama || null,
-      user.id, now, now,
-    );
+      await db.prepare(
+        `INSERT INTO cetele
+           (id, vehicle_id, route_id, tarih, hareket_tipi, yon, durum, yolcu_sayisi,
+            aciklama, created_by, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).run(
+        id, body.vehicle_id, body.route_id || null, body.tarih, body.hareket_tipi, yon,
+        "bekliyor", body.yolcu_sayisi || null,
+        body.aciklama || null,
+        user.id, now, now,
+      );
 
-    return NextResponse.json({ ok: true, data: { id } }, { status: 201 });
+      await logAudit({ actorUserId: user.id, action: "cetele.create", entityType: "cetele", entityId: id,
+        details: { before: null, after: { id, vehicle_id: body.vehicle_id, route_id: body.route_id || null,
+          tarih: body.tarih, hareket_tipi: body.hareket_tipi, yon, durum: "bekliyor" } } }, conn);
+      return NextResponse.json({ ok: true, data: { id } }, { status: 201 });
+    });
   } catch (e) { return apiError(e); }
 }

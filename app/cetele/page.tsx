@@ -259,7 +259,7 @@ export default function CeteleePage() {
   }
 
   async function iptalEt(id: string) {
-    const reason = prompt("İptal nedeni (opsiyonel):");
+    const reason = prompt("İptal gerekçesi (zorunlu):");
     if (reason === null) return;
     const res = await fetch(`/api/cetele/${id}`, {
       method: "PUT",
@@ -1034,13 +1034,19 @@ function CeteleTakvim({
       setCancelling(true);
       try {
         for (const id of recordIds) {
-          await fetch(`/api/cetele/${id}`, {
+          const res = await fetch(`/api/cetele/${id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "iptal", geri_alma_nedeni: "Araç değiştirildi" }),
           });
+          const result = await res.json();
+          if (!res.ok || !result.ok) throw new Error(typeof result.error === "string" ? result.error : "İptal işlemi başarısız");
         }
         await reloadMatrix();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "İptal işlemi başarısız");
+        await reloadMatrix();
+        return;
       } finally { setCancelling(false); }
     }
     openAssign(routeId, date, hareketTipi, yon, mode);
@@ -1048,20 +1054,26 @@ function CeteleTakvim({
 
   async function cancelFromMenu() {
     if (!contextMenu || contextMenu.recordIds.length === 0) return;
-    const reason = window.prompt("İptal nedeni (opsiyonel):");
+    const reason = window.prompt("İptal gerekçesi (zorunlu):");
     if (reason === null) { setContextMenu(null); return; }
+    if (!reason.trim()) { toast.error("İptal gerekçesi zorunludur"); return; }
     const ids = contextMenu.recordIds;
     setContextMenu(null);
     setCancelling(true);
     try {
       for (const id of ids) {
-        await fetch(`/api/cetele/${id}`, {
+        const res = await fetch(`/api/cetele/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "iptal", geri_alma_nedeni: reason || null }),
         });
+        const result = await res.json();
+        if (!res.ok || !result.ok) throw new Error(typeof result.error === "string" ? result.error : "İptal işlemi başarısız");
       }
       toast.success("İptal edildi");
+      await reloadMatrix();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "İptal işlemi başarısız");
       await reloadMatrix();
     } finally { setCancelling(false); }
   }
