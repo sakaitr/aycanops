@@ -95,14 +95,18 @@ export async function POST(req: NextRequest) {
       const recordedAt = pos.fixTime || pos.deviceTime || now;
       const rawJson = JSON.stringify(payload);
       const externalVehicleId = payload.device?.uniqueId || (pos.deviceId != null ? String(pos.deviceId) : null);
+      const sourcePositionId = pos.id != null ? String(pos.id) : null;
 
+      // Traccar "en az bir kez" teslimat yapar — aynı position.id tekrar gelirse
+      // (retry) yeni satır açmak yerine sessizce atla (INSERT IGNORE, UNIQUE
+      // (provider_code, source_position_id) — kimliksiz eski akış etkilenmez).
       await db
         .prepare(
-          `INSERT INTO vehicle_locations
-             (id, vehicle_id, device_id, provider_code, external_vehicle_id, plate, lat, lng, speed, heading, ignition, odometer, address, raw_json, recorded_at, received_at)
-           VALUES (?, ?, NULL, 'traccar', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT IGNORE INTO vehicle_locations
+             (id, vehicle_id, device_id, provider_code, source_position_id, external_vehicle_id, plate, lat, lng, speed, heading, ignition, odometer, address, raw_json, recorded_at, received_at)
+           VALUES (?, ?, NULL, 'traccar', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(uuidv4(), vehicleId, externalVehicleId, plate || null, lat, lng, speed, heading, ignition, odometer, pos.address || null, rawJson, recordedAt, now);
+        .run(uuidv4(), vehicleId, sourcePositionId, externalVehicleId, plate || null, lat, lng, speed, heading, ignition, odometer, pos.address || null, rawJson, recordedAt, now);
 
       if (vehicleId) {
         await db
@@ -133,22 +137,25 @@ export async function POST(req: NextRequest) {
         .get<{ id: string; company_id: string | null; route_id: string | null; fence_type: string }>(ev.geofenceId);
 
       const eventType = ev.type === "geofenceEnter" ? "geofence_enter" : "geofence_exit";
-      await db
+      const sourceEventId = ev.id != null ? String(ev.id) : null;
+      // Aynı sebep: retry'de aynı event.id tekrar gelirse çift geofence olayı yazma.
+      const inserted = await db
         .prepare(
-          `INSERT INTO route_adherence_events
-             (id, route_plan_id, route_id, vehicle_id, event_type, severity, distance_m, duration_min, details_json, detected_at, created_at)
-           VALUES (?, NULL, ?, ?, ?, 'info', NULL, NULL, ?, ?, ?)`,
+          `INSERT IGNORE INTO route_adherence_events
+             (id, route_plan_id, route_id, vehicle_id, provider_code, source_event_id, event_type, severity, distance_m, duration_min, details_json, detected_at, created_at)
+           VALUES (?, NULL, ?, ?, 'traccar', ?, ?, 'info', NULL, NULL, ?, ?, ?)`,
         )
         .run(
           uuidv4(),
           gf?.route_id ?? null,
           vehicleId,
+          sourceEventId,
           eventType,
           JSON.stringify({ traccar_geofence_id: ev.geofenceId, geofence_id: gf?.id ?? null, device: deviceName }),
           ev.eventTime || now,
           now,
         );
-      wroteEvent = true;
+      wroteEvent = inserted.affectedRows > 0;
 
       // Firma geofence'ine giriş → otomatik yoklama (vehicle_arrivals)
       if (ev.type === "geofenceEnter" && gf?.fence_type === "company" && gf.company_id && vehicleId) {
