@@ -1033,15 +1033,13 @@ function CeteleTakvim({
     if (recordIds.length > 0) {
       setCancelling(true);
       try {
-        for (const id of recordIds) {
-          const res = await fetch(`/api/cetele/${id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "iptal", geri_alma_nedeni: "Araç değiştirildi" }),
-          });
-          const result = await res.json();
-          if (!res.ok || !result.ok) throw new Error(typeof result.error === "string" ? result.error : "İptal işlemi başarısız");
-        }
+        const res = await fetch(`/api/cetele/cancel-bulk`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: recordIds, geri_alma_nedeni: "Araç değiştirildi" }),
+        });
+        const result = await res.json();
+        if (!res.ok || !result.ok) throw new Error(typeof result.error === "string" ? result.error : "İptal işlemi başarısız");
         await reloadMatrix();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "İptal işlemi başarısız");
@@ -1061,15 +1059,13 @@ function CeteleTakvim({
     setContextMenu(null);
     setCancelling(true);
     try {
-      for (const id of ids) {
-        const res = await fetch(`/api/cetele/${id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "iptal", geri_alma_nedeni: reason || null }),
-        });
-        const result = await res.json();
-        if (!res.ok || !result.ok) throw new Error(typeof result.error === "string" ? result.error : "İptal işlemi başarısız");
-      }
+      const res = await fetch(`/api/cetele/cancel-bulk`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, geri_alma_nedeni: reason }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.ok) throw new Error(typeof result.error === "string" ? result.error : "İptal işlemi başarısız");
       toast.success("İptal edildi");
       await reloadMatrix();
     } catch (e) {

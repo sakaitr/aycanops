@@ -4,9 +4,10 @@ import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
-import { cancelCetele } from "@/lib/cetele-cancel";
+import { cancelCetele, deleteCetele } from "@/lib/cetele-cancel";
 import { transactionStore } from "@/lib/transaction-store";
 import { logAudit } from "@/lib/audit";
+import { assertCeteleAccess } from "@/lib/company-access";
 
 export async function PUT(
   req: NextRequest,
@@ -30,14 +31,7 @@ export async function PUT(
 
       const existing = await db.prepare(`SELECT * FROM cetele WHERE id = ? FOR UPDATE`).get<any>(id);
       if (!existing) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
-
-      if (user.allowed_companies) {
-        const allowed: string[] = JSON.parse(user.allowed_companies);
-        const access = await db.prepare(
-          `SELECT 1 FROM company_vehicles cv WHERE cv.vehicle_id = ? AND cv.company_id IN (${allowed.map(() => "?").join(",") || "NULL"})`
-        ).get(existing.vehicle_id, ...allowed);
-        if (!access) return NextResponse.json({ ok: false, error: "Bu kayda erişim yetkiniz yok" }, { status: 403 });
-      }
+      await assertCeteleAccess(db, user, existing);
 
       // Onaylama / iptal işlemi
       if (body.action === "onayla") {
@@ -91,23 +85,7 @@ export async function DELETE(
       return NextResponse.json({ ok: false, error: "Yetersiz yetki" }, { status: 403 });
 
     const { id } = await params;
-    const db = getDb();
-
-    const existing = await db.prepare(`SELECT durum, vehicle_id FROM cetele WHERE id = ?`).get<{ durum: string; vehicle_id: string }>(id);
-    if (!existing) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
-
-    if (user.allowed_companies) {
-      const allowed: string[] = JSON.parse(user.allowed_companies);
-      const access = await db.prepare(
-        `SELECT 1 FROM company_vehicles cv WHERE cv.vehicle_id = ? AND cv.company_id IN (${allowed.map(() => "?").join(",") || "NULL"})`
-      ).get(existing.vehicle_id, ...allowed);
-      if (!access) return NextResponse.json({ ok: false, error: "Bu kayda erişim yetkiniz yok" }, { status: 403 });
-    }
-
-    if (existing.durum !== "bekliyor")
-      return NextResponse.json({ ok: false, error: "Sadece bekleyen kayıtlar silinebilir" }, { status: 400 });
-
-    await db.prepare(`DELETE FROM cetele WHERE id = ?`).run(id);
+    await deleteCetele(id, user);
     return NextResponse.json({ ok: true });
   } catch (e) { return apiError(e); }
 }
