@@ -5,6 +5,10 @@ import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
+import { RequestError } from "@/lib/request-error";
+import { logAudit } from "@/lib/audit";
+
+const KESINTI_KATEGORILERI = ["arac_kirli", "denetim_basarisiz", "ceza", "yakit", "diger"] as const;
 
 export async function GET(
   req: NextRequest,
@@ -75,6 +79,9 @@ export async function POST(
       return NextResponse.json({ ok: false, error: "Geçerli tutar giriniz" }, { status: 400 });
     if (!body.islem_turu)
       return NextResponse.json({ ok: false, error: "İşlem türü zorunludur" }, { status: 400 });
+    const kesintiKategori = body.islem_turu === "kesinti" ? body.kesinti_kategori : null;
+    if (body.islem_turu === "kesinti" && !KESINTI_KATEGORILERI.includes(kesintiKategori))
+      throw new RequestError("Kesinti kategorisi zorunludur");
 
     const db = getDb();
     const isleten = await db.prepare(`SELECT id FROM isleten WHERE id = ?`).get(id);
@@ -95,18 +102,22 @@ export async function POST(
     await db.prepare(
       `INSERT INTO isleten_cari
          (id, isleten_id, tarih, vade_tarihi, tutar, para_girisi, para_cikisi,
-          aciklama, islem_turu, referans_id, referans_turu, created_by, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          aciklama, islem_turu, kesinti_kategori, referans_id, referans_turu, created_by, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).run(
       rowId, id, tarih,
       body.vade_tarihi || null,
       tutar, para_girisi, para_cikisi,
       body.aciklama || null,
       body.islem_turu,
+      kesintiKategori,
       body.referans_id || null,
       body.referans_turu || null,
       user.id, now,
     );
+
+    await logAudit({ actorUserId: user.id, action: "isleten_cari.create", entityType: "isleten_cari", entityId: rowId,
+      details: { before: null, after: { id: rowId, isleten_id: id, tarih, tutar, islem_turu: body.islem_turu, kesinti_kategori: kesintiKategori, aciklama: body.aciklama || null } } });
 
     return NextResponse.json({ ok: true, data: { id: rowId } }, { status: 201 });
   } catch (e) { return apiError(e); }

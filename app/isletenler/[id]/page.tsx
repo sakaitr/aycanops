@@ -37,6 +37,16 @@ const ISLEM_TURU_LABELS: Record<string, string> = {
   diger: "Diğer",
 };
 
+const KESINTI_KATEGORI_OPTS = [
+  { value: "arac_kirli", label: "Araç kirli" },
+  { value: "denetim_basarisiz", label: "Denetime uymadı" },
+  { value: "ceza", label: "Ceza" },
+  { value: "yakit", label: "Yakıt yüklendi" },
+  { value: "diger", label: "Diğer" },
+];
+
+const KESINTI_KATEGORI_LABELS: Record<string, string> = Object.fromEntries(KESINTI_KATEGORI_OPTS.map(o => [o.value, o.label]));
+
 type Tab = "genel" | "araclar" | "cari";
 
 export default function IsletenDetayPage({ params }: { params: Promise<{ id: string }> }) {
@@ -63,7 +73,7 @@ export default function IsletenDetayPage({ params }: { params: Promise<{ id: str
   const [cariSummary, setCariSummary] = useState<any>(null);
   const [cariLoading, setCariLoading] = useState(false);
   const [showCariForm, setShowCariForm] = useState(false);
-  const [cariForm, setCariForm] = useState({ islem_turu: "hakedis", tutar: "", tarih: "", aciklama: "" });
+  const [cariForm, setCariForm] = useState({ islem_turu: "hakedis", tutar: "", tarih: "", aciklama: "", kesinti_kategori: "" });
   const [cariSaving, setCariSaving] = useState(false);
 
   useEffect(() => {
@@ -153,6 +163,10 @@ export default function IsletenDetayPage({ params }: { params: Promise<{ id: str
 
   async function saveCari() {
     if (!cariForm.tutar || !cariForm.islem_turu) return;
+    if (cariForm.islem_turu === "kesinti" && !cariForm.kesinti_kategori) {
+      toast.error("Kesinti kategorisi zorunludur");
+      return;
+    }
     setCariSaving(true);
     try {
       const res = await fetch(`/api/isletenler/${id}/cari`, {
@@ -164,7 +178,7 @@ export default function IsletenDetayPage({ params }: { params: Promise<{ id: str
       if (!d.ok) { toast.error(d.error || "Hata"); return; }
       toast.success("Hareket eklendi");
       setShowCariForm(false);
-      setCariForm({ islem_turu: "hakedis", tutar: "", tarih: "", aciklama: "" });
+      setCariForm({ islem_turu: "hakedis", tutar: "", tarih: "", aciklama: "", kesinti_kategori: "" });
       loadCari();
     } finally { setCariSaving(false); }
   }
@@ -414,6 +428,11 @@ export default function IsletenDetayPage({ params }: { params: Promise<{ id: str
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-zinc-300 text-sm font-medium">{ISLEM_TURU_LABELS[h.islem_turu] || h.islem_turu}</span>
+                            {h.kesinti_kategori && (
+                              <span className="text-amber-400 text-xs bg-amber-500/10 px-1.5 py-0.5 rounded">
+                                {KESINTI_KATEGORI_LABELS[h.kesinti_kategori] || h.kesinti_kategori}
+                              </span>
+                            )}
                             {h.aciklama && <span className="text-zinc-600 text-xs truncate">{h.aciklama}</span>}
                           </div>
                           <p className="text-zinc-600 text-xs mt-0.5">{formatDate(h.tarih)} · {h.created_by_name || "Sistem"}</p>
@@ -438,7 +457,8 @@ export default function IsletenDetayPage({ params }: { params: Promise<{ id: str
                     <div className="grid grid-cols-2 gap-3">
                       <label className="block">
                         <span className="text-zinc-400 text-xs font-medium mb-1 block">İşlem Türü *</span>
-                        <select value={cariForm.islem_turu} onChange={e => setCariForm(f => ({ ...f, islem_turu: e.target.value }))}
+                        <select value={cariForm.islem_turu}
+                          onChange={e => setCariForm(f => ({ ...f, islem_turu: e.target.value, kesinti_kategori: e.target.value === "kesinti" ? f.kesinti_kategori : "" }))}
                           className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
                           {ISLEM_TURU_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
@@ -450,6 +470,16 @@ export default function IsletenDetayPage({ params }: { params: Promise<{ id: str
                           placeholder="0.00" />
                       </label>
                     </div>
+                    {cariForm.islem_turu === "kesinti" && (
+                      <label className="block">
+                        <span className="text-zinc-400 text-xs font-medium mb-1 block">Kesinti Kategorisi *</span>
+                        <select value={cariForm.kesinti_kategori} onChange={e => setCariForm(f => ({ ...f, kesinti_kategori: e.target.value }))}
+                          className="w-full bg-zinc-800 border border-zinc-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none">
+                          <option value="">Seçiniz...</option>
+                          {KESINTI_KATEGORI_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </label>
+                    )}
                     <label className="block">
                       <span className="text-zinc-400 text-xs font-medium mb-1 block">Tarih</span>
                       <input type="date" value={cariForm.tarih} onChange={e => setCariForm(f => ({ ...f, tarih: e.target.value }))}
@@ -462,7 +492,7 @@ export default function IsletenDetayPage({ params }: { params: Promise<{ id: str
                     </label>
                     <div className="flex gap-3 pt-2">
                       <button onClick={() => setShowCariForm(false)} className="flex-1 bg-zinc-800 text-zinc-300 text-sm py-2.5 rounded-xl">İptal</button>
-                      <button onClick={saveCari} disabled={cariSaving || !cariForm.tutar || !cariForm.islem_turu}
+                      <button onClick={saveCari} disabled={cariSaving || !cariForm.tutar || !cariForm.islem_turu || (cariForm.islem_turu === "kesinti" && !cariForm.kesinti_kategori)}
                         className="flex-1 bg-white text-zinc-950 font-semibold text-sm py-2.5 rounded-xl disabled:opacity-50">
                         {cariSaving ? "Kaydediliyor..." : "Kaydet"}
                       </button>

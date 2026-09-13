@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(
   _req: NextRequest,
@@ -51,7 +52,7 @@ export async function PUT(
     const db = getDb();
     const now = nowIso();
 
-    const existing = await db.prepare(`SELECT id FROM isleten WHERE id = ?`).get(id);
+    const existing = await db.prepare(`SELECT * FROM isleten WHERE id = ?`).get<Record<string, unknown>>(id);
     if (!existing) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
 
     await db.prepare(
@@ -77,6 +78,9 @@ export async function PUT(
       id,
     );
 
+    await logAudit({ actorUserId: user.id, action: "isleten.update", entityType: "isleten", entityId: id,
+      details: { before: existing, after: { ...existing, ...body, updated_at: now } } });
+
     return NextResponse.json({ ok: true });
   } catch (e) { return apiError(e); }
 }
@@ -95,7 +99,13 @@ export async function DELETE(
     const db = getDb();
     const now = nowIso();
 
+    const existing = await db.prepare(`SELECT * FROM isleten WHERE id = ?`).get<Record<string, unknown> & { is_active: number }>(id);
+    if (!existing) return NextResponse.json({ ok: false, error: "Bulunamadı" }, { status: 404 });
+    if (!existing.is_active) return NextResponse.json({ ok: true });
+
     await db.prepare(`UPDATE isleten SET is_active = 0, updated_at = ? WHERE id = ?`).run(now, id);
+    await logAudit({ actorUserId: user.id, action: "isleten.deactivate", entityType: "isleten", entityId: id,
+      details: { before: existing, after: { ...existing, is_active: 0, updated_at: now } } });
     return NextResponse.json({ ok: true });
   } catch (e) { return apiError(e); }
 }

@@ -5,6 +5,8 @@ import { hasPermission } from "@/lib/permissions";
 import { v4 as uuidv4 } from "uuid";
 import { nowIso } from "@/lib/time";
 import { apiError } from "@/lib/api-error";
+import { transactionStore } from "@/lib/transaction-store";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(
   _req: NextRequest,
@@ -49,28 +51,39 @@ export async function POST(
     if (!body.vehicle_id) return NextResponse.json({ ok: false, error: "Araç seçiniz" }, { status: 400 });
     if (!body.baslangic_tarihi) return NextResponse.json({ ok: false, error: "Başlangıç tarihi zorunludur" }, { status: 400 });
 
-    const db = getDb();
-
-    // Close any existing open assignment for this vehicle
     const now = nowIso();
-    await db.prepare(
-      `UPDATE arac_isleten SET bitis_tarihi = ?, islem_turu = 'devir'
-       WHERE vehicle_id = ? AND bitis_tarihi IS NULL`
-    ).run(body.baslangic_tarihi, body.vehicle_id);
-
     const rowId = uuidv4();
-    await db.prepare(
-      `INSERT INTO arac_isleten
-         (id, vehicle_id, isleten_id, baslangic_tarihi, bitis_tarihi, islem_turu, aciklama, created_by, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?)`
-    ).run(
-      rowId, body.vehicle_id, id,
-      body.baslangic_tarihi,
-      body.bitis_tarihi || null,
-      body.islem_turu || "atama",
-      body.aciklama || null,
-      user.id, now,
-    );
+
+    await getDb().transaction(async conn => {
+      const db = transactionStore(conn);
+      // Close any existing open assignment for this vehicle (bir araç tek anda tek işletene bağlı).
+      const previous = await db.prepare(
+        `SELECT * FROM arac_isleten WHERE vehicle_id = ? AND bitis_tarihi IS NULL FOR UPDATE`
+      ).get<Record<string, unknown>>(body.vehicle_id);
+      if (previous) {
+        await db.prepare(
+          `UPDATE arac_isleten SET bitis_tarihi = ?, islem_turu = 'devir' WHERE vehicle_id = ? AND bitis_tarihi IS NULL`
+        ).run(body.baslangic_tarihi, body.vehicle_id);
+      }
+
+      await db.prepare(
+        `INSERT INTO arac_isleten
+           (id, vehicle_id, isleten_id, baslangic_tarihi, bitis_tarihi, islem_turu, aciklama, created_by, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?)`
+      ).run(
+        rowId, body.vehicle_id, id,
+        body.baslangic_tarihi,
+        body.bitis_tarihi || null,
+        body.islem_turu || "atama",
+        body.aciklama || null,
+        user.id, now,
+      );
+
+      await logAudit({ actorUserId: user.id, action: "arac_isleten.assign", entityType: "arac_isleten", entityId: rowId,
+        details: { before: previous ? { ...previous, bitis_tarihi: body.baslangic_tarihi, islem_turu: "devir" } : null,
+          after: { id: rowId, vehicle_id: body.vehicle_id, isleten_id: id, baslangic_tarihi: body.baslangic_tarihi,
+            islem_turu: body.islem_turu || "atama" } } }, conn);
+    });
 
     return NextResponse.json({ ok: true, data: { id: rowId } }, { status: 201 });
   } catch (e) { return apiError(e); }
